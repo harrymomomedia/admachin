@@ -16,7 +16,7 @@ export function Sidebar() {
         <div className="flex h-full w-64 flex-col bg-card border-r border-border">
             <div className="flex h-16 items-center px-6 border-b border-border">
                 <Rocket className="h-6 w-6 text-primary mr-2" />
-                <span className="text-xl font-bold text-foreground">AdLauncher</span>
+                <span className="text-xl font-bold text-foreground">AdMachin</span>
             </div>
             <div className="flex-1 flex flex-col gap-1 p-4">
                 {navigation.map((item) => {
