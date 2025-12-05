@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
     Upload,
     Image as ImageIcon,
@@ -74,14 +74,60 @@ const SAMPLE_MEDIA: MediaItem[] = [
     },
 ];
 
+// Storage key for sharing with Launch page
+const STORAGE_KEY = "admachin_creative_library";
+
+// Save media to localStorage for sharing with other pages
+function saveMediaLibrary(items: MediaItem[]): void {
+    try {
+        // Store simplified version for the launcher
+        const simplified = items.map(m => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+            preview: m.preview,
+            url: m.url,
+            hash: m.hash,
+        }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(simplified));
+    } catch {
+        // Ignore storage errors
+    }
+}
+
+// Load media from localStorage or use sample data
+function loadMediaLibrary(): MediaItem[] {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            // Need to convert date strings back to Date objects and add missing fields
+            return parsed.map((m: MediaItem) => ({
+                ...m,
+                size: m.size || 0,
+                uploadedAt: m.uploadedAt ? new Date(m.uploadedAt) : new Date(),
+            }));
+        }
+    } catch {
+        // Ignore parse errors
+    }
+    return SAMPLE_MEDIA;
+}
+
 export function Creatives() {
-    const [media, setMedia] = useState<MediaItem[]>(SAMPLE_MEDIA);
+    const [media, setMedia] = useState<MediaItem[]>(() => loadMediaLibrary());
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [filterType, setFilterType] = useState<"all" | "image" | "video">("all");
     const [searchQuery, setSearchQuery] = useState("");
     const [showUploader, setShowUploader] = useState(false);
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
+
+    // Save to localStorage whenever media changes
+    useEffect(() => {
+        saveMediaLibrary(media);
+    }, [media]);
+
 
     const filteredMedia = media.filter((item) => {
         const matchesType = filterType === "all" || item.type === filterType;
