@@ -201,6 +201,11 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             }
         };
 
+        init();
+    }, [configValidation.valid]);
+
+    // Handle OAuth Callback (runs only once on mount)
+    useEffect(() => {
         // Check for OAuth callback data in URL
         const searchParams = new URLSearchParams(window.location.search);
         const success = searchParams.get('success');
@@ -213,6 +218,11 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 console.log('[FB] Received profile from OAuth callback:', profileData.name);
 
                 // Add/Update profile
+                // We use the functional update form or a ref to avoid dependency loops if needed, 
+                // but since addProfileFromOAuth handles state, we just call it.
+                // However, we want to ensure this doesn't run repeatedly.
+                // The cleanup of URL prevents it from finding params again.
+
                 addProfileFromOAuth(profileData);
 
                 // Clean up URL
@@ -230,10 +240,13 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             }
         } else if (errorParam) {
             setError(`Facebook login failed: ${decodeURIComponent(errorParam)}`);
+            // Clean up URL even on error
+            const url = new URL(window.location.href);
+            url.searchParams.delete('error');
+            url.searchParams.delete('error_reason');
+            window.history.replaceState({}, '', url.toString());
         }
-
-        init();
-    }, [configValidation.valid, addProfileFromOAuth, setActiveProfile]);
+    }, [addProfileFromOAuth, setActiveProfile]);
 
     // Handle rate limit errors - uses exact time from Facebook when available
     const handleApiError = useCallback((err: unknown) => {
