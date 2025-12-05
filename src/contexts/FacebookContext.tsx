@@ -8,6 +8,7 @@ import {
     getAdAccounts,
     validateFBConfig,
     FacebookApiError,
+    refreshFacebookToken,
 } from '../services/facebook';
 import type { AdAccount } from '../services/facebook';
 
@@ -185,8 +186,40 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                     setConnectedProfiles(savedProfiles);
 
                     // Set the first profile as active for API calls
-                    localStorage.setItem('fb_access_token', savedProfiles[0].accessToken);
-                    localStorage.setItem('fb_token_expiry', String(savedProfiles[0].tokenExpiry));
+                    const activeProfile = savedProfiles[0];
+                    localStorage.setItem('fb_access_token', activeProfile.accessToken);
+                    localStorage.setItem('fb_token_expiry', String(activeProfile.tokenExpiry));
+
+                    // Auto-Refresh Token Check
+                    // If token expires in less than 7 days, try to refresh it
+                    const now = Date.now();
+                    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+                    if (activeProfile.tokenExpiry - now < sevenDaysMs) {
+                        console.log('[FB] Token expiring soon, attempting refresh...');
+                        try {
+                            const refreshData = await refreshFacebookToken(activeProfile.accessToken);
+
+                            // Update profile with new token
+                            const updatedProfile = {
+                                ...activeProfile,
+                                accessToken: refreshData.access_token,
+                                tokenExpiry: Date.now() + refreshData.expires_in * 1000
+                            };
+
+                            // Save updated profile
+                            const updatedList = savedProfiles.map((p, i) => i === 0 ? updatedProfile : p);
+                            setConnectedProfiles(updatedList);
+                            saveProfiles(updatedList);
+
+                            // Update active token
+                            localStorage.setItem('fb_access_token', updatedProfile.accessToken);
+                            localStorage.setItem('fb_token_expiry', String(updatedProfile.tokenExpiry));
+                            console.log('[FB] Token refreshed successfully');
+                        } catch (refreshErr) {
+                            console.warn('[FB] Token refresh failed:', refreshErr);
+                            // Don't error out the whole app, just continue with old token
+                        }
+                    }
                 }
 
                 // Initialize FB SDK
