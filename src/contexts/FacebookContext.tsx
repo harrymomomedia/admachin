@@ -330,7 +330,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             setError(err instanceof Error ? err.message : 'Failed to initiate connection');
             setIsLoading(false);
         }
-    }, [handleApiError]);
+    }, []);
 
     // Internal refresh helper
     const refreshProfileInternal = async (

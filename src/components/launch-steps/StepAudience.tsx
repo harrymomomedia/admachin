@@ -63,7 +63,7 @@ export function StepAudience({ data, updateData }: StepAudienceProps) {
         return () => clearTimeout(timer);
     }, [interestQuery]);
 
-    const updateAudience = (key: keyof AudienceData, value: any) => {
+    const updateAudience = (key: keyof AudienceData, value: AudienceData[keyof AudienceData]) => {
         updateData({
             ...data,
             audience: { ...audience, [key]: value },

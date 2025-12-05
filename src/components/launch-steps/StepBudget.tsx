@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Calendar, DollarSign, Clock } from "lucide-react";
 import type { LaunchAdFormData, BudgetData } from "../../types/launch";
 
@@ -9,6 +9,7 @@ interface StepBudgetProps {
 
 export function StepBudget({ data, updateData }: StepBudgetProps) {
     const budget = data.budget || {};
+    const hasInitialized = useRef(false);
 
     const updateBudget = (key: keyof BudgetData, value: string) => {
         updateData({
@@ -17,12 +18,16 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
         });
     };
 
-    // Initialize defaults
+    // Initialize defaults - only run once on mount
     useEffect(() => {
-        if (!budget.startDate) {
-            updateBudget("startDate", new Date().toISOString().split('T')[0]);
+        if (!hasInitialized.current && !data.budget?.startDate) {
+            hasInitialized.current = true;
+            updateData({
+                ...data,
+                budget: { ...data.budget, startDate: new Date().toISOString().split('T')[0] },
+            });
         }
-    }, []);
+    }, [data, updateData]);
 
     return (
         <div className="space-y-6">

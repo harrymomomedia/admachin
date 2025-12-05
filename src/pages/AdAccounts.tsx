@@ -1,7 +1,7 @@
 // Ad Accounts Page - Single source for all FB connections
 // Supports both client-side (short tokens) and server-side OAuth (60-day tokens)
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, RefreshCw, Trash2, AlertTriangle, Clock, CheckCircle, User, Mail } from 'lucide-react';
 import { useFacebook, type ConnectedProfile } from '../contexts/FacebookContext';
@@ -30,30 +30,47 @@ export function AdAccounts() {
     const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
     const [pendingProfile, setPendingProfile] = useState<ConnectedProfile | null>(null);
 
-    // Handle OAuth callback parameters from URL
-    useEffect(() => {
+    // Track if we've processed the OAuth callback
+    const processedOAuth = useRef(false);
+
+    // Parse OAuth callback parameters once on mount using useMemo
+    const oauthData = useMemo(() => {
         const success = searchParams.get('success');
         const profileData = searchParams.get('profile');
         const errorParam = searchParams.get('error');
 
         if (success === 'true' && profileData) {
             try {
-                const profile = JSON.parse(decodeURIComponent(profileData)) as ConnectedProfile;
-
-                // Instead of adding immediately, open the selection modal
-                setPendingProfile(profile);
-                setIsSelectionModalOpen(true);
-
-                // Clear URL params
-                setSearchParams({});
+                return { profile: JSON.parse(decodeURIComponent(profileData)) as ConnectedProfile };
             } catch (e) {
                 console.error('Failed to parse OAuth profile data:', e);
+                return null;
             }
         } else if (errorParam) {
-            // Error is shown via the error state in context
-            setSearchParams({});
+            return { error: errorParam };
         }
-    }, [searchParams, setSearchParams]);
+        return null;
+    }, [searchParams]);
+
+    // Handle OAuth callback - separate effect that only runs when oauthData changes
+    useEffect(() => {
+        if (!oauthData || processedOAuth.current) return;
+
+        processedOAuth.current = true;
+
+        if ('profile' in oauthData && oauthData.profile) {
+            // Schedule state updates for next tick to avoid cascading renders
+            setTimeout(() => {
+                setPendingProfile(oauthData.profile);
+                setIsSelectionModalOpen(true);
+                setSearchParams({}, { replace: true });
+            }, 0);
+        } else if ('error' in oauthData) {
+            setTimeout(() => {
+                setSearchParams({}, { replace: true });
+            }, 0);
+        }
+    }, [oauthData, setSearchParams]);
 
     // Handle Modal Confirmation
     const handleSelectionConfirmed = (selectedIds: string[]) => {
