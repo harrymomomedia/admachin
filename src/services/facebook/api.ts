@@ -684,7 +684,29 @@ export default {
     getAccountInsights,
     getCampaignInsights,
     getInsightsOverTime,
+    refreshFacebookToken,
 };
+
+/**
+ * Refresh a long-lived access token via server-side API
+ */
+export async function refreshFacebookToken(currentToken: string): Promise<{ access_token: string; expires_in: number }> {
+    const response = await fetch('/api/auth/facebook/refresh', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accessToken: currentToken }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to refresh token');
+    }
+
+    return data;
+}
 
 
 
