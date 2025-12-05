@@ -41,6 +41,7 @@ export {
     getInsightsOverTime,
     // Error class
     FacebookApiError,
+    refreshFacebookToken,
 } from './api';
 
 // Re-export types
