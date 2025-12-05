@@ -344,11 +344,17 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
             const adAccountsResponse = await getAdAccounts();
 
-            const updatedProfiles = currentProfiles.map(p =>
-                p.id === profileId
-                    ? { ...p, adAccounts: adAccountsResponse.data }
-                    : p
-            );
+            const updatedProfiles = currentProfiles.map(p => {
+                if (p.id !== profileId) return p;
+
+                // Only update accounts that are ALREADY connected.
+                // We don't want to re-add accounts the user explicitly disconnected or didn't select.
+                const existingAccountIds = new Set(p.adAccounts.map(a => a.id));
+                const refreshedConnectedAccounts = adAccountsResponse.data.filter(a => existingAccountIds.has(a.id));
+
+                return { ...p, adAccounts: refreshedConnectedAccounts };
+            });
+
             setConnectedProfiles(updatedProfiles);
             saveProfiles(updatedProfiles);
         } catch (err) {
