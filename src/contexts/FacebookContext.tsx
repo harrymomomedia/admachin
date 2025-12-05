@@ -146,6 +146,28 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         }
     }, [connectedProfiles]);
 
+    // Add profile from server-side OAuth (long-lived token)
+    const addProfileFromOAuth = useCallback((profileData: ConnectedProfile) => {
+        // Check if profile already exists
+        const existingIndex = connectedProfiles.findIndex(p => p.id === profileData.id);
+
+        let updatedProfiles: ConnectedProfile[];
+        if (existingIndex >= 0) {
+            // Update existing profile
+            updatedProfiles = connectedProfiles.map((p, i) =>
+                i === existingIndex ? profileData : p
+            );
+            console.log('[FB OAuth] Updated existing profile:', profileData.name);
+        } else {
+            // Add new profile
+            updatedProfiles = [...connectedProfiles, profileData];
+            console.log('[FB OAuth] Added new profile:', profileData.name);
+        }
+
+        setConnectedProfiles(updatedProfiles);
+        saveProfiles(updatedProfiles);
+    }, [connectedProfiles]);
+
     // Initialize on mount
     useEffect(() => {
         if (!configValidation.valid) {
@@ -331,27 +353,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         }
     }, [connectedProfiles]);
 
-    // Add profile from server-side OAuth (long-lived token)
-    const addProfileFromOAuth = useCallback((profileData: ConnectedProfile) => {
-        // Check if profile already exists
-        const existingIndex = connectedProfiles.findIndex(p => p.id === profileData.id);
 
-        let updatedProfiles: ConnectedProfile[];
-        if (existingIndex >= 0) {
-            // Update existing profile
-            updatedProfiles = connectedProfiles.map((p, i) =>
-                i === existingIndex ? profileData : p
-            );
-            console.log('[FB OAuth] Updated existing profile:', profileData.name);
-        } else {
-            // Add new profile
-            updatedProfiles = [...connectedProfiles, profileData];
-            console.log('[FB OAuth] Added new profile:', profileData.name);
-        }
-
-        setConnectedProfiles(updatedProfiles);
-        saveProfiles(updatedProfiles);
-    }, [connectedProfiles]);
 
     return (
         <FacebookContext.Provider
