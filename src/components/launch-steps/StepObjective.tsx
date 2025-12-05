@@ -1,9 +1,10 @@
 import { Target, MousePointer2, Users, ShoppingBag } from "lucide-react";
 import { cn } from "../../utils/cn";
+import type { LaunchAdFormData } from "../../types/launch";
 
 interface StepObjectiveProps {
-    data: any;
-    updateData: (data: any) => void;
+    data: LaunchAdFormData;
+    updateData: (data: LaunchAdFormData) => void;
 }
 
 const objectives = [

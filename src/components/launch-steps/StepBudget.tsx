@@ -1,14 +1,15 @@
 import { Calendar, DollarSign, Clock } from "lucide-react";
+import type { LaunchAdFormData, BudgetData } from "../../types/launch";
 
 interface StepBudgetProps {
-    data: any;
-    updateData: (data: any) => void;
+    data: LaunchAdFormData;
+    updateData: (data: LaunchAdFormData) => void;
 }
 
 export function StepBudget({ data, updateData }: StepBudgetProps) {
     const budget = data.budget || {};
 
-    const updateBudget = (key: string, value: any) => {
+    const updateBudget = (key: keyof BudgetData, value: string) => {
         updateData({
             ...data,
             budget: { ...budget, [key]: value },

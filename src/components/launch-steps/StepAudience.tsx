@@ -1,14 +1,15 @@
 import { MapPin, Users, Globe } from "lucide-react";
+import type { LaunchAdFormData, AudienceData } from "../../types/launch";
 
 interface StepAudienceProps {
-    data: any;
-    updateData: (data: any) => void;
+    data: LaunchAdFormData;
+    updateData: (data: LaunchAdFormData) => void;
 }
 
 export function StepAudience({ data, updateData }: StepAudienceProps) {
     const audience = data.audience || {};
 
-    const updateAudience = (key: string, value: any) => {
+    const updateAudience = (key: keyof AudienceData, value: string) => {
         updateData({
             ...data,
             audience: { ...audience, [key]: value },

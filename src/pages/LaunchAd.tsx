@@ -6,6 +6,7 @@ import { StepObjective } from "../components/launch-steps/StepObjective";
 import { StepAudience } from "../components/launch-steps/StepAudience";
 import { StepCreative } from "../components/launch-steps/StepCreative";
 import { StepBudget } from "../components/launch-steps/StepBudget";
+import type { LaunchAdFormData } from "../types/launch";
 
 const steps = ["Objective", "Audience", "Creative", "Budget"];
 
@@ -13,7 +14,7 @@ export function LaunchAd() {
     const navigate = useNavigate();
     const [currentStep, setCurrentStep] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<LaunchAdFormData>({
         objective: "",
         name: "",
         audience: {},
@@ -21,7 +22,7 @@ export function LaunchAd() {
         budget: {},
     });
 
-    const updateData = (data: any) => {
+    const updateData = (data: LaunchAdFormData) => {
         setFormData(data);
     };
 
