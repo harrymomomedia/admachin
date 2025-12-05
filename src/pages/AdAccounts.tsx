@@ -310,7 +310,11 @@ export function AdAccounts() {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <button
-                                                    onClick={() => disconnectAdAccount(account._profileId, account.id)}
+                                                    onClick={() => {
+                                                        if (window.confirm('Are you sure you want to disconnect this ad account?')) {
+                                                            disconnectAdAccount(account._profileId, account.id);
+                                                        }
+                                                    }}
                                                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors group"
                                                     title="Disconnect Account"
                                                 >
