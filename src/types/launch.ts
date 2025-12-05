@@ -8,6 +8,7 @@ export interface AudienceData {
     ageMax?: number;
     gender?: number[]; // FB API: 1=male, 2=female, default all
     interests?: TargetingOption[];
+    excludedLocations?: TargetingOption[];
 }
 
 export interface BudgetData {
