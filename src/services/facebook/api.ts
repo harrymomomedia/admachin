@@ -685,7 +685,33 @@ export default {
     getCampaignInsights,
     getInsightsOverTime,
     refreshFacebookToken,
+    searchTargeting,
 };
+
+/**
+ * Search for targeting options (interests, behaviors, locations)
+ */
+export async function searchTargeting(
+    query: string,
+    type: 'adgeolocation' | 'adinterest' | 'adworkemployer' | 'adeducationmajor' | 'adworkposition' = 'adinterest',
+    limit = 20
+): Promise<FacebookPaginatedResponse<{ id: string; name: string; type?: string; country_code?: string; key?: string }>> {
+    const params: Record<string, unknown> = {
+        q: query,
+        type,
+        limit,
+    };
+
+    if (type === 'adgeolocation') {
+        params.location_types = ['country', 'region', 'city', 'zip'];
+    }
+
+    return apiRequest<FacebookPaginatedResponse<{ id: string; name: string; type?: string; country_code?: string; key?: string }>>(
+        '/search',
+        'GET',
+        params
+    );
+}
 
 /**
  * Refresh a long-lived access token via server-side API

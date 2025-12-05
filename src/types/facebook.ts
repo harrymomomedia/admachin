@@ -106,6 +106,16 @@ export interface CreateAdSetParams {
     end_time?: string;
 }
 
+export interface TargetingOption {
+    id: string;
+    name: string;
+    type?: string;
+    key?: string;
+    country_code?: string;
+    region?: string;
+    region_id?: string;
+}
+
 // ===== Creative & Ads =====
 export interface AdCreative {
     id: string;

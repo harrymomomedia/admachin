@@ -1,16 +1,18 @@
 // Shared types for the ad launch flow
 
+import type { TargetingOption } from './facebook';
+
 export interface AudienceData {
-    location?: string;
-    ageMin?: string;
-    ageMax?: string;
-    gender?: "all" | "men" | "women";
-    interests?: string;
+    locations?: TargetingOption[];
+    ageMin?: number;
+    ageMax?: number;
+    gender?: number[]; // FB API: 1=male, 2=female, default all
+    interests?: TargetingOption[];
 }
 
 export interface BudgetData {
     type?: "daily" | "lifetime";
-    amount?: string;
+    amount?: string; // Kept as string for input handling, converted to cents for API in backend logic
     startDate?: string;
     endDate?: string;
 }

@@ -9,25 +9,25 @@ interface StepObjectiveProps {
 
 const objectives = [
     {
-        id: "awareness",
+        id: "OUTCOME_AWARENESS",
         title: "Awareness",
         description: "Show your ads to people who are most likely to remember them.",
         icon: Target,
     },
     {
-        id: "traffic",
+        id: "OUTCOME_TRAFFIC",
         title: "Traffic",
         description: "Send people to a destination, like your website, app or Facebook event.",
         icon: MousePointer2,
     },
     {
-        id: "leads",
+        id: "OUTCOME_LEADS",
         title: "Leads",
         description: "Collect leads for your business or brand.",
         icon: Users,
     },
     {
-        id: "sales",
+        id: "OUTCOME_SALES",
         title: "Sales",
         description: "Find people likely to purchase your product or service.",
         icon: ShoppingBag,
@@ -70,8 +70,9 @@ export function StepObjective({ data, updateData }: StepObjectiveProps) {
                         type="text"
                         value={data.name || ""}
                         onChange={(e) => updateData({ ...data, name: e.target.value })}
-                        placeholder="e.g. Summer Sale 2024"
+                        placeholder="e.g. Summer Campaign 2025"
                         className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        required
                     />
                 </div>
             </div>

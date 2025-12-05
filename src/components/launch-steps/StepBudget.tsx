@@ -68,6 +68,7 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
                                 <label className="text-sm font-medium">Start Date</label>
                                 <input
                                     type="date"
+                                    min={new Date().toISOString().split('T')[0]}
                                     value={budget.startDate || ""}
                                     onChange={(e) => updateBudget("startDate", e.target.value)}
                                     className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -77,6 +78,7 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
                                 <label className="text-sm font-medium">End Date (Optional)</label>
                                 <input
                                     type="date"
+                                    min={budget.startDate || new Date().toISOString().split('T')[0]}
                                     value={budget.endDate || ""}
                                     onChange={(e) => updateBudget("endDate", e.target.value)}
                                     className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -98,7 +100,12 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
                         </div>
                         <div className="flex justify-between py-2 border-b border-border">
                             <span className="text-muted-foreground">Audience Location</span>
-                            <span className="font-medium">{data.audience?.location || "Not selected"}</span>
+                            <span className="font-medium">
+                                {data.audience?.locations?.length
+                                    ? `${data.audience.locations[0].name}${data.audience.locations.length > 1 ? ` +${data.audience.locations.length - 1}` : ''}`
+                                    : "Not selected"
+                                }
+                            </span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-border">
                             <span className="text-muted-foreground">Budget Type</span>
@@ -118,6 +125,9 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
                                     </span>
                                 </span>
                             </div>
+                            <p className="text-xs text-muted-foreground italic">
+                                * Amount will be converted to cents for Facebook (e.g., $20.00 = 2000 cents)
+                            </p>
                         </div>
                     </div>
                 </div>
