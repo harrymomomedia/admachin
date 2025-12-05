@@ -5,11 +5,9 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import {
     initFacebookSDK,
     loginWithFacebook,
-    logoutFromFacebook,
     getAdAccounts,
     validateFBConfig,
     FacebookApiError,
-    exchangeForLongLivedToken,
 } from '../services/facebook';
 import type { AdAccount } from '../services/facebook';
 
@@ -181,8 +179,39 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             }
         };
 
+        // Check for OAuth callback data in URL
+        const searchParams = new URLSearchParams(window.location.search);
+        const success = searchParams.get('success');
+        const encodedProfile = searchParams.get('profile');
+        const errorParam = searchParams.get('error');
+
+        if (success === 'true' && encodedProfile) {
+            try {
+                const profileData = JSON.parse(decodeURIComponent(encodedProfile)) as ConnectedProfile;
+                console.log('[FB] Received profile from OAuth callback:', profileData.name);
+
+                // Add/Update profile
+                addProfileFromOAuth(profileData);
+
+                // Clean up URL
+                const url = new URL(window.location.href);
+                url.searchParams.delete('success');
+                url.searchParams.delete('profile');
+                url.searchParams.delete('error');
+                window.history.replaceState({}, '', url.toString());
+
+                // Set active
+                setActiveProfile(profileData.id);
+            } catch (err) {
+                console.error('[FB] Failed to parse OAuth profile data:', err);
+                setError('Failed to process Facebook login');
+            }
+        } else if (errorParam) {
+            setError(`Facebook login failed: ${decodeURIComponent(errorParam)}`);
+        }
+
         init();
-    }, [configValidation.valid]);
+    }, [configValidation.valid, addProfileFromOAuth, setActiveProfile]);
 
     // Handle rate limit errors - uses exact time from Facebook when available
     const handleApiError = useCallback((err: unknown) => {
@@ -213,7 +242,6 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         return false;
     }, []);
 
-    // Connect a new FB profile
     const connectNewProfile = useCallback(async () => {
         // Check rate limiting first
         if (isRateLimited()) {
@@ -226,80 +254,18 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         setError(null);
 
         try {
-            // This will open FB login popup
-            const authResponse = await loginWithFacebook();
+            // New Server-Side Flow:
+            // This redirects the browser to /api/auth/facebook
+            // The user will return to the app via the callback URL with data
+            await loginWithFacebook();
 
-            // Check if this profile is already connected
-            const existingProfile = connectedProfiles.find(p => p.id === authResponse.userID);
-            if (existingProfile) {
-                console.log('[FB] Profile already connected, updating token');
-                // Update existing profile's token
-                const updatedProfiles = connectedProfiles.map(p =>
-                    p.id === authResponse.userID
-                        ? {
-                            ...p,
-                            accessToken: authResponse.accessToken, // We might want to upgrade this too, but for now just update
-                            tokenExpiry: Date.now() + authResponse.expiresIn * 1000,
-                        }
-                        : p
-                );
-                setConnectedProfiles(updatedProfiles);
-                saveProfiles(updatedProfiles);
-
-                // Don't refresh ad accounts to avoid extra API calls
-                // Ad accounts can be refreshed manually if needed
-                return;
-            }
-
-            // Fetch ad accounts for this new profile
-            const adAccountsResponse = await getAdAccounts();
-
-            // Get user info (we'll use the first ad account's business name or just "Profile")
-            const profileName = adAccountsResponse.data[0]?.business?.name
-                || `Facebook Profile ${connectedProfiles.length + 1}`;
-
-            // Exchange for long-lived token (60 days)
-            let finalAccessToken = authResponse.accessToken;
-            let finalTokenExpiry = Date.now() + authResponse.expiresIn * 1000;
-
-            try {
-                const longLivedData = await exchangeForLongLivedToken(authResponse.accessToken);
-                finalAccessToken = longLivedData.access_token;
-                finalTokenExpiry = Date.now() + longLivedData.expires_in * 1000;
-                console.log('[FB] Obtained long-lived token');
-            } catch (err) {
-                console.warn('[FB] Failed to exchange for long-lived token, using short-lived one:', err);
-                // Continue with short-lived token if exchange fails (graceful degradation)
-            }
-
-            // Create new profile
-            const newProfile: ConnectedProfile = {
-                id: authResponse.userID,
-                name: profileName,
-                accessToken: finalAccessToken,
-                tokenExpiry: finalTokenExpiry,
-                adAccounts: adAccountsResponse.data,
-                connectedAt: Date.now(),
-            };
-
-            const updatedProfiles = [...connectedProfiles, newProfile];
-            setConnectedProfiles(updatedProfiles);
-            saveProfiles(updatedProfiles);
-
-            // Logout from FB SDK (so user can add another profile)
-            // This doesn't invalidate the token, just clears the SDK session
-            await logoutFromFacebook();
-
+            // Note: execution stops here as page redirects
         } catch (err) {
             console.error('[FB] Connect error:', err);
-            if (!handleApiError(err)) {
-                setError(err instanceof Error ? err.message : 'Failed to connect profile');
-            }
-            throw err;
-        } finally {
+            setError(err instanceof Error ? err.message : 'Failed to initiate connection');
             setIsLoading(false);
         }
-    }, [connectedProfiles, handleApiError]);
+    }, [handleApiError]);
 
     // Internal refresh helper
     const refreshProfileInternal = async (
