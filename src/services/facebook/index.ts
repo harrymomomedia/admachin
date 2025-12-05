@@ -41,6 +41,7 @@ export {
     getInsightsOverTime,
     // Error class
     FacebookApiError,
+    exchangeForLongLivedToken,
 } from './api';
 
 // Re-export types

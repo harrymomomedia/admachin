@@ -9,6 +9,7 @@ import {
     getAdAccounts,
     validateFBConfig,
     FacebookApiError,
+    exchangeForLongLivedToken,
 } from '../services/facebook';
 import type { AdAccount } from '../services/facebook';
 
@@ -237,7 +238,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                     p.id === authResponse.userID
                         ? {
                             ...p,
-                            accessToken: authResponse.accessToken,
+                            accessToken: authResponse.accessToken, // We might want to upgrade this too, but for now just update
                             tokenExpiry: Date.now() + authResponse.expiresIn * 1000,
                         }
                         : p
@@ -257,12 +258,26 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             const profileName = adAccountsResponse.data[0]?.business?.name
                 || `Facebook Profile ${connectedProfiles.length + 1}`;
 
+            // Exchange for long-lived token (60 days)
+            let finalAccessToken = authResponse.accessToken;
+            let finalTokenExpiry = Date.now() + authResponse.expiresIn * 1000;
+
+            try {
+                const longLivedData = await exchangeForLongLivedToken(authResponse.accessToken);
+                finalAccessToken = longLivedData.access_token;
+                finalTokenExpiry = Date.now() + longLivedData.expires_in * 1000;
+                console.log('[FB] Obtained long-lived token');
+            } catch (err) {
+                console.warn('[FB] Failed to exchange for long-lived token, using short-lived one:', err);
+                // Continue with short-lived token if exchange fails (graceful degradation)
+            }
+
             // Create new profile
             const newProfile: ConnectedProfile = {
                 id: authResponse.userID,
                 name: profileName,
-                accessToken: authResponse.accessToken,
-                tokenExpiry: Date.now() + authResponse.expiresIn * 1000,
+                accessToken: finalAccessToken,
+                tokenExpiry: finalTokenExpiry,
                 adAccounts: adAccountsResponse.data,
                 connectedAt: Date.now(),
             };

@@ -684,5 +684,27 @@ export default {
     getAccountInsights,
     getCampaignInsights,
     getInsightsOverTime,
+    exchangeForLongLivedToken,
 };
+
+/**
+ * Exchange a short-lived access token for a long-lived one via our server-side API
+ */
+export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<{ access_token: string; expires_in: number }> {
+    const response = await fetch('/api/auth/facebook', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accessToken: shortLivedToken }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to exchange token');
+    }
+
+    return data;
+}
 
