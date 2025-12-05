@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Calendar, DollarSign, Clock } from "lucide-react";
 import type { LaunchAdFormData, BudgetData } from "../../types/launch";
 
@@ -15,6 +16,13 @@ export function StepBudget({ data, updateData }: StepBudgetProps) {
             budget: { ...budget, [key]: value },
         });
     };
+
+    // Initialize defaults
+    useEffect(() => {
+        if (!budget.startDate) {
+            updateBudget("startDate", new Date().toISOString().split('T')[0]);
+        }
+    }, []);
 
     return (
         <div className="space-y-6">
