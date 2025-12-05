@@ -21,6 +21,7 @@ interface MediaItem {
     name: string;
     type: "image" | "video";
     preview: string;
+    url?: string; // Actual media URL
     size: number;
     uploadedAt: Date;
     hash?: string;
@@ -56,6 +57,7 @@ const SAMPLE_MEDIA: MediaItem[] = [
         name: "product-demo.mp4",
         type: "video",
         preview: "https://picsum.photos/seed/2/400/400",
+        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", // Sample video
         size: 12500000,
         uploadedAt: new Date("2024-01-10"),
         dimensions: { width: 1920, height: 1080 },
@@ -93,6 +95,7 @@ export function Creatives() {
             name: f.file.name,
             type: f.type,
             preview: f.preview || f.url || "",
+            url: f.type === 'video' ? URL.createObjectURL(f.file) : (f.url || f.preview),
             size: f.file.size,
             uploadedAt: new Date(),
             hash: f.hash,
@@ -200,7 +203,13 @@ export function Creatives() {
                                 />
                             ) : (
                                 <div className="aspect-video bg-black flex items-center justify-center">
-                                    <Film className="h-16 w-16 text-gray-500" />
+                                    <video
+                                        src={previewItem.url}
+                                        poster={previewItem.preview}
+                                        className="w-full h-full max-h-[70vh]"
+                                        controls
+                                        playsInline
+                                    />
                                 </div>
                             )}
                             <div className="p-4 border-t border-border">
