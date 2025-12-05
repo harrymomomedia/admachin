@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, Globe, Play, Film } from "lucide-react";
 import type { LaunchAdFormData } from "../types/launch";
 
@@ -27,6 +28,13 @@ export function AdPreview({ data }: AdPreviewProps) {
     const mediaPreview = creative.mediaPreview || creative.media?.[0]?.preview;
     const isVideo = creative.mediaType === "video" || creative.media?.[0]?.type === "video";
     const ctaLabel = CTA_LABELS[creative.cta ?? ""] || "Learn More";
+
+    const videoUrl = useMemo(() => {
+        if (!isVideo) return null;
+        const file = creative.media?.[0]?.file;
+        if (file) return URL.createObjectURL(file);
+        return null;
+    }, [creative.media, isVideo]);
 
     // Extract domain from URL
     const getDomain = (url: string) => {
@@ -70,17 +78,29 @@ export function AdPreview({ data }: AdPreviewProps) {
             <div className="relative aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden">
                 {hasMedia && mediaPreview ? (
                     <>
-                        <img
-                            src={mediaPreview}
-                            alt="Ad Creative"
-                            className="w-full h-full object-cover"
-                        />
-                        {isVideo && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <div className="h-14 w-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                                    <Play className="h-7 w-7 text-gray-800 ml-1" fill="currentColor" />
-                                </div>
-                            </div>
+                        {isVideo && videoUrl ? (
+                            <video
+                                src={videoUrl}
+                                poster={mediaPreview}
+                                className="w-full h-full object-cover"
+                                controls
+                                playsInline
+                            />
+                        ) : (
+                            <>
+                                <img
+                                    src={mediaPreview}
+                                    alt="Ad Creative"
+                                    className="w-full h-full object-cover"
+                                />
+                                {isVideo && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                        <div className="h-14 w-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                                            <Play className="h-7 w-7 text-gray-800 ml-1" fill="currentColor" />
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </>
                 ) : (
