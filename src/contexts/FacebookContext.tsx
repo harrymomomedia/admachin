@@ -253,11 +253,6 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 console.log('[FB] Received profile from OAuth callback:', profileData.name);
 
                 // Add/Update profile
-                // We use the functional update form or a ref to avoid dependency loops if needed, 
-                // but since addProfileFromOAuth handles state, we just call it.
-                // However, we want to ensure this doesn't run repeatedly.
-                // The cleanup of URL prevents it from finding params again.
-
                 addProfileFromOAuth(profileData);
 
                 // Clean up URL
@@ -399,67 +394,54 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             localStorage.removeItem('fb_access_token');
             localStorage.removeItem('fb_token_expiry');
         }
-        // Disconnect a specific ad account
-        const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
-            const updatedProfiles = connectedProfiles.map(p => {
-                if (p.id !== profileId) return p;
-                return {
-                    ...p,
-                    adAccounts: p.adAccounts.filter(a => a.id !== accountId)
-                };
-            }).filter(p => p.adAccounts.length > 0); // Remove profile if no accounts left? Optional. User said "remove the account".
+    }, [connectedProfiles]);
 
-            // Actually, if a profile has 0 accounts, we might want to keep the profile connected?
-            // User said: "once ad account is connected, it is vital to have ability to remove the account."
-            // Let's keep the profile even if 0 accounts, unless user explicitly disconnects profile.
-            // Re-reading user request: "disconnect individual ad accounts".
+    // Disconnect a specific ad account
+    const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
+        const updatedProfiles = connectedProfiles.map(p => {
+            if (p.id !== profileId) return p;
+            return {
+                ...p,
+                adAccounts: p.adAccounts.filter(a => a.id !== accountId)
+            };
+        });
 
-            const finalProfiles = connectedProfiles.map(p => {
-                if (p.id !== profileId) return p;
-                return {
-                    ...p,
-                    adAccounts: p.adAccounts.filter(a => a.id !== accountId)
-                };
-            });
+        setConnectedProfiles(updatedProfiles);
+        saveProfiles(updatedProfiles);
+    }, [connectedProfiles]);
 
-            setConnectedProfiles(finalProfiles);
-            saveProfiles(finalProfiles);
-        }, [connectedProfiles]);
-
-
-
-        return (
-            <FacebookContext.Provider
-                value={{
-                    isInitialized,
-                    isLoading,
-                    error,
-                    isConfigValid: configValidation.valid,
-                    missingConfig: configValidation.missing,
-                    isConnected,
-                    isRateLimited: rateLimitedState,
-                    rateLimitResetTime: getRateLimitResetTime(),
-                    connectedProfiles,
-                    allAdAccounts,
-                    connectNewProfile,
-                    disconnectProfile,
-                    disconnectAdAccount,
-                    refreshProfile,
-                    clearError,
-                    setActiveProfile,
-                    addProfileFromOAuth,
-                }}
-            >
-                {children}
-            </FacebookContext.Provider>
-        );
-    }
+    return (
+        <FacebookContext.Provider
+            value={{
+                isInitialized,
+                isLoading,
+                error,
+                isConfigValid: configValidation.valid,
+                missingConfig: configValidation.missing,
+                isConnected,
+                isRateLimited: rateLimitedState,
+                rateLimitResetTime: getRateLimitResetTime(),
+                connectedProfiles,
+                allAdAccounts,
+                connectNewProfile,
+                disconnectProfile,
+                disconnectAdAccount,
+                refreshProfile,
+                clearError,
+                setActiveProfile,
+                addProfileFromOAuth,
+            }}
+        >
+            {children}
+        </FacebookContext.Provider>
+    );
+}
 
 // ============ Hook ============
 export function useFacebook(): FacebookContextType {
-        const context = useContext(FacebookContext);
-        if (!context) {
-            throw new Error('useFacebook must be used within a FacebookProvider');
-        }
-        return context;
+    const context = useContext(FacebookContext);
+    if (!context) {
+        throw new Error('useFacebook must be used within a FacebookProvider');
     }
+    return context;
+}
