@@ -21,7 +21,10 @@ export default async function handler(
 
     if (req.method !== 'POST') {
         console.log(`Method ${req.method} not allowed`);
-        return res.status(405).json({ error: `Method ${req.method} not allowed` });
+        // Return 405 but with a helpful message suspecting redirection
+        return res.status(405).json({
+            error: `Method ${req.method} not allowed. If you see this for a POST request, it was likely redirected (check for 301/308 status in Network tab).`
+        });
     }
 
     const { accessToken } = req.body;
