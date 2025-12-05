@@ -691,7 +691,11 @@ export default {
  * Exchange a short-lived access token for a long-lived one via our server-side API
  */
 export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<{ access_token: string; expires_in: number }> {
-    const response = await fetch('/api/auth/facebook', {
+    // Note: ensure no trailing slash here unless we are sure, but sometimes Vercel wants it.
+    // Actually, let's try REMOVING any ambiguity.
+    // Use absolute URL if possible? No, relative is better for auth.
+    // Let's try adding a trailing slash first as that's the common fix.
+    const response = await fetch('/api/auth/facebook/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
