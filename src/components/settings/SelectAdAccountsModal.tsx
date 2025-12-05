@@ -18,10 +18,8 @@ export function SelectAdAccountsModal({
     accounts,
     isLoading
 }: SelectAdAccountsModalProps) {
-    // Default to selecting all? User request implies "choose which accounts to bring".
-    // Let's start with none selected or all selected? Usually all is better UX, but user said "choose".
-    // I will start with all selected for convenience, but user can toggle.
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(accounts.map(a => a.id)));
+    // Start with NO accounts selected, letting user choose.
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
 
     if (!isOpen) return null;
@@ -150,7 +148,12 @@ export function SelectAdAccountsModal({
                                             ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
                                             : "bg-gray-100 text-gray-600 group-hover:bg-gray-200"
                                     )}>
-                                        {isSelected ? 'Connect' : 'Select'}
+                                        {isSelected ? (
+                                            <span className="flex items-center gap-1">
+                                                <Check className="w-4 h-4" />
+                                                Selected
+                                            </span>
+                                        ) : 'Select'}
                                     </div>
                                 </div>
                             );
