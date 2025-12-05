@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Search, RefreshCw, Trash2, AlertTriangle, CheckCircle, User, Mail } from 'lucide-react';
+import { Plus, Search, RefreshCw, Trash2, AlertTriangle, Clock, CheckCircle, User, Mail } from 'lucide-react';
 import { useFacebook, type ConnectedProfile } from '../contexts/FacebookContext';
 import { SelectAdAccountsModal } from '../components/settings/SelectAdAccountsModal';
 import { cn } from '../utils/cn';
