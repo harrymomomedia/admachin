@@ -88,88 +88,42 @@ async function getLongLivedToken(
 async function getMe(accessToken: string): Promise<FacebookUserResponse> {
     const url = new URL('https://graph.facebook.com/v21.0/me');
     url.searchParams.set('access_token', accessToken);
-    url.searchParams.set('fields', 'id,name');
+    url.searchParams.set('fields', 'id,name,email');
 
     const response = await fetch(url.toString());
     return response.json() as Promise<FacebookUserResponse>;
 }
 
-/**
- * Get user's ad accounts
- */
-async function getAdAccounts(accessToken: string): Promise<AdAccountResponse> {
-    const url = new URL('https://graph.facebook.com/v21.0/me/adaccounts');
-    url.searchParams.set('access_token', accessToken);
-    url.searchParams.set('fields', 'id,name,account_id,account_status,currency,timezone_name,amount_spent,balance,business{id,name}');
+// ... existing code ...
 
-    const response = await fetch(url.toString());
-    return response.json() as Promise<AdAccountResponse>;
-}
+// Step 3: Get user info
+console.log('[FB OAuth] Getting user info...');
+const user = await getMe(longLivedToken);
 
-export default async function handler(request: Request) {
-    const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
-    const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
+// Step 4: Get ad accounts
+console.log('[FB OAuth] Getting ad accounts...');
+const adAccounts = await getAdAccounts(longLivedToken);
 
-    if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
-        return new Response(JSON.stringify({ error: 'Facebook credentials not configured' }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    }
+// Build the profile data to pass to frontend
+const profileData = {
+    id: user.id,
+    name: user.name || `Facebook Profile`,
+    email: (user as any).email, // Add email
+    accessToken: longLivedToken,
+    tokenExpiry: Date.now() + (expiresIn * 1000), // Convert to timestamp
+    adAccounts: adAccounts.data || [],
+    connectedAt: Date.now(),
+};
 
-    const url = new URL(request.url);
-    const code = url.searchParams.get('code');
-    const error = url.searchParams.get('error');
+// Encode the data for passing via URL (will be decoded by frontend)
+const encodedData = encodeURIComponent(JSON.stringify(profileData));
 
-    // Handle user cancellation or errors
-    if (error) {
-        const errorReason = url.searchParams.get('error_reason') || 'Unknown error';
-        return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorReason)}`, 302);
-    }
-
-    if (!code) {
-        return Response.redirect(`${url.origin}/ad-accounts?error=No authorization code received`, 302);
-    }
-
-    try {
-        const origin = url.origin;
-        const redirectUri = `${origin}/api/auth/facebook/callback`;
-
-        // Step 1: Exchange code for short-lived token
-        console.log('[FB OAuth] Exchanging code for token...');
-        const shortLivedToken = await exchangeCodeForToken(code, redirectUri, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET);
-
-        // Step 2: Exchange for long-lived token (60 days!)
-        console.log('[FB OAuth] Getting long-lived token...');
-        const { token: longLivedToken, expiresIn } = await getLongLivedToken(shortLivedToken, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET);
-
-        // Step 3: Get user info
-        console.log('[FB OAuth] Getting user info...');
-        const user = await getMe(longLivedToken);
-
-        // Step 4: Get ad accounts
-        console.log('[FB OAuth] Getting ad accounts...');
-        const adAccounts = await getAdAccounts(longLivedToken);
-
-        // Build the profile data to pass to frontend
-        const profileData = {
-            id: user.id,
-            name: user.name || `Facebook Profile`,
-            accessToken: longLivedToken,
-            tokenExpiry: Date.now() + (expiresIn * 1000), // Convert to timestamp
-            adAccounts: adAccounts.data || [],
-            connectedAt: Date.now(),
-        };
-
-        // Encode the data for passing via URL (will be decoded by frontend)
-        const encodedData = encodeURIComponent(JSON.stringify(profileData));
-
-        // Redirect back to app with the profile data
-        return Response.redirect(`${url.origin}/ad-accounts?success=true&profile=${encodedData}`, 302);
+// Redirect back to app with the profile data
+return Response.redirect(`${url.origin}/ad-accounts?success=true&profile=${encodedData}`, 302);
 
     } catch (err) {
-        console.error('[FB OAuth] Error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
-        return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`, 302);
-    }
+    console.error('[FB OAuth] Error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
+    return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`, 302);
+}
 }
