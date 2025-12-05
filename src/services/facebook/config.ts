@@ -2,7 +2,7 @@
 
 export const FB_CONFIG = {
     appId: import.meta.env.VITE_FB_APP_ID || '',
-    apiVersion: import.meta.env.VITE_FB_API_VERSION || 'v21.0',
+    apiVersion: import.meta.env.VITE_FB_API_VERSION || 'v22.0',
 
     // Facebook Login for Business config ID (from Meta App Dashboard > Login for Business > Configurations)
     // This enables System User Access Tokens that NEVER expire
