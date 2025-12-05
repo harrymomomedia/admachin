@@ -107,8 +107,8 @@ async function getAdAccounts(accessToken: string): Promise<AdAccountResponse> {
 }
 
 export default async function handler(request: Request) {
-    const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID;
-    const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET;
+    const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
+    const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
 
     if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
         return new Response(JSON.stringify({ error: 'Facebook credentials not configured' }), {

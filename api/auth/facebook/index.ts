@@ -6,7 +6,7 @@ export const config = {
 };
 
 export default function handler(request: Request) {
-    const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID;
+    const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
 
     if (!FACEBOOK_APP_ID) {
         return new Response(JSON.stringify({ error: 'Facebook App ID not configured' }), {
