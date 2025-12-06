@@ -1,9 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { kv } from '@vercel/kv';
+import { createClient } from '@vercel/kv';
 
 const STORAGE_FILE = path.resolve(process.cwd(), '.auth_store.json');
 const KV_KEY = 'momomedia_team_session';
+
+// Helper to get the Redis client regardless of Provider (Vercel KV or Upstash)
+function getKvClient() {
+    const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    if (url && token) {
+        return createClient({ url, token });
+    }
+    return null;
+}
 
 export interface StoredSession {
     accessToken: string;
@@ -16,9 +27,11 @@ export interface StoredSession {
 export const TokenStorage = {
     async save(session: StoredSession): Promise<void> {
         try {
-            // Strategy 1: Vercel KV (Production/Cloud)
-            if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-                console.log('[TokenStorage] Saving to Vercel KV');
+            const kv = getKvClient();
+
+            // Strategy 1: Redis (Production/Cloud)
+            if (kv) {
+                console.log('[TokenStorage] Saving to Redis/KV');
                 await kv.set(KV_KEY, session);
                 return;
             }
@@ -35,8 +48,10 @@ export const TokenStorage = {
 
     async get(): Promise<StoredSession | null> {
         try {
-            // Strategy 1: Vercel KV
-            if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+            const kv = getKvClient();
+
+            // Strategy 1: Redis
+            if (kv) {
                 const session = await kv.get<StoredSession>(KV_KEY);
                 return session;
             }
@@ -55,7 +70,9 @@ export const TokenStorage = {
 
     async clear(): Promise<void> {
         try {
-            if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+            const kv = getKvClient();
+
+            if (kv) {
                 await kv.del(KV_KEY);
                 return;
             }
