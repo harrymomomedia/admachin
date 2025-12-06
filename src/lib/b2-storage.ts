@@ -80,7 +80,7 @@ export async function uploadToB2(
             headers: {
                 'Authorization': credentials.authorizationToken,
                 'Content-Type': file.type || 'application/octet-stream',
-                'Content-Length': String(file.size),
+                // Note: Content-Length is set automatically by the browser
                 'X-Bz-File-Name': encodeURIComponent(safeFileName),
                 'X-Bz-Content-Sha1': sha1Hash,
             },
