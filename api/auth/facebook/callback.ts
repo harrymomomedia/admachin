@@ -16,12 +16,12 @@ interface FacebookUserResponse {
 /**
  * Exchange authorization code for short-lived access token
  */
-async function exchangeCodeFor Token(
+async function exchangeCodeForToken(
     code: string,
     redirectUri: string,
     appId: string,
     appSecret: string
-): Promise < string > {
+): Promise<string> {
     const url = new URL('https://graph.facebook.com/v21.0/oauth/access_token');
     url.searchParams.set('client_id', appId);
     url.searchParams.set('client_secret', appSecret);
@@ -31,11 +31,11 @@ async function exchangeCodeFor Token(
     const response = await fetch(url.toString());
     const data = await response.json() as FacebookTokenResponse;
 
-    if(!data.access_token) {
-    throw new Error('Failed to exchange code for token');
-}
+    if (!data.access_token) {
+        throw new Error('Failed to exchange code for token');
+    }
 
-return data.access_token;
+    return data.access_token;
 }
 
 /**
