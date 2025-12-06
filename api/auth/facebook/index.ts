@@ -24,7 +24,6 @@ export default function handler(request: Request) {
     const scope = [
         'ads_management',
         'ads_read',
-        'business_management',
         'pages_read_engagement',
         'pages_show_list',
     ].join(',');
