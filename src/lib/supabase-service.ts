@@ -200,7 +200,7 @@ export async function addCreative(creative: {
     type: 'image' | 'video';
     storage_path: string;
     file_size: number;
-    dimensions?: { width: number; height: number } | null;
+    dimensions?: { width: number; height: number } | { thumbnail: string } | null;
     duration?: number | null;
     uploaded_by: string;
     fb_hash?: string | null;

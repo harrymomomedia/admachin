@@ -9,6 +9,7 @@ import {
     Loader2,
 } from "lucide-react";
 import { uploadCreativeFile, addCreative } from "../lib/supabase-service";
+import { supabase } from "../lib/supabase";
 
 interface UploadedFile {
     id: string;
@@ -89,13 +90,32 @@ export function CreativeUploader({
                 );
             });
 
-            // Save metadata to Supabase
+            // For videos, upload the thumbnail too
+            let thumbnailPath = null;
+            if (uploadedFile.type === 'video' && uploadedFile.preview) {
+                try {
+                    // Convert base64 to blob and upload
+                    const response = await fetch(uploadedFile.preview);
+                    const blob = await response.blob();
+                    const thumbName = `thumbnails/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+                    const { data: thumbData } = await supabase.storage
+                        .from('creatives')
+                        .upload(thumbName, blob, { contentType: 'image/jpeg' });
+                    if (thumbData) {
+                        thumbnailPath = thumbData.path;
+                    }
+                } catch (thumbErr) {
+                    console.warn('[Upload] Failed to save thumbnail:', thumbErr);
+                }
+            }
+
+            // Save metadata to Supabase - use thumbnail path for videos, storage path for images
             await addCreative({
                 name: uploadedFile.file.name,
                 type: uploadedFile.type,
                 storage_path: result.path,
                 file_size: uploadedFile.file.size,
-                dimensions: null, // TODO: extract from image/video
+                dimensions: thumbnailPath ? { thumbnail: thumbnailPath } : null, // Store thumbnail in dimensions for now
                 duration: null, // TODO: extract from video
                 uploaded_by: 'Harry',
                 fb_hash: null,

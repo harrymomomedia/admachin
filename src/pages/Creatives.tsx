@@ -107,20 +107,29 @@ function saveMediaToCache(items: MediaItem[]): void {
 async function loadMediaFromDb(): Promise<MediaItem[]> {
     try {
         const creatives = await getCreatives();
-        return creatives.map(c => ({
-            id: c.id,
-            dbId: c.id,
-            name: c.name,
-            type: c.type,
-            preview: getCreativeUrl(c.storage_path),
-            url: getCreativeUrl(c.storage_path),
-            size: c.file_size,
-            uploadedAt: new Date(c.created_at),
-            uploadedBy: c.uploaded_by,
-            hash: c.fb_hash || undefined,
-            dimensions: c.dimensions as { width: number; height: number } | undefined,
-            duration: c.duration || undefined,
-        }));
+        return creatives.map(c => {
+            const dims = c.dimensions as { width?: number; height?: number; thumbnail?: string } | null;
+            const videoUrl = getCreativeUrl(c.storage_path);
+            // Use thumbnail if available, otherwise use video URL (which will fallback to icon in UI)
+            const previewUrl = (c.type === 'video' && dims?.thumbnail)
+                ? getCreativeUrl(dims.thumbnail)
+                : getCreativeUrl(c.storage_path);
+
+            return {
+                id: c.id,
+                dbId: c.id,
+                name: c.name,
+                type: c.type,
+                preview: previewUrl,
+                url: videoUrl,
+                size: c.file_size,
+                uploadedAt: new Date(c.created_at),
+                uploadedBy: c.uploaded_by,
+                hash: c.fb_hash || undefined,
+                dimensions: typeof dims?.width === 'number' ? { width: dims.width!, height: dims.height! } : undefined,
+                duration: c.duration || undefined,
+            };
+        });
     } catch (error) {
         console.error('[Creatives] Failed to load from Supabase:', error);
         return SAMPLE_MEDIA; // Fallback to sample data
@@ -467,7 +476,7 @@ export function Creatives() {
                                 className="aspect-square"
                                 onClick={() => setPreviewItem(item)}
                             >
-                                {item.type === "video" ? (
+                                {item.type === "video" && item.preview === item.url ? (
                                     <div className="w-full h-full bg-gray-100 flex items-center justify-center">
                                         <Film className="h-12 w-12 text-gray-400" />
                                     </div>
@@ -572,7 +581,7 @@ export function Creatives() {
                                     <td className="p-3">
                                         <div className="flex items-center gap-3">
                                             <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                                                {item.type === "video" ? (
+                                                {item.type === "video" && item.preview === item.url ? (
                                                     <div className="w-full h-full bg-gray-100 flex items-center justify-center">
                                                         <Film className="h-5 w-5 text-gray-400" />
                                                     </div>
