@@ -7,6 +7,7 @@ interface SelectAdAccountsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onConfirmed: (selectedIds: string[]) => void;
+    accounts: AdAccount[];
     isLoading?: boolean;
     profileName?: string;
     initialSelectedIds?: string[];
