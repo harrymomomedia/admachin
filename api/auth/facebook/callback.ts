@@ -1,7 +1,5 @@
-// Facebook OAuth Callback - Handles the redirect from Facebook and exchanges tokens
-// Using improved version with config_id support and better error handling
-
-import { TokenStorage } from '../../services/tokenStorage.js';
+// Facebook OAuth Callback - ZERO IMPORTS VERSION
+// All code inlined to avoid import issues
 
 interface FacebookTokenResponse {
     access_token: string;
@@ -18,12 +16,12 @@ interface FacebookUserResponse {
 /**
  * Exchange authorization code for short-lived access token
  */
-async function exchangeCodeForToken(
+async function exchangeCodeFor Token(
     code: string,
     redirectUri: string,
     appId: string,
     appSecret: string
-): Promise<string> {
+): Promise < string > {
     const url = new URL('https://graph.facebook.com/v21.0/oauth/access_token');
     url.searchParams.set('client_id', appId);
     url.searchParams.set('client_secret', appSecret);
@@ -33,11 +31,11 @@ async function exchangeCodeForToken(
     const response = await fetch(url.toString());
     const data = await response.json() as FacebookTokenResponse;
 
-    if (!data.access_token) {
-        throw new Error('Failed to exchange code for token');
-    }
+    if(!data.access_token) {
+    throw new Error('Failed to exchange code for token');
+}
 
-    return data.access_token;
+return data.access_token;
 }
 
 /**
@@ -63,7 +61,7 @@ async function getLongLivedToken(
 
     return {
         token: data.access_token,
-        expiresIn: data.expires_in || 5184000, // Default to 60 days in seconds
+        expiresIn: data.expires_in || 5184000,
     };
 }
 
@@ -82,6 +80,42 @@ async function getMe(accessToken: string): Promise<FacebookUserResponse> {
     }
 
     return response.json() as Promise<FacebookUserResponse>;
+}
+
+/**
+ * Save to Redis - INLINED
+ */
+async function saveToRedis(session: any): Promise<void> {
+    const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+    console.log('[Save] Redis URL exists:', !!url);
+    console.log('[Save] Redis Token exists:', !!token);
+
+    if (!url || !token) {
+        console.error('[Save] Redis not configured');
+        return;
+    }
+
+    try {
+        // Use Upstash REST API directly
+        const response = await fetch(`${url}/set/momomedia_team_session`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(session)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Redis save failed: ${response.statusText}`);
+        }
+
+        console.log('[Save] Session saved to Redis');
+    } catch (err) {
+        console.error('[Save] Redis error:', err);
+    }
 }
 
 export default async function handler(request: Request) {
@@ -128,22 +162,16 @@ export default async function handler(request: Request) {
         const user = await getMe(longLivedToken);
         console.log('[FB Callback] ✓ Got user info:', user.name, user.id);
 
-        console.log('[FB Callback] Step 4: Saving session to Redis...');
+        console.log('[FB Callback] Step 4: Saving session...');
         const tokenExpiry = Date.now() + (expiresIn * 1000);
 
-        try {
-            await TokenStorage.save({
-                accessToken: longLivedToken,
-                tokenExpiry: tokenExpiry,
-                userName: user.name,
-                userId: user.id,
-                connectedAt: Date.now()
-            });
-            console.log('[FB Callback] ✓ Session saved successfully');
-        } catch (storageError) {
-            console.error('[FB Callback] WARNING: Failed to save to Redis:', storageError);
-            // Continue anyway - user can still use the app
-        }
+        await saveToRedis({
+            accessToken: longLivedToken,
+            tokenExpiry: tokenExpiry,
+            userName: user.name,
+            userId: user.id,
+            connectedAt: Date.now()
+        });
 
         console.log('[FB Callback] SUCCESS! Redirecting to app...');
         return Response.redirect(`${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`, 302);
