@@ -1,4 +1,4 @@
-import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Database } from "lucide-react";
+import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Database, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 
@@ -8,6 +8,7 @@ const navigation = [
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Campaigns", href: "/campaigns", icon: BarChart3 },
     { name: "Ad Accounts", href: "/ad-accounts", icon: Database },
+    { name: "Team Settings", href: "/team-settings", icon: Users },
 ];
 
 export function Sidebar() {
