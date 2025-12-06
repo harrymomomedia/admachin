@@ -134,7 +134,10 @@ export default async function handler(request: any) {
     if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
         console.error('[FB Callback] Missing Facebook App ID or Secret');
         const origin = new URL(requestUrl).origin;
-        return Response.redirect(`${origin}/ad-accounts?error=${encodeURIComponent('Server configuration error')}`, 302);
+        return new Response(null, {
+            status: 302,
+            headers: { 'Location': `${origin}/ad-accounts?error=${encodeURIComponent('Server configuration error')}` }
+        });
     }
 
     const url = new URL(requestUrl);
@@ -145,12 +148,18 @@ export default async function handler(request: any) {
     if (error) {
         console.log('[FB Callback] User cancelled or error:', error);
         const errorReason = url.searchParams.get('error_reason') || 'Authentication cancelled';
-        return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorReason)}`, 302);
+        return new Response(null, {
+            status: 302,
+            headers: { 'Location': `${url.origin}/ad-accounts?error=${encodeURIComponent(errorReason)}` }
+        });
     }
 
     if (!code) {
         console.error('[FB Callback] No authorization code received');
-        return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent('No authorization code received')}`, 302);
+        return new Response(null, {
+            status: 302,
+            headers: { 'Location': `${url.origin}/ad-accounts?error=${encodeURIComponent('No authorization code received')}` }
+        });
     }
 
     try {
@@ -184,12 +193,23 @@ export default async function handler(request: any) {
         console.log('[FB Callback] SUCCESS! Redirecting to app...');
         const redirectUrl = `${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`;
         console.log('[FB Callback] Redirect URL:', redirectUrl);
-        return Response.redirect(redirectUrl, 302);
+
+        // Manual redirect for Vercel Node.js runtime
+        return new Response(null, {
+            status: 302,
+            headers: {
+                'Location': redirectUrl
+            }
+        });
 
     } catch (err) {
         console.error('[FB Callback] ERROR:', err);
         console.error('[FB Callback] Stack:', err instanceof Error ? err.stack : 'No stack');
         const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
-        return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`, 302);
+        const origin = new URL(requestUrl).origin;
+        return new Response(null, {
+            status: 302,
+            headers: { 'Location': `${origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}` }
+        });
     }
 }
