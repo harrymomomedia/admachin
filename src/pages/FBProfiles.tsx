@@ -7,134 +7,7 @@ import { useFacebook, type ConnectedProfile } from '../contexts/FacebookContext'
 import { SelectAdAccountsModal } from '../components/settings/SelectAdAccountsModal';
 import { cn } from '../utils/cn';
 
-// Debug component to diagnose Supabase RLS/Connection issues
-function DebugSupabaseConnection() {
-    const [status, setStatus] = useState<{
-        profilesCount: number | null;
-        accountsCount: number | null;
-        error: string | null;
-        lastCheck: Date | null;
-    }>({ profilesCount: null, accountsCount: null, error: null, lastCheck: null });
 
-    const checkConnection = async () => {
-        try {
-            // Check profiles
-            const { count: profilesCount, error: profilesError } = await import('../lib/supabase').then(m =>
-                m.supabase.from('profiles').select('*', { count: 'exact', head: true })
-            );
-
-            if (profilesError) throw new Error(`Profiles Error: ${profilesError.message} (${profilesError.code})`);
-
-            // Check ad accounts
-            const { count: accountsCount, error: accountsError } = await import('../lib/supabase').then(m =>
-                m.supabase.from('ad_accounts').select('*', { count: 'exact', head: true })
-            );
-
-            if (accountsError) throw new Error(`Accounts Error: ${accountsError.message} (${accountsError.code})`);
-
-            setStatus(prev => ({
-                ...prev,
-                profilesCount: profilesCount || 0,
-                accountsCount: accountsCount || 0,
-                error: null,
-                lastCheck: new Date()
-            }));
-        } catch (err) {
-            console.error('[Debug] Supabase check failed:', err);
-            setStatus(prev => ({
-                ...prev,
-                error: err instanceof Error ? err.message : 'Unknown error',
-                lastCheck: new Date()
-            }));
-        }
-    };
-
-    const [dumpData, setDumpData] = useState<string | null>(null);
-
-    const handleDump = async () => {
-        try {
-            const { getProfiles } = await import('../lib/supabase-service');
-            const data = await getProfiles();
-
-            // Also fetch raw ad_accounts to check orphans
-            const { data: rawAccounts, error } = await import('../lib/supabase').then(m =>
-                m.supabase.from('ad_accounts').select('*').limit(20)
-            );
-
-            const dump = {
-                getProfilesResult: data,
-                rawAdAccountsTable: rawAccounts || error
-            };
-
-            setDumpData(JSON.stringify(dump, null, 2));
-        } catch (err) {
-            setDumpData(`Error fetching data: ${err instanceof Error ? err.message : String(err)}`);
-        }
-    };
-
-    return (
-        <div className="mt-8 border-t border-border pt-8">
-            <h3 className="text-sm font-semibold mb-4 text-muted-foreground flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Connection Debugger
-            </h3>
-            <div className="bg-muted/30 rounded-lg p-4 space-y-3 text-sm">
-                <div className="flex items-center gap-3">
-                    <span className="font-medium">Actions:</span>
-                    <button
-                        onClick={checkConnection}
-                        className="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded text-xs font-medium transition-colors"
-                    >
-                        Check Connection
-                    </button>
-                    <button
-                        onClick={handleDump}
-                        className="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded text-xs font-medium transition-colors"
-                    >
-                        Dump loaded data
-                    </button>
-                </div>
-
-                {status.lastCheck && (
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                        <div className="bg-card p-3 rounded border border-border">
-                            <div className="text-xs text-muted-foreground">Profiles in DB</div>
-                            <div className="font-mono text-lg font-bold">
-                                {status.profilesCount !== null ? status.profilesCount : '-'}
-                            </div>
-                        </div>
-                        <div className="bg-card p-3 rounded border border-border">
-                            <div className="text-xs text-muted-foreground">Ad Accounts in DB</div>
-                            <div className="font-mono text-lg font-bold">
-                                {status.accountsCount !== null ? status.accountsCount : '-'}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {status.error && (
-                    <div className="bg-destructive/10 text-destructive p-3 rounded border border-destructive/20 text-xs font-mono break-all">
-                        {status.error}
-                    </div>
-                )}
-
-                {dumpData && (
-                    <div className="mt-4">
-                        <div className="text-xs font-medium mb-1">Data Dump:</div>
-                        <pre className="bg-black/80 text-green-400 p-4 rounded-lg overflow-auto max-h-[300px] text-[10px] font-mono whitespace-pre-wrap">
-                            {dumpData}
-                        </pre>
-                    </div>
-                )}
-
-                <div className="text-[10px] text-muted-foreground mt-2">
-                    If counts are 0 but you connected accounts, your Database RLS policies may be blocking access.
-                    Check Supabase Dashboard {'>'} Table Editor {'>'} RLS Policies.
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // ... existing component ...
 
@@ -400,8 +273,6 @@ export function FBProfiles() {
                 onConfirmed={handleSelectionConfirmed}
                 accounts={pendingProfile?.adAccounts || []}
             />
-
-            <DebugSupabaseConnection />
         </div>
     );
 }
