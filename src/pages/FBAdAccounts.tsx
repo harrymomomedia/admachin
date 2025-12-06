@@ -82,7 +82,8 @@ export function FBAdAccounts() {
 
         // Calculate initial selection from currently connected accounts
         const profile = connectedProfiles.find(p => p.id === profileId);
-        const connectedIds = profile?.adAccounts.map(a => a.account_id) || [];
+        // Normalize IDs to be plain numbers (strip act_ prefix if present)
+        const connectedIds = profile?.adAccounts.map(a => a.account_id.replace(/^act_/, '')) || [];
         setInitialSelectedIds(connectedIds);
 
         try {
@@ -101,7 +102,8 @@ export function FBAdAccounts() {
 
         // The user has made their selection from the full list.
         // We sync the profile's accounts to match this selection exactly.
-        const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.id));
+        // Important: selectedIds are now account_id (numeric), so we match against acc.account_id
+        const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.account_id));
 
         try {
             await updateConnectedAccounts(managingProfileId, selectedAccounts);

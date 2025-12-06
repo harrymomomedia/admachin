@@ -101,12 +101,15 @@ export function SelectAdAccountsModal({
                     <div className="text-sm text-gray-500">
                         {selectedIds.size} selected
                     </div>
+                    <div className="text-sm text-gray-500">
+                        {selectedIds.size} selected
+                    </div>
                     <button
                         onClick={() => {
                             if (selectedIds.size === filteredAccounts.length) {
                                 setSelectedIds(new Set());
                             } else {
-                                setSelectedIds(new Set(filteredAccounts.map(a => a.id)));
+                                setSelectedIds(new Set(filteredAccounts.map(a => a.account_id)));
                             }
                         }}
                         className="text-sm text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap"
@@ -123,11 +126,12 @@ export function SelectAdAccountsModal({
                         </div>
                     ) : (
                         filteredAccounts.map((account) => {
-                            const isSelected = selectedIds.has(account.id);
+                            // Using account_id for matching to avoid "act_" prefix issues
+                            const isSelected = selectedIds.has(account.account_id);
                             return (
                                 <div
                                     key={account.id}
-                                    onClick={() => toggleSelection(account.id)}
+                                    onClick={() => toggleSelection(account.account_id)}
                                     className={cn(
                                         "group flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all duration-200",
                                         isSelected
