@@ -1,5 +1,5 @@
 // Backblaze B2 Client-Side Storage Service
-// Uploads files via our backend proxy to bypass B2 CORS limitations
+// Uploads files to B2 using S3-compatible presigned URLs
 
 export interface B2UploadResult {
     fileId: string;
@@ -9,73 +9,76 @@ export interface B2UploadResult {
     contentLength: number;
 }
 
-/**
- * Convert File to base64 string
- */
-async function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = reader.result as string;
-            // Remove data URL prefix (e.g., "data:image/png;base64,")
-            const base64 = result.split(',')[1];
-            resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+interface PresignedUrlResponse {
+    uploadUrl: string;
+    objectKey: string;
+    publicUrl: string;
 }
 
 /**
- * Upload a file to Backblaze B2 via our backend proxy
+ * Get a presigned URL from our backend
+ */
+async function getPresignedUrl(fileName: string, contentType: string): Promise<PresignedUrlResponse> {
+    const response = await fetch('/api/storage/presign', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileName, contentType }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to get presigned URL');
+    }
+
+    return await response.json();
+}
+
+/**
+ * Upload a file to Backblaze B2 using S3 presigned URL
  */
 export async function uploadToB2(
     file: File,
     onProgress?: (progress: number) => void
 ): Promise<B2UploadResult> {
-    if (onProgress) onProgress(10);
+    if (onProgress) onProgress(5);
 
-    // Convert file to base64
-    console.log('[B2] Converting file to base64...');
-    const fileData = await fileToBase64(file);
+    // Get presigned URL from backend
+    console.log('[B2] Getting presigned URL for:', file.name);
+    const presigned = await getPresignedUrl(file.name, file.type || 'application/octet-stream');
 
-    if (onProgress) onProgress(30);
+    if (onProgress) onProgress(15);
 
-    console.log('[B2] Uploading via proxy...', file.name, 'size:', file.size);
+    console.log('[B2] Uploading to S3-compatible endpoint...');
 
-    // Upload via our backend proxy
-    const response = await fetch('/api/storage/upload', {
-        method: 'POST',
+    // Upload directly to B2 via S3 presigned URL
+    const response = await fetch(presigned.uploadUrl, {
+        method: 'PUT',
         headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': file.type || 'application/octet-stream',
         },
-        body: JSON.stringify({
-            fileData,
-            fileName: file.name,
-            contentType: file.type || 'application/octet-stream',
-        }),
+        body: file,
     });
 
     if (onProgress) onProgress(90);
 
     if (!response.ok) {
-        const error = await response.json();
-        console.error('[B2] Upload failed:', error);
-        throw new Error(error.error || 'Failed to upload file');
+        const errorText = await response.text();
+        console.error('[B2] Upload failed:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status}`);
     }
-
-    const result = await response.json();
 
     if (onProgress) onProgress(100);
 
-    console.log('[B2] Upload successful:', result.url);
+    console.log('[B2] Upload successful:', presigned.publicUrl);
 
     return {
-        fileId: result.fileId,
-        fileName: result.fileName,
-        url: result.url,
-        contentType: result.contentType,
-        contentLength: result.contentLength,
+        fileId: presigned.objectKey,
+        fileName: presigned.objectKey,
+        url: presigned.publicUrl,
+        contentType: file.type || 'application/octet-stream',
+        contentLength: file.size,
     };
 }
 
@@ -83,7 +86,5 @@ export async function uploadToB2(
  * Get the public URL for a B2 file
  */
 export function getB2PublicUrl(fileName: string): string {
-    // This assumes a public bucket named 'admachin'
-    // Adjust the bucket name if different
-    return `https://f004.backblazeb2.com/file/admachin/${fileName}`;
+    return `https://s3.us-west-004.backblazeb2.com/admachin/${fileName}`;
 }
