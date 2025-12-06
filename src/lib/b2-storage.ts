@@ -69,17 +69,27 @@ export async function uploadToB2(
     const safeFileName = `creatives/${timestamp}-${randomStr}.${ext}`;
 
     // Upload directly to B2
-    const response = await fetch(credentials.uploadUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': credentials.authorizationToken,
-            'Content-Type': file.type || 'application/octet-stream',
-            'Content-Length': String(file.size),
-            'X-Bz-File-Name': encodeURIComponent(safeFileName),
-            'X-Bz-Content-Sha1': sha1Hash,
-        },
-        body: file,
-    });
+    console.log('[B2] Uploading to:', credentials.uploadUrl);
+    console.log('[B2] File size:', file.size, 'type:', file.type);
+
+    let response: Response;
+    try {
+        response = await fetch(credentials.uploadUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+                'Authorization': credentials.authorizationToken,
+                'Content-Type': file.type || 'application/octet-stream',
+                'Content-Length': String(file.size),
+                'X-Bz-File-Name': encodeURIComponent(safeFileName),
+                'X-Bz-Content-Sha1': sha1Hash,
+            },
+            body: file,
+        });
+    } catch (fetchError) {
+        console.error('[B2] Fetch error:', fetchError);
+        throw new Error(`Network error uploading to B2: ${fetchError instanceof Error ? fetchError.message : 'Failed to fetch'}. Check if B2 bucket has CORS configured.`);
+    }
 
     if (onProgress) onProgress(90);
 
