@@ -24,6 +24,7 @@ interface MediaItem {
     url?: string; // Actual media URL
     size: number;
     uploadedAt: Date;
+    uploadedBy?: string; // Who uploaded this creative
     hash?: string;
     dimensions?: { width: number; height: number };
     duration?: number; // for videos
@@ -50,6 +51,7 @@ const SAMPLE_MEDIA: MediaItem[] = [
         preview: "https://picsum.photos/seed/1/400/400",
         size: 245000,
         uploadedAt: new Date("2024-01-15"),
+        uploadedBy: "Harry Jung",
         dimensions: { width: 1080, height: 1080 },
     },
     {
@@ -57,9 +59,10 @@ const SAMPLE_MEDIA: MediaItem[] = [
         name: "product-demo.mp4",
         type: "video",
         preview: "https://picsum.photos/seed/2/400/400",
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", // Sample video
+        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
         size: 12500000,
         uploadedAt: new Date("2024-01-10"),
+        uploadedBy: "Marketing Team",
         dimensions: { width: 1920, height: 1080 },
         duration: 30,
     },
@@ -70,6 +73,7 @@ const SAMPLE_MEDIA: MediaItem[] = [
         preview: "https://picsum.photos/seed/3/400/400",
         size: 189000,
         uploadedAt: new Date("2024-01-08"),
+        uploadedBy: "Creative Team",
         dimensions: { width: 1080, height: 1920 },
     },
 ];
@@ -144,6 +148,7 @@ export function Creatives() {
             url: f.type === 'video' ? URL.createObjectURL(f.file) : (f.url || f.preview),
             size: f.file.size,
             uploadedAt: new Date(),
+            uploadedBy: "You", // TODO: Get from active FB profile
             hash: f.hash,
         }));
         setMedia((prev) => [...newMedia, ...prev]);
@@ -498,7 +503,10 @@ export function Creatives() {
                                     Dimensions
                                 </th>
                                 <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                    Uploaded
+                                    Uploaded By
+                                </th>
+                                <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                    Date
                                 </th>
                                 <th className="p-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                     Actions
@@ -556,6 +564,16 @@ export function Creatives() {
                                         {item.dimensions
                                             ? `${item.dimensions.width} × ${item.dimensions.height}`
                                             : "-"}
+                                    </td>
+                                    <td className="p-3 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+                                                <span className="text-xs font-medium text-primary">
+                                                    {(item.uploadedBy || "U").charAt(0)}
+                                                </span>
+                                            </div>
+                                            <span className="text-muted-foreground">{item.uploadedBy || "Unknown"}</span>
+                                        </div>
                                     </td>
                                     <td className="p-3 text-sm text-muted-foreground">
                                         {item.uploadedAt.toLocaleDateString()}
