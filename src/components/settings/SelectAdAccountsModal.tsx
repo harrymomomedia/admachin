@@ -26,14 +26,14 @@ export function SelectAdAccountsModal({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
     const [searchQuery, setSearchQuery] = useState('');
 
-    if (!isOpen) return null;
-
     useEffect(() => {
         if (isOpen) {
             setSelectedIds(new Set(initialSelectedIds));
             setSearchQuery('');
         }
     }, [isOpen, initialSelectedIds]);
+
+    if (!isOpen) return null;
 
     const filteredAccounts = accounts.filter(acc =>
         acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
