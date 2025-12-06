@@ -376,7 +376,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             console.log('[FB Context] Login successful, reloading profiles...');
 
             // Reload profiles from storage (backend saved it)
-            await init();
+            const updatedProfiles = loadProfiles();
+            setConnectedProfiles(updatedProfiles);
+            setIsLoading(false);
 
         } catch (err) {
             console.error('[FB] Connect error:', err);
