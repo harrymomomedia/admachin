@@ -171,6 +171,8 @@ interface FacebookContextType {
     disconnectProfile: (profileId: string) => void;
     disconnectAdAccount: (profileId: string, accountId: string) => void;
     refreshProfile: (profileId: string) => Promise<void>;
+    fetchAvailableAccounts: (profileId: string) => Promise<AdAccount[]>;
+    updateConnectedAccounts: (profileId: string, accounts: AdAccount[]) => Promise<void>;
     clearError: () => void;
     setActiveProfile: (profileId: string) => void;
     addProfileFromOAuth: (profileData: ConnectedProfile) => void; // For server-side OAuth
@@ -481,6 +483,44 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         }
     }, [connectedProfiles]);
 
+    // Fetch all available ad accounts for a profile (for manual selection)
+    const fetchAvailableAccounts = useCallback(async (profileId: string) => {
+        const profile = connectedProfiles.find(p => p.id === profileId);
+        if (!profile) throw new Error('Profile not found');
+
+        // Temporarily set token
+        const originalToken = localStorage.getItem('fb_access_token');
+        localStorage.setItem('fb_access_token', profile.accessToken);
+
+        try {
+            const response = await getAdAccounts();
+            return response.data;
+        } finally {
+            // Restore token
+            if (originalToken) {
+                localStorage.setItem('fb_access_token', originalToken);
+            } else {
+                localStorage.removeItem('fb_access_token');
+            }
+        }
+    }, [connectedProfiles]);
+
+    // Update connected accounts for a profile
+    const updateConnectedAccounts = useCallback(async (profileId: string, accounts: AdAccount[]) => {
+        const updatedProfiles = connectedProfiles.map(p => {
+            if (p.id !== profileId) return p;
+            return { ...p, adAccounts: accounts };
+        });
+
+        setConnectedProfiles(updatedProfiles);
+        setSessionCache(updatedProfiles);
+
+        const profile = updatedProfiles.find(p => p.id === profileId);
+        if (profile) {
+            await saveProfileToDb(profile);
+        }
+    }, [connectedProfiles]);
+
     // Disconnect a specific ad account
     const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
         // Find profile first to get DB ID for deletion
@@ -522,6 +562,8 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 disconnectProfile,
                 disconnectAdAccount,
                 refreshProfile,
+                fetchAvailableAccounts,
+                updateConnectedAccounts,
                 clearError,
                 setActiveProfile,
                 addProfileFromOAuth,

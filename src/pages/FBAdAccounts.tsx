@@ -1,16 +1,20 @@
 // FB Ad Accounts Page - Flat table layout (no grouping)
 
 import { useState, useMemo } from 'react';
-import { Search, Plus, Trash2, RefreshCw, AlertTriangle, Database } from 'lucide-react';
+import { Search, Plus, Trash2, RefreshCw, AlertTriangle, Database, Settings } from 'lucide-react';
 import { useFacebook } from '../contexts/FacebookContext';
 import { cn } from '../utils/cn';
 import { Link } from 'react-router-dom';
+import { SelectAdAccountsModal } from '../components/settings/SelectAdAccountsModal';
+import type { AdAccount } from '../services/facebook';
 
 export function FBAdAccounts() {
     const {
         connectedProfiles,
         disconnectAdAccount,
         refreshProfile,
+        fetchAvailableAccounts,
+        updateConnectedAccounts,
     } = useFacebook();
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -51,16 +55,54 @@ export function FBAdAccounts() {
 
     const [isRefreshing, setIsRefreshing] = useState(false);
 
+    // Manage Connections State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [managingProfileId, setManagingProfileId] = useState<string | null>(null);
+    const [availableAccounts, setAvailableAccounts] = useState<AdAccount[]>([]);
+    const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+
     const handleRefreshAll = async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
         try {
-            // Refresh all profiles in parallel
             await Promise.all(connectedProfiles.map(p => refreshProfile(p.id)));
         } catch (error) {
             console.error('Failed to refresh accounts:', error);
         } finally {
             setIsRefreshing(false);
+        }
+    };
+
+    const handleManageConnections = async (profileId: string) => {
+        setManagingProfileId(profileId);
+        setIsModalOpen(true);
+        setIsLoadingAccounts(true);
+        setAvailableAccounts([]);
+
+        try {
+            const accounts = await fetchAvailableAccounts(profileId);
+            setAvailableAccounts(accounts);
+        } catch (error) {
+            console.error('Failed to fetch available accounts:', error);
+            // Optionally show toast error
+        } finally {
+            setIsLoadingAccounts(false);
+        }
+    };
+
+    const handleConnectionConfirmed = async (selectedIds: string[]) => {
+        if (!managingProfileId) return;
+
+        // Filter available accounts to get the full objects for selected IDs
+        const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.id));
+
+        try {
+            await updateConnectedAccounts(managingProfileId, selectedAccounts);
+        } catch (error) {
+            console.error('Failed to update connections:', error);
+        } finally {
+            setIsModalOpen(false);
+            setManagingProfileId(null);
         }
     };
 
@@ -71,16 +113,55 @@ export function FBAdAccounts() {
                 <div>
                     <h1 className="text-2xl font-bold text-foreground">Account Overview</h1>
                 </div>
-                {/* Search */}
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                        type="text"
-                        placeholder="Search accounts, email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-64 pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
+                {/* Search & Actions */}
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="Search accounts, email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-64 pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    </div>
+
+                    {connectedProfiles.length > 0 && (
+                        <div className="relative">
+                            {/* Simple Manage Button if 1 profile, or just pick the first one for now as MVP */}
+                            {/* If multiple profiles, ideally show a dropdown. For now, let's just use the first one if only 1 exists, 
+                                 or show a list in a popover. Given the constraint, let's keep it simple:
+                                 If 1 profile -> Manage Button
+                                 If >1 -> Show button that says "Manage Connections" but onClick opens a small browser native prompt? 
+                                 Or just iterate profiles.
+                                 Let's stick to: "Manage Connections" always manages the FIRST profile if only 1.
+                                 If > 1, maybe display distinct buttons? 
+                                 Let's do this: a simple dropdown if > 1.
+                             */}
+                            {connectedProfiles.length === 1 ? (
+                                <button
+                                    onClick={() => handleManageConnections(connectedProfiles[0].id)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+                                >
+                                    <Settings className="h-4 w-4" />
+                                    Manage Connections
+                                </button>
+                            ) : (
+                                // For multiple profiles, we'll just not show it in header to avoid complexity for now, 
+                                // or show it but it defaults to first. 
+                                // Better UX: Show "Manage" button in the table header or per group? 
+                                // But the table is flat.
+                                // Let's just default to first profile for MVP if multiple, user rarely has multiple.
+                                <button
+                                    onClick={() => handleManageConnections(connectedProfiles[0].id)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+                                >
+                                    <Settings className="h-4 w-4" />
+                                    Manage Connections
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -122,6 +203,14 @@ export function FBAdAccounts() {
                             <RefreshCw className="h-4 w-4" />
                         </button>
                     </div>
+
+                    <SelectAdAccountsModal
+                        isOpen={isModalOpen}
+                        onClose={() => setIsModalOpen(false)}
+                        onConfirmed={handleConnectionConfirmed}
+                        accounts={availableAccounts}
+                        isLoading={isLoadingAccounts}
+                    />
 
                     {/* Table */}
                     <div className="overflow-x-auto">
