@@ -152,6 +152,22 @@ export async function deleteAdAccount(accountId: string): Promise<void> {
 }
 
 /**
+ * Delete an ad account by Profile ID and FB Account ID
+ */
+export async function deleteAdAccountByFbId(profileId: string, fbAccountId: string): Promise<void> {
+    const { error } = await supabase
+        .from('ad_accounts')
+        .delete()
+        .eq('profile_id', profileId)
+        .eq('fb_account_id', fbAccountId);
+
+    if (error) {
+        console.error('[Supabase] Error deleting ad account by FB ID:', error);
+        throw error;
+    }
+}
+
+/**
  * Get all ad accounts across all profiles
  */
 export async function getAllAdAccounts(): Promise<(AdAccount & { profile: Profile })[]> {

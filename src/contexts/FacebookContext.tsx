@@ -15,6 +15,7 @@ import {
     getProfiles,
     upsertProfile,
     addAdAccounts,
+    deleteAdAccountByFbId,
     deleteProfile as deleteProfileFromDb,
     type ProfileWithAccounts,
 } from '../lib/supabase-service';
@@ -482,6 +483,14 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
     // Disconnect a specific ad account
     const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
+        // Find profile first to get DB ID for deletion
+        const profile = connectedProfiles.find(p => p.id === profileId);
+        if (profile?.dbId) {
+            deleteAdAccountByFbId(profile.dbId, accountId)
+                .then(() => console.log('[FB] Deleted ad account from DB:', accountId))
+                .catch(err => console.error('[FB] Failed to delete ad account from DB:', err));
+        }
+
         const updatedProfiles = connectedProfiles.map(p => {
             if (p.id !== profileId) return p;
             return {
@@ -492,11 +501,8 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
         setConnectedProfiles(updatedProfiles);
         setSessionCache(updatedProfiles);
-        // Save updated profile to Supabase
-        const profile = updatedProfiles.find(p => p.id === profileId);
-        if (profile) {
-            saveProfileToDb(profile).catch(err => console.error('[FB] Failed to save after ad account disconnect:', err));
-        }
+        // Note: We don't need to call saveProfileToDb here because we explicitly deleted the child record
+        // upsertProfile won't delete missing children automatically anyway
     }, [connectedProfiles]);
 
     return (
