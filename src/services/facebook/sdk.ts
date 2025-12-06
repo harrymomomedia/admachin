@@ -95,70 +95,14 @@ export const checkLoginStatus = (): Promise<FacebookLoginStatus> => {
  * - System User Access Token (SUAT): For business portfolios (longer-lived)
  */
 /**
- * Login to Facebook using Client-Side SDK
+ * Login to Facebook using Server-Side OAuth
  * 
- * Uses the Facebook JavaScript SDK to handle authentication in the browser.
- * Sends the resulting access token to our backend for storage.
+ * Redirects the browser to our API endpoint which initiates the OAuth flow
+ * with Facebook. This supports Facebook Login for Business with config_id.
  */
-export const loginWithFacebook = (): Promise<{ success: boolean; user?: any; error?: string }> => {
-    return new Promise((resolve) => {
-        if (!window.FB) {
-            resolve({ success: false, error: 'Facebook SDK not initialized' });
-            return;
-        }
-
-        console.log('[Facebook Auth] Starting FB.login()...');
-
-        // Request permissions
-        const scope = 'ads_management,ads_read,pages_read_engagement,pages_show_list';
-
-        window.FB.login(async (response) => {
-            console.log('[Facebook Auth] FB.login() response:', response.status);
-
-            if (response.status !== 'connected') {
-                console.log('[Facebook Auth] User did not authorize');
-                resolve({
-                    success: false,
-                    error: response.status === 'not_authorized'
-                        ? 'You must authorize the app to connect your Facebook account'
-                        : 'Facebook login was cancelled'
-                });
-                return;
-            }
-
-            const accessToken = response.authResponse?.accessToken;
-
-            if (!accessToken) {
-                console.error('[Facebook Auth] No access token in response');
-                resolve({ success: false, error: 'No access token received' });
-                return;
-            }
-
-            console.log('[Facebook Auth] Access token received, sending to backend...');
-
-            // Send token to backend for validation and storage
-            try {
-                const saveResponse = await fetch('/api/auth/facebook/save-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accessToken })
-                });
-
-                const data = await saveResponse.json();
-
-                if (data.success) {
-                    console.log('[Facebook Auth] Token saved successfully:', data.user);
-                    resolve({ success: true, user: data.user });
-                } else {
-                    console.error('[Facebook Auth] Failed to save token:', data.error);
-                    resolve({ success: false, error: data.error || 'Failed to save token' });
-                }
-            } catch (err) {
-                console.error('[Facebook Auth] Error saving token:', err);
-                resolve({ success: false, error: 'Failed to communicate with server' });
-            }
-        }, { scope });
-    });
+export const loginWithFacebook = (): void => {
+    console.log('[Facebook Auth] Redirecting to server OAuth...');
+    window.location.href = '/api/auth/facebook';
 };
 
 /**
