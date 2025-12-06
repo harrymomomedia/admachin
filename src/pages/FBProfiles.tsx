@@ -36,11 +36,15 @@ export function FBProfiles() {
         const profileData = searchParams.get('profile');
         const errorParam = searchParams.get('error');
 
+        console.log('[FBProfiles] URL params:', { success, hasProfile: !!profileData, error: errorParam });
+
         if (success === 'true' && profileData) {
             try {
-                return { profile: JSON.parse(decodeURIComponent(profileData)) as ConnectedProfile };
+                const parsed = JSON.parse(decodeURIComponent(profileData)) as ConnectedProfile;
+                console.log('[FBProfiles] Parsed profile:', parsed.name, 'with', parsed.adAccounts?.length, 'accounts');
+                return { profile: parsed };
             } catch (e) {
-                console.error('Failed to parse OAuth profile data:', e);
+                console.error('[FBProfiles] Failed to parse OAuth profile data:', e);
                 return null;
             }
         } else if (errorParam) {
@@ -51,11 +55,14 @@ export function FBProfiles() {
 
     // Handle OAuth callback
     useEffect(() => {
+        console.log('[FBProfiles] OAuth effect:', { hasData: !!oauthData, processed: processedOAuth.current });
+
         if (!oauthData || processedOAuth.current) return;
 
         processedOAuth.current = true;
 
         if ('profile' in oauthData && oauthData.profile) {
+            console.log('[FBProfiles] Opening selection modal for:', oauthData.profile.name);
             // Schedule state updates for next tick
             setTimeout(() => {
                 setPendingProfile(oauthData.profile);
@@ -63,6 +70,7 @@ export function FBProfiles() {
                 setSearchParams({}, { replace: true });
             }, 0);
         } else if ('error' in oauthData) {
+            console.log('[FBProfiles] OAuth error:', oauthData.error);
             setTimeout(() => {
                 setSearchParams({}, { replace: true });
             }, 0);
