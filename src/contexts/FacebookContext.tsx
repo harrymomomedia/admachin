@@ -283,44 +283,8 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         init();
     }, [configValidation.valid]);
 
-    // Handle OAuth Callback (runs only once on mount)
-    useEffect(() => {
-        // Check for OAuth callback data in URL
-        const searchParams = new URLSearchParams(window.location.search);
-        const success = searchParams.get('success');
-        const encodedProfile = searchParams.get('profile');
-        const errorParam = searchParams.get('error');
-
-        if (success === 'true' && encodedProfile) {
-            try {
-                const profileData = JSON.parse(decodeURIComponent(encodedProfile)) as ConnectedProfile;
-                console.log('[FB] Received profile from OAuth callback:', profileData.name);
-
-                // Add/Update profile
-                addProfileFromOAuth(profileData);
-
-                // Clean up URL
-                const url = new URL(window.location.href);
-                url.searchParams.delete('success');
-                url.searchParams.delete('profile');
-                url.searchParams.delete('error');
-                window.history.replaceState({}, '', url.toString());
-
-                // Set active
-                setActiveProfile(profileData.id);
-            } catch (err) {
-                console.error('[FB] Failed to parse OAuth profile data:', err);
-                setError('Failed to process Facebook login');
-            }
-        } else if (errorParam) {
-            setError(`Facebook login failed: ${decodeURIComponent(errorParam)}`);
-            // Clean up URL even on error
-            const url = new URL(window.location.href);
-            url.searchParams.delete('error');
-            url.searchParams.delete('error_reason');
-            window.history.replaceState({}, '', url.toString());
-        }
-    }, [addProfileFromOAuth, setActiveProfile]);
+    // NOTE: OAuth callback is now handled by FBProfiles page with selection modal
+    // The page will call addProfileFromOAuth after user selects accounts
 
     // Handle rate limit errors - uses exact time from Facebook when available
     const handleApiError = useCallback((err: unknown) => {
