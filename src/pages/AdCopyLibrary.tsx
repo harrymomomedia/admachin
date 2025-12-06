@@ -4,7 +4,9 @@ import {
     Search,
     Trash2,
     Copy,
-    X
+    X,
+    Maximize2,
+    Minimize2
 } from 'lucide-react';
 import {
     getAdCopies,
@@ -21,6 +23,9 @@ export function AdCopyLibrary() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+    // UI Logic State
+    const [showFullText, setShowFullText] = useState(false);
 
     // Inline Editing State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -42,14 +47,19 @@ export function AdCopyLibrary() {
         loadCopies();
     }, []);
 
-    // Focus edit input when it opens
+    // Focus & Auto-expand edit input
     useEffect(() => {
         if (editingId && editInputRef.current) {
-            editInputRef.current.focus();
-            // Optional: Move cursor to end
-            editInputRef.current.setSelectionRange(
-                editInputRef.current.value.length,
-                editInputRef.current.value.length
+            const textarea = editInputRef.current;
+            textarea.focus();
+            // Reset height to auto to get correct scrollHeight
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+
+            // Move cursor to end
+            textarea.setSelectionRange(
+                textarea.value.length,
+                textarea.value.length
             );
         }
     }, [editingId]);
@@ -64,6 +74,14 @@ export function AdCopyLibrary() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Auto-resize handler for textarea
+    const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const textarea = e.target;
+        setEditingText(textarea.value);
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
     };
 
     // Filter Logic
@@ -183,18 +201,41 @@ export function AdCopyLibrary() {
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search ad text, project, or name..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    />
+            <div className="flex items-center gap-4">
+                <div className="flex-1 flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search ad text, project, or name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        />
+                    </div>
+                    <div className="h-6 w-px bg-gray-200" />
+                    <button
+                        onClick={() => setShowFullText(!showFullText)}
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                            showFullText
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : "text-gray-600 hover:bg-gray-100 border border-transparent"
+                        )}
+                    >
+                        {showFullText ? (
+                            <>
+                                <Minimize2 className="w-4 h-4" />
+                                Collapse Text
+                            </>
+                        ) : (
+                            <>
+                                <Maximize2 className="w-4 h-4" />
+                                Expand Text
+                            </>
+                        )}
+                    </button>
                 </div>
-                {/* Add more filters here easily later */}
             </div>
 
             {/* Content Table */}
@@ -233,7 +274,7 @@ export function AdCopyLibrary() {
                                                     <textarea
                                                         ref={editInputRef}
                                                         value={editingText}
-                                                        onChange={(e) => setEditingText(e.target.value)}
+                                                        onChange={handleTextareaInput}
                                                         onBlur={handleEditSave}
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -243,12 +284,16 @@ export function AdCopyLibrary() {
                                                                 handleEditCancel();
                                                             }
                                                         }}
-                                                        className="w-full p-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm"
-                                                        rows={2}
+                                                        className="w-full p-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm overflow-hidden resize-none"
+                                                        rows={1}
+                                                        style={{ minHeight: '38px' }}
                                                     />
                                                 ) : (
                                                     <p
-                                                        className="text-gray-900 line-clamp-2 cursor-pointer hover:text-blue-600 transition-colors"
+                                                        className={cn(
+                                                            "text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
+                                                            !showFullText && "line-clamp-2"
+                                                        )}
                                                         title="Click to edit"
                                                         onClick={() => handleEditStart(copy)}
                                                     >
