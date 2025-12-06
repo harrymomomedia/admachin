@@ -80,26 +80,36 @@ async function getB2Auth(): Promise<B2AuthResponse> {
 async function getUploadUrl(auth: B2AuthResponse): Promise<B2UploadUrlResponse> {
     const bucketId = process.env.B2_BUCKET_ID;
 
+    console.log('[B2] getUploadUrl - bucketId:', bucketId);
+    console.log('[B2] getUploadUrl - apiUrl:', auth.apiUrl);
+    console.log('[B2] getUploadUrl - auth token present:', !!auth.authorizationToken);
+
     if (!bucketId) {
         throw new Error('B2 bucket ID not configured');
     }
 
-    const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_upload_url`, {
+    const url = `${auth.apiUrl}/b2api/v2/b2_get_upload_url`;
+    console.log('[B2] Calling:', url);
+
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Authorization': auth.authorizationToken,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ bucketId }),
+        body: JSON.stringify({ bucketId: bucketId.trim() }),
     });
 
     if (!response.ok) {
         const error = await response.text();
-        console.error('[B2] Get upload URL failed:', error);
-        throw new Error('Failed to get upload URL');
+        console.error('[B2] Get upload URL failed with status:', response.status);
+        console.error('[B2] Get upload URL error:', error);
+        throw new Error(`Failed to get upload URL: ${response.status} - ${error}`);
     }
 
-    return await response.json() as B2UploadUrlResponse;
+    const result = await response.json() as B2UploadUrlResponse;
+    console.log('[B2] Got upload URL successfully');
+    return result;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
