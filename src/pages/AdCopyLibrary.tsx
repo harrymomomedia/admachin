@@ -6,7 +6,8 @@ import {
     Copy,
     X,
     Maximize2,
-    Minimize2
+    Minimize2,
+    Check
 } from 'lucide-react';
 import {
     getAdCopies,
@@ -42,10 +43,20 @@ export function AdCopyLibrary() {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+
     // Load Data
     useEffect(() => {
         loadCopies();
+        getCurrentUser().then(user => setCurrentUserId(user?.id || null));
     }, []);
+
+    const copyToClipboard = (text: string, id: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     // Focus & Auto-expand edit input
     useEffect(() => {
@@ -176,11 +187,7 @@ export function AdCopyLibrary() {
         }
     };
 
-    // Copy to Clipboard
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        // Could add toast here
-    };
+
 
     return (
         <div className="space-y-6">
@@ -242,32 +249,34 @@ export function AdCopyLibrary() {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-100">
+                        <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                                 <th className="px-6 py-3 font-medium text-gray-500">Ad Text</th>
                                 <th className="px-6 py-3 font-medium text-gray-500 w-32">Type</th>
                                 <th className="px-6 py-3 font-medium text-gray-500 w-32">Project</th>
                                 <th className="px-6 py-3 font-medium text-gray-500 w-24">Traffic</th>
                                 <th className="px-6 py-3 font-medium text-gray-500 w-40">Name</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 w-32">Date</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 w-24">Creator</th>
                                 <th className="px-6 py-3 font-medium text-gray-500 w-24">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-200">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                                         Loading ad copies...
                                     </td>
                                 </tr>
                             ) : filteredCopies.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                                         No ad copies found. create one specifically for your next campaign!
                                     </td>
                                 </tr>
                             ) : (
                                 filteredCopies.map((copy) => (
-                                    <tr key={copy.id} className="group hover:bg-gray-50/50 transition-colors">
+                                    <tr key={copy.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-200 last:border-0">
                                         <td className="px-6 py-4">
                                             <div className="max-w-xl">
                                                 {editingId === copy.id ? (
@@ -335,14 +344,36 @@ export function AdCopyLibrary() {
                                         <td className="px-6 py-4 text-gray-600">
                                             {copy.name || '-'}
                                         </td>
+                                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap text-xs">
+                                            {new Date(copy.created_at).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={cn(
+                                                "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium",
+                                                copy.user_id === currentUserId
+                                                    ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                                                    : "bg-gray-100 text-gray-600 border border-gray-200"
+                                            )}>
+                                                {copy.user_id === currentUserId ? 'Me' : 'User'}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button
-                                                    onClick={() => copyToClipboard(copy.text)}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    onClick={() => copyToClipboard(copy.text, copy.id)}
+                                                    className={cn(
+                                                        "p-1.5 rounded-lg transition-colors",
+                                                        copiedId === copy.id
+                                                            ? "text-green-600 bg-green-50"
+                                                            : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                                                    )}
                                                     title="Copy Text"
                                                 >
-                                                    <Copy className="w-4 h-4" />
+                                                    {copiedId === copy.id ? (
+                                                        <Check className="w-4 h-4" />
+                                                    ) : (
+                                                        <Copy className="w-4 h-4" />
+                                                    )}
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(copy.id)}
