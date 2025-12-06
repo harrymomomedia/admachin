@@ -101,20 +101,18 @@ export function SelectAdAccountsModal({
                     <div className="text-sm text-gray-500">
                         {selectedIds.size} selected
                     </div>
-                    <div className="text-sm text-gray-500">
-                        {selectedIds.size} selected
-                    </div>
                     <button
                         onClick={() => {
                             if (selectedIds.size === filteredAccounts.length) {
                                 setSelectedIds(new Set());
                             } else {
-                                setSelectedIds(new Set(filteredAccounts.map(a => a.account_id)));
+                                const allIds = filteredAccounts.map(a => String(a.account_id || a.id.replace(/^act_/, '')));
+                                setSelectedIds(new Set(allIds));
                             }
                         }}
                         className="text-sm text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap"
                     >
-                        {selectedIds.size === filteredAccounts.length ? 'Deselect All' : 'Select All'}
+                        {selectedIds.size === filteredAccounts.length && filteredAccounts.length > 0 ? 'Deselect All' : 'Select All'}
                     </button>
                 </div>
 
@@ -126,9 +124,8 @@ export function SelectAdAccountsModal({
                         </div>
                     ) : (
                         filteredAccounts.map((account) => {
-                            // Using account_id for matching to avoid "act_" prefix issues
-                            // Force String conversion to ensure checking '123' (string) vs 123 (number) works
-                            const accountId = String(account.account_id);
+                            // Robust ID: Use account_id if available, otherwise strip 'act_' from id
+                            const accountId = String(account.account_id || account.id.replace(/^act_/, ''));
                             const isSelected = selectedIds.has(accountId);
                             return (
                                 <div

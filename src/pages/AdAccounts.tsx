@@ -77,9 +77,10 @@ export function AdAccounts() {
         if (!pendingProfile) return;
 
         // Filter the profile's accounts to only the selected ones
-        const filteredAccounts = pendingProfile.adAccounts.filter(acc =>
-            selectedIds.includes(acc.id)
-        );
+        const filteredAccounts = pendingProfile.adAccounts.filter(acc => {
+            const accId = String(acc.account_id || acc.id.replace(/^act_/, ''));
+            return selectedIds.includes(accId);
+        });
 
         const newProfile = {
             ...pendingProfile,

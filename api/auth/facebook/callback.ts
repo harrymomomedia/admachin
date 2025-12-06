@@ -17,6 +17,7 @@ interface FacebookUserResponse {
 
 interface AdAccountData {
     id: string;
+    account_id: string;
     name: string;
     account_status: number;
     currency?: string;
@@ -83,7 +84,7 @@ async function getMe(accessToken: string): Promise<FacebookUserResponse> {
 async function getAdAccounts(accessToken: string): Promise<AdAccountData[]> {
     const url = new URL('https://graph.facebook.com/v21.0/me/adaccounts');
     url.searchParams.set('access_token', accessToken);
-    url.searchParams.set('fields', 'id,name,account_status,currency,timezone_name');
+    url.searchParams.set('fields', 'id,account_id,name,account_status,currency,timezone_name');
     url.searchParams.set('limit', '100');
 
     const response = await fetch(url.toString());
@@ -153,6 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tokenExpiry: Date.now() + (expiresIn * 1000),
             adAccounts: adAccounts.map(acc => ({
                 id: acc.id,
+                account_id: acc.account_id,
                 name: acc.name,
                 account_status: acc.account_status,
                 currency: acc.currency || 'USD',

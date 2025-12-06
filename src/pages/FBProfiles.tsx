@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, RefreshCw, Clock, CheckCircle, AlertTriangle, User } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Clock, CheckCircle, AlertTriangle, User, Settings } from 'lucide-react';
 import { useFacebook, type ConnectedProfile } from '../contexts/FacebookContext';
 import { SelectAdAccountsModal } from '../components/settings/SelectAdAccountsModal';
 import { cn } from '../utils/cn';
+import type { AdAccount } from '../services/facebook';
 
 
 
@@ -22,6 +23,8 @@ export function FBProfiles() {
         refreshProfile,
         clearError,
         addProfileFromOAuth,
+        fetchAvailableAccounts,
+        updateConnectedAccounts,
     } = useFacebook();
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +34,9 @@ export function FBProfiles() {
     // Modal State
     const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
     const [pendingProfile, setPendingProfile] = useState<ConnectedProfile | null>(null);
+    const [availableAccounts, setAvailableAccounts] = useState<AdAccount[]>([]); // For managing existing profiles
+    const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+    const [managingProfileId, setManagingProfileId] = useState<string | null>(null);
 
     // Track if we've processed the OAuth callback
     const processedOAuth = useRef(false);
@@ -84,28 +90,71 @@ export function FBProfiles() {
         }
     }, [oauthData, setSearchParams]);
 
-    // Handle Modal Confirmation
-    const handleSelectionConfirmed = (selectedIds: string[]) => {
-        if (!pendingProfile) return;
+    const handleSelectionConfirmed = async (selectedIds: string[]) => {
+        // CASE 1: New Profile from OAuth (Pending)
+        if (pendingProfile) {
+            // Filter the profile's accounts to only the selected ones
+            // NOTE: selectedIds are account_ids (numeric)
+            const filteredAccounts = pendingProfile.adAccounts.filter(acc => {
+                const accId = String(acc.account_id || acc.id.replace(/^act_/, ''));
+                return selectedIds.includes(accId);
+            });
 
-        // Filter the profile's accounts to only the selected ones
-        const filteredAccounts = pendingProfile.adAccounts.filter(acc =>
-            selectedIds.includes(acc.id)
-        );
+            const newProfile = {
+                ...pendingProfile,
+                adAccounts: filteredAccounts
+            };
 
-        const newProfile = {
-            ...pendingProfile,
-            adAccounts: filteredAccounts
-        };
+            // Add to context
+            addProfileFromOAuth(newProfile);
 
-        // Add to context
-        addProfileFromOAuth(newProfile);
+            setSuccessMessage(`Connected ${newProfile.name} with ${filteredAccounts.length} ad account(s). Token valid for ~60 days!`);
+            setTimeout(() => setSuccessMessage(null), 5000);
 
-        setSuccessMessage(`Connected ${newProfile.name} with ${filteredAccounts.length} ad account(s). Token valid for ~60 days!`);
-        setTimeout(() => setSuccessMessage(null), 5000);
+            setIsSelectionModalOpen(false);
+            setPendingProfile(null);
+            return;
+        }
 
-        setIsSelectionModalOpen(false);
-        setPendingProfile(null);
+        // CASE 2: Managing Existing Profile
+        if (managingProfileId) {
+            // availableAccounts contains ALL accounts fetched from FB
+            // Filter to find the ones selected by the user
+            const selectedAccounts = availableAccounts.filter(acc => {
+                const accId = String(acc.account_id || acc.id.replace(/^act_/, ''));
+                return selectedIds.includes(accId);
+            });
+
+            try {
+                await updateConnectedAccounts(managingProfileId, selectedAccounts);
+                setSuccessMessage(`Updated connections. Now managing ${selectedAccounts.length} account(s).`);
+                setTimeout(() => setSuccessMessage(null), 3000);
+            } catch (err) {
+                console.error('Failed to update connections:', err);
+                // Error handled by context or global error boundary usually, but we could set local error here
+            } finally {
+                setIsSelectionModalOpen(false);
+                setManagingProfileId(null);
+                setAvailableAccounts([]);
+            }
+        }
+    };
+
+    const handleManageConnections = async (profileId: string) => {
+        setManagingProfileId(profileId);
+        setIsLoadingAccounts(true);
+        setAvailableAccounts([]);
+
+        try {
+            const accounts = await fetchAvailableAccounts(profileId);
+            setAvailableAccounts(accounts);
+            setIsSelectionModalOpen(true);
+        } catch (error) {
+            console.error('Failed to load accounts for management:', error);
+            // Ideally show a toast or error
+        } finally {
+            setIsLoadingAccounts(false);
+        }
     };
 
     const handleRefresh = async (profileId: string) => {
@@ -241,6 +290,14 @@ export function FBProfiles() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
+                                            onClick={() => handleManageConnections(profile.id)}
+                                            disabled={isLoadingAccounts}
+                                            className="p-2 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                                            title="Manage Ad Accounts"
+                                        >
+                                            <Settings className="h-4 w-4" />
+                                        </button>
+                                        <button
                                             onClick={() => handleRefresh(profile.id)}
                                             disabled={isRefreshing}
                                             className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -269,9 +326,17 @@ export function FBProfiles() {
                 onClose={() => {
                     setIsSelectionModalOpen(false);
                     setPendingProfile(null);
+                    setManagingProfileId(null);
                 }}
                 onConfirmed={handleSelectionConfirmed}
-                accounts={pendingProfile?.adAccounts || []}
+                accounts={pendingProfile ? pendingProfile.adAccounts : availableAccounts}
+                isLoading={isLoadingAccounts}
+                profileName={pendingProfile?.name || connectedProfiles.find(p => p.id === managingProfileId)?.name}
+                initialSelectedIds={
+                    pendingProfile
+                        ? [] // For new connection, start empty or maybe select all? Let's stay empty or handled by modal default
+                        : connectedProfiles.find(p => p.id === managingProfileId)?.adAccounts.map(a => a.account_id) || []
+                }
             />
         </div>
     );
