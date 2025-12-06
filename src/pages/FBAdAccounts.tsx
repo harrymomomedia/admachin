@@ -10,6 +10,7 @@ export function FBAdAccounts() {
     const {
         connectedProfiles,
         disconnectAdAccount,
+        refreshProfile,
     } = useFacebook();
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +47,21 @@ export function FBAdAccounts() {
             100: { label: 'Closed', className: 'bg-gray-500/10 text-gray-500' },
         };
         return statusMap[status] || { label: 'Unknown', className: 'bg-gray-500/10 text-gray-500' };
+    };
+
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleRefreshAll = async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            // Refresh all profiles in parallel
+            await Promise.all(connectedProfiles.map(p => refreshProfile(p.id)));
+        } catch (error) {
+            console.error('Failed to refresh accounts:', error);
+        } finally {
+            setIsRefreshing(false);
+        }
     };
 
     return (
@@ -94,7 +110,15 @@ export function FBAdAccounts() {
                                 Managing {allAccounts.length} ad account{allAccounts.length !== 1 ? 's' : ''} across {connectedProfiles.length} Facebook profile{connectedProfiles.length !== 1 ? 's' : ''}
                             </p>
                         </div>
-                        <button className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                        <button
+                            onClick={handleRefreshAll}
+                            disabled={isRefreshing}
+                            className={cn(
+                                "p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",
+                                isRefreshing && "animate-spin text-primary"
+                            )}
+                            title="Refresh all accounts"
+                        >
                             <RefreshCw className="h-4 w-4" />
                         </button>
                     </div>
