@@ -358,146 +358,151 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             setError(`Rate limited. Please wait until ${resetTime?.toLocaleTimeString() || 'later'} to try again.`);
             return;
         }
-        const connectNewProfile = useCallback(() => {
-            // Check rate limiting first
-            if (isRateLimited()) {
-                const resetTime = getRateLimitResetTime();
-                setError(`Rate limited. Please wait until ${resetTime?.toLocaleTimeString() || 'later'} to try again.`);
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // Client-Side FB SDK Flow:
+            // FB.login() opens popup -> user approves -> token sent to backend
+            const result = await loginWithFacebook();
+
+            if (!result.success) {
+                setError(result.error || 'Failed to connect Facebook account');
+                setIsLoading(false);
                 return;
             }
 
-            setIsLoading(true);
-            setError(null);
+            console.log('[FB Context] Login successful, reloading profiles...');
 
-            try {
-                // Server-Side OAuth Flow with config_id
-                loginWithFacebook();
-                // Note: execution stops here as page redirects
-            } catch (err) {
-                console.error('[FB] Connect error:', err);
-                setError(err instanceof Error ? err.message : 'Failed to initiate connection');
-                setIsLoading(false);
-            }
-        }, []);
+            // Reload profiles from storage (backend saved it)
+            await init();
 
-        // Internal refresh helper
-        const refreshProfileInternal = async (
-            profileId: string,
-            accessToken: string,
-            currentProfiles: ConnectedProfile[]
-        ) => {
-            try {
-                // Temporarily set token for API calls
-                localStorage.setItem('fb_access_token', accessToken);
+        } catch (err) {
+            console.error('[FB] Connect error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to initiate connection');
+            setIsLoading(false);
+        }
+    }, []);
 
-                const adAccountsResponse = await getAdAccounts();
+    // Internal refresh helper
+    const refreshProfileInternal = async (
+        profileId: string,
+        accessToken: string,
+        currentProfiles: ConnectedProfile[]
+    ) => {
+        try {
+            // Temporarily set token for API calls
+            localStorage.setItem('fb_access_token', accessToken);
 
-                const updatedProfiles = currentProfiles.map(p => {
-                    if (p.id !== profileId) return p;
+            const adAccountsResponse = await getAdAccounts();
 
-                    // Only update accounts that are ALREADY connected.
-                    // We don't want to re-add accounts the user explicitly disconnected or didn't select.
-                    const existingAccountIds = new Set(p.adAccounts.map(a => a.id));
-                    const refreshedConnectedAccounts = adAccountsResponse.data.filter(a => existingAccountIds.has(a.id));
-
-                    return { ...p, adAccounts: refreshedConnectedAccounts };
-                });
-
-                setConnectedProfiles(updatedProfiles);
-                saveProfiles(updatedProfiles);
-            } catch (err) {
-                console.error('[FB] Refresh error:', err);
-                throw err;
-            }
-        };
-
-        // Refresh a specific profile's ad accounts
-        const refreshProfile = useCallback(async (profileId: string) => {
-            // Check rate limiting first
-            if (isRateLimited()) {
-                const resetTime = getRateLimitResetTime();
-                setError(`Rate limited. Please wait until ${resetTime?.toLocaleTimeString() || 'later'} to try again.`);
-                return;
-            }
-
-            const profile = connectedProfiles.find(p => p.id === profileId);
-            if (!profile) return;
-
-            setIsLoading(true);
-            setError(null);
-
-            try {
-                await refreshProfileInternal(profileId, profile.accessToken, connectedProfiles);
-            } catch (err) {
-                if (!handleApiError(err)) {
-                    setError(err instanceof Error ? err.message : 'Failed to refresh profile');
-                }
-            } finally {
-                setIsLoading(false);
-            }
-        }, [connectedProfiles, handleApiError]);
-
-        // Disconnect a profile
-        const disconnectProfile = useCallback((profileId: string) => {
-            const updatedProfiles = connectedProfiles.filter(p => p.id !== profileId);
-            setConnectedProfiles(updatedProfiles);
-            saveProfiles(updatedProfiles);
-
-            // If we disconnected all profiles, clear the active token
-            if (updatedProfiles.length === 0) {
-                localStorage.removeItem('fb_access_token');
-                localStorage.removeItem('fb_token_expiry');
-            }
-        }, [connectedProfiles]);
-
-        // Disconnect a specific ad account
-        const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
-            const updatedProfiles = connectedProfiles.map(p => {
+            const updatedProfiles = currentProfiles.map(p => {
                 if (p.id !== profileId) return p;
-                return {
-                    ...p,
-                    adAccounts: p.adAccounts.filter(a => a.id !== accountId)
-                };
+
+                // Only update accounts that are ALREADY connected.
+                // We don't want to re-add accounts the user explicitly disconnected or didn't select.
+                const existingAccountIds = new Set(p.adAccounts.map(a => a.id));
+                const refreshedConnectedAccounts = adAccountsResponse.data.filter(a => existingAccountIds.has(a.id));
+
+                return { ...p, adAccounts: refreshedConnectedAccounts };
             });
 
             setConnectedProfiles(updatedProfiles);
             saveProfiles(updatedProfiles);
-        }, [connectedProfiles]);
+        } catch (err) {
+            console.error('[FB] Refresh error:', err);
+            throw err;
+        }
+    };
 
-        return (
-            <FacebookContext.Provider
-                value={{
-                    isInitialized,
-                    isLoading,
-                    error,
-                    isConfigValid: configValidation.valid,
-                    missingConfig: configValidation.missing,
-                    isConnected,
-                    isRateLimited: rateLimitedState,
-                    rateLimitResetTime: getRateLimitResetTime(),
-                    connectedProfiles,
-                    allAdAccounts,
-                    connectNewProfile,
-                    disconnectProfile,
-                    disconnectAdAccount,
-                    refreshProfile,
-                    clearError,
-                    setActiveProfile,
-                    addProfileFromOAuth,
-                    teamName: 'Momomedia', // Hardcoded for now as per requirement, or could be state
-                    currentUser: connectedProfiles.length > 0 ? connectedProfiles[0] : null,
-                }}
-            >
-                {children}
-            </FacebookContext.Provider>
-        );
-    }
+    // Refresh a specific profile's ad accounts
+    const refreshProfile = useCallback(async (profileId: string) => {
+        // Check rate limiting first
+        if (isRateLimited()) {
+            const resetTime = getRateLimitResetTime();
+            setError(`Rate limited. Please wait until ${resetTime?.toLocaleTimeString() || 'later'} to try again.`);
+            return;
+        }
+
+        const profile = connectedProfiles.find(p => p.id === profileId);
+        if (!profile) return;
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            await refreshProfileInternal(profileId, profile.accessToken, connectedProfiles);
+        } catch (err) {
+            if (!handleApiError(err)) {
+                setError(err instanceof Error ? err.message : 'Failed to refresh profile');
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    }, [connectedProfiles, handleApiError]);
+
+    // Disconnect a profile
+    const disconnectProfile = useCallback((profileId: string) => {
+        const updatedProfiles = connectedProfiles.filter(p => p.id !== profileId);
+        setConnectedProfiles(updatedProfiles);
+        saveProfiles(updatedProfiles);
+
+        // If we disconnected all profiles, clear the active token
+        if (updatedProfiles.length === 0) {
+            localStorage.removeItem('fb_access_token');
+            localStorage.removeItem('fb_token_expiry');
+        }
+    }, [connectedProfiles]);
+
+    // Disconnect a specific ad account
+    const disconnectAdAccount = useCallback((profileId: string, accountId: string) => {
+        const updatedProfiles = connectedProfiles.map(p => {
+            if (p.id !== profileId) return p;
+            return {
+                ...p,
+                adAccounts: p.adAccounts.filter(a => a.id !== accountId)
+            };
+        });
+
+        setConnectedProfiles(updatedProfiles);
+        saveProfiles(updatedProfiles);
+    }, [connectedProfiles]);
+
+    return (
+        <FacebookContext.Provider
+            value={{
+                isInitialized,
+                isLoading,
+                error,
+                isConfigValid: configValidation.valid,
+                missingConfig: configValidation.missing,
+                isConnected,
+                isRateLimited: rateLimitedState,
+                rateLimitResetTime: getRateLimitResetTime(),
+                connectedProfiles,
+                allAdAccounts,
+                connectNewProfile,
+                disconnectProfile,
+                disconnectAdAccount,
+                refreshProfile,
+                clearError,
+                setActiveProfile,
+                addProfileFromOAuth,
+                teamName: 'Momomedia', // Hardcoded for now as per requirement, or could be state
+                currentUser: connectedProfiles.length > 0 ? connectedProfiles[0] : null,
+            }}
+        >
+            {children}
+        </FacebookContext.Provider>
+    );
+}
 
 // ============ Hook ============
 export function useFacebook(): FacebookContextType {
-        const context = useContext(FacebookContext);
-        if (!context) {
-            throw new Error('useFacebook must be used within a FacebookProvider');
-        }
-        return context;
+    const context = useContext(FacebookContext);
+    if (!context) {
+        throw new Error('useFacebook must be used within a FacebookProvider');
     }
+    return context;
+}
