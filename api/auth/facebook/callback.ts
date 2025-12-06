@@ -181,7 +181,9 @@ export default async function handler(request: any) {
         });
 
         console.log('[FB Callback] SUCCESS! Redirecting to app...');
-        return Response.redirect(`${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`, 302);
+        const redirectUrl = `${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`;
+        console.log('[FB Callback] Redirect URL:', redirectUrl);
+        return Response.redirect(redirectUrl, 302);
 
     } catch (err) {
         console.error('[FB Callback] ERROR:', err);
