@@ -97,7 +97,7 @@ export async function uploadToB2(
     // Format: {downloadUrl}/file/{bucketName}/{fileName}
     // Note: We use /b2api/v2/b2_download_file_by_id for private buckets
     // For public buckets, use: {downloadUrl}/file/{bucketName}/{fileName}
-    const publicUrl = `${credentials.downloadUrl}/file/admachin-creatives/${safeFileName}`;
+    const publicUrl = `${credentials.downloadUrl}/file/admachin/${safeFileName}`;
 
     return {
         fileId: result.fileId,
@@ -112,7 +112,7 @@ export async function uploadToB2(
  * Get the public URL for a B2 file
  */
 export function getB2PublicUrl(fileName: string): string {
-    // This assumes a public bucket named 'admachin-creatives'
+    // This assumes a public bucket named 'admachin'
     // Adjust the bucket name if different
-    return `https://f005.backblazeb2.com/file/admachin-creatives/${fileName}`;
+    return `https://f004.backblazeb2.com/file/admachin/${fileName}`;
 }

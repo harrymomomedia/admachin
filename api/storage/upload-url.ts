@@ -40,12 +40,18 @@ async function getB2Auth(): Promise<B2AuthResponse> {
 
     console.log('[B2] Auth attempt with keyId:', keyId?.substring(0, 8) + '...');
     console.log('[B2] appKey present:', !!appKey, 'length:', appKey?.length);
+    console.log('[B2] keyId full length:', keyId?.length);
 
     if (!keyId || !appKey) {
         throw new Error('B2 credentials not configured');
     }
 
-    const credentials = Buffer.from(`${keyId}:${appKey}`).toString('base64');
+    // Trim any whitespace that might have been introduced
+    const trimmedKeyId = keyId.trim();
+    const trimmedAppKey = appKey.trim();
+
+    const credentials = Buffer.from(`${trimmedKeyId}:${trimmedAppKey}`).toString('base64');
+    console.log('[B2] Credentials base64 length:', credentials.length);
 
     const response = await fetch(`${B2_API_URL}/b2_authorize_account`, {
         method: 'GET',
@@ -58,7 +64,9 @@ async function getB2Auth(): Promise<B2AuthResponse> {
         const error = await response.text();
         console.error('[B2] Auth failed with status:', response.status);
         console.error('[B2] Auth failed response:', error);
-        throw new Error('Failed to authenticate with B2');
+        console.error('[B2] keyId used:', trimmedKeyId);
+        console.error('[B2] appKey first 4 chars:', trimmedAppKey.substring(0, 4));
+        throw new Error(`Failed to authenticate with B2: ${response.status} - ${error}`);
     }
 
     const data = await response.json() as B2AuthResponse;
