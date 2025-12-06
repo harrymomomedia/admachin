@@ -1,5 +1,5 @@
 // Facebook Context - Supports multiple FB profiles with multiple ad accounts each
-// Includes rate limiting awareness and connection persistence
+// Includes rate limiting awareness and connection persistence via Supabase
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import {
@@ -11,6 +11,13 @@ import {
     refreshFacebookToken,
 } from '../services/facebook';
 import type { AdAccount } from '../services/facebook';
+import {
+    getProfiles,
+    upsertProfile,
+    addAdAccounts,
+    deleteProfile as deleteProfileFromDb,
+    type ProfileWithAccounts,
+} from '../lib/supabase-service';
 
 // ============ Types ============
 export interface ConnectedProfile {
@@ -21,47 +28,97 @@ export interface ConnectedProfile {
     tokenExpiry: number;           // Token expiry timestamp
     adAccounts: AdAccount[];       // Ad accounts for this profile
     connectedAt: number;           // When this profile was connected
+    dbId?: string;                 // Supabase profile ID for deletion
 }
 
-// ============ Storage Keys ============
-const STORAGE_KEY = 'admachin_connected_profiles';
+// ============ Storage Keys (session cache only) ============
 const RATE_LIMIT_KEY = 'admachin_rate_limit_reset';
 
-// ============ Storage Helpers ============
-function loadProfiles(): ConnectedProfile[] {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return [];
-        const profiles = JSON.parse(stored) as ConnectedProfile[];
-        // Filter out expired tokens
-        const now = Date.now();
-        const validProfiles = profiles.filter(p => p.tokenExpiry > now);
+// ============ Supabase Helpers ============
 
-        // If we filtered some out, save the updated list
-        if (validProfiles.length !== profiles.length) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(validProfiles));
-        }
+/**
+ * Load profiles from Supabase
+ */
+async function loadProfilesFromDb(): Promise<ConnectedProfile[]> {
+    try {
+        const profiles = await getProfiles();
+        const now = Date.now();
+
+        // Filter out expired tokens and map to ConnectedProfile
+        const validProfiles = profiles
+            .filter(p => new Date(p.token_expiry).getTime() > now)
+            .map((p: ProfileWithAccounts) => ({
+                id: p.fb_user_id,
+                name: p.fb_name,
+                email: p.fb_email || undefined,
+                accessToken: p.access_token,
+                tokenExpiry: new Date(p.token_expiry).getTime(),
+                adAccounts: p.ad_accounts.map(a => ({
+                    id: a.fb_account_id,
+                    account_id: a.fb_account_id,
+                    name: a.name,
+                    account_status: a.status,
+                    currency: a.currency,
+                    timezone_name: a.timezone || '',
+                    amount_spent: '0',
+                    balance: '0',
+                })),
+                connectedAt: new Date(p.created_at).getTime(),
+                dbId: p.id,
+            }));
 
         return validProfiles;
-    } catch {
+    } catch (error) {
+        console.error('[FB] Failed to load profiles from Supabase:', error);
         return [];
     }
 }
 
-function saveProfiles(profiles: ConnectedProfile[]): void {
+/**
+ * Save profile to Supabase
+ */
+async function saveProfileToDb(profile: ConnectedProfile): Promise<string | null> {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
-        // Also set the active token for API calls
-        if (profiles.length > 0) {
-            localStorage.setItem('fb_access_token', profiles[0].accessToken);
-            localStorage.setItem('fb_token_expiry', String(profiles[0].tokenExpiry));
+        const savedProfile = await upsertProfile({
+            fb_user_id: profile.id,
+            fb_name: profile.name,
+            fb_email: profile.email || null,
+            access_token: profile.accessToken,
+            token_expiry: new Date(profile.tokenExpiry),
+        });
+
+        // Save ad accounts
+        if (profile.adAccounts.length > 0) {
+            await addAdAccounts(savedProfile.id, profile.adAccounts.map(a => ({
+                fb_account_id: a.id || a.account_id,
+                name: a.name,
+                status: a.account_status,
+                currency: a.currency,
+                timezone: a.timezone_name || null,
+            })));
         }
-    } catch {
-        // Ignore storage errors
+
+        return savedProfile.id;
+    } catch (error) {
+        console.error('[FB] Failed to save profile to Supabase:', error);
+        return null;
     }
 }
 
-// Rate limit helpers
+/**
+ * Set session cache for quick API access (localStorage)
+ */
+function setSessionCache(profiles: ConnectedProfile[]): void {
+    if (profiles.length > 0) {
+        localStorage.setItem('fb_access_token', profiles[0].accessToken);
+        localStorage.setItem('fb_token_expiry', String(profiles[0].tokenExpiry));
+    } else {
+        localStorage.removeItem('fb_access_token');
+        localStorage.removeItem('fb_token_expiry');
+    }
+}
+
+// Rate limit helpers (still use localStorage as session-scoped)
 function isRateLimited(): boolean {
     const resetTime = localStorage.getItem(RATE_LIMIT_KEY);
     if (!resetTime) return false;
@@ -172,7 +229,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         }
 
         setConnectedProfiles(updatedProfiles);
-        saveProfiles(updatedProfiles);
+        setSessionCache(updatedProfiles);
+        // Save to Supabase asynchronously
+        saveProfileToDb(profileData).catch(err => console.error('[FB] Failed to save profile:', err));
     }, [connectedProfiles]);
 
     // Initialize on mount
@@ -185,7 +244,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         const init = async () => {
             try {
                 // Load saved profiles from storage FIRST
-                let savedProfiles = loadProfiles();
+                let savedProfiles = await loadProfilesFromDb();
 
                 // Auto-Login Logic: Check Server-Side Session
                 if (savedProfiles.length === 0) {
@@ -214,7 +273,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                                 };
                                 savedProfiles = [serverProfile];
                                 setConnectedProfiles(savedProfiles);
-                                saveProfiles(savedProfiles);
+                                setSessionCache(savedProfiles);
+                                // Save to Supabase asynchronously
+                                saveProfileToDb(serverProfile).catch(err => console.error('[FB] Failed to save server profile:', err));
                             } else {
                                 console.log('[FB] Server session not authenticated');
                             }
@@ -255,7 +316,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                             // Save updated profile
                             const updatedList = savedProfiles.map((p, i) => i === 0 ? updatedProfile : p);
                             setConnectedProfiles(updatedList);
-                            saveProfiles(updatedList);
+                            setSessionCache(updatedList);
+                            // Save to Supabase asynchronously
+                            saveProfileToDb(updatedProfile).catch(err => console.error('[FB] Failed to save refreshed profile:', err));
 
                             // Update active token
                             localStorage.setItem('fb_access_token', updatedProfile.accessToken);
@@ -361,7 +424,12 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             });
 
             setConnectedProfiles(updatedProfiles);
-            saveProfiles(updatedProfiles);
+            setSessionCache(updatedProfiles);
+            // Save updated profile to Supabase
+            const profile = updatedProfiles.find(p => p.id === profileId);
+            if (profile) {
+                await saveProfileToDb(profile);
+            }
         } catch (err) {
             console.error('[FB] Refresh error:', err);
             throw err;
@@ -396,9 +464,15 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
     // Disconnect a profile
     const disconnectProfile = useCallback((profileId: string) => {
+        const profileToRemove = connectedProfiles.find(p => p.id === profileId);
         const updatedProfiles = connectedProfiles.filter(p => p.id !== profileId);
         setConnectedProfiles(updatedProfiles);
-        saveProfiles(updatedProfiles);
+        setSessionCache(updatedProfiles);
+
+        // Delete from Supabase asynchronously
+        if (profileToRemove?.dbId) {
+            deleteProfileFromDb(profileToRemove.dbId).catch(err => console.error('[FB] Failed to delete profile from DB:', err));
+        }
 
         // If we disconnected all profiles, clear the active token
         if (updatedProfiles.length === 0) {
@@ -418,7 +492,12 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         });
 
         setConnectedProfiles(updatedProfiles);
-        saveProfiles(updatedProfiles);
+        setSessionCache(updatedProfiles);
+        // Save updated profile to Supabase
+        const profile = updatedProfiles.find(p => p.id === profileId);
+        if (profile) {
+            saveProfileToDb(profile).catch(err => console.error('[FB] Failed to save after ad account disconnect:', err));
+        }
     }, [connectedProfiles]);
 
     return (

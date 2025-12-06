@@ -263,7 +263,7 @@ export async function deleteCreative(creativeId: string): Promise<void> {
  */
 export async function uploadCreativeFile(
     file: File,
-    onProgress?: (progress: number) => void
+    _onProgress?: (progress: number) => void
 ): Promise<{ path: string; url: string }> {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;

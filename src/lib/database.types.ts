@@ -46,6 +46,15 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "profiles_user_id_fkey"
+                        columns: ["user_id"]
+                        isOneToOne: false
+                        referencedRelation: "users"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
             ad_accounts: {
                 Row: {
@@ -78,6 +87,15 @@ export interface Database {
                     timezone?: string | null
                     created_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "ad_accounts_profile_id_fkey"
+                        columns: ["profile_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
             creatives: {
                 Row: {
@@ -119,6 +137,15 @@ export interface Database {
                     fb_hash?: string | null
                     created_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "creatives_user_id_fkey"
+                        columns: ["user_id"]
+                        isOneToOne: false
+                        referencedRelation: "users"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
         }
         Views: {
@@ -128,6 +155,9 @@ export interface Database {
             [_ in never]: never
         }
         Enums: {
+            [_ in never]: never
+        }
+        CompositeTypes: {
             [_ in never]: never
         }
     }

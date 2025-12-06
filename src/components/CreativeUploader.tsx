@@ -8,6 +8,8 @@ import {
     CheckCircle,
     Loader2,
 } from "lucide-react";
+import { uploadToB2 } from "../lib/b2-storage";
+import { addCreative } from "../lib/supabase-service";
 
 interface UploadedFile {
     id: string;
@@ -17,7 +19,7 @@ interface UploadedFile {
     status: "uploading" | "success" | "error";
     progress: number;
     hash?: string; // Facebook image hash
-    url?: string; // Facebook URL or video ID
+    url?: string; // B2 public URL
     error?: string;
 }
 
@@ -77,36 +79,61 @@ export function CreativeUploader({
         return { valid: true };
     }, [acceptedTypes]);
 
-    const simulateUpload = useCallback(async (uploadedFile: UploadedFile) => {
-        // Simulate progress
-        for (let i = 0; i <= 100; i += 10) {
-            await new Promise((r) => setTimeout(r, 100 + Math.random() * 200));
+    const uploadFile = useCallback(async (uploadedFile: UploadedFile) => {
+        try {
+            // Upload to B2
+            const result = await uploadToB2(uploadedFile.file, (progress) => {
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === uploadedFile.id ? { ...f, progress } : f
+                    )
+                );
+            });
+
+            // Save metadata to Supabase
+            await addCreative({
+                name: uploadedFile.file.name,
+                type: uploadedFile.type,
+                storage_path: result.fileName,
+                file_size: result.contentLength,
+                dimensions: null, // TODO: extract from image/video
+                duration: null, // TODO: extract from video
+                uploaded_by: 'Harry',
+                fb_hash: null,
+            });
+
+            // Update file status
+            setFiles((prev) => {
+                const updated = prev.map((f) =>
+                    f.id === uploadedFile.id
+                        ? {
+                            ...f,
+                            status: "success" as const,
+                            url: result.url,
+                        }
+                        : f
+                );
+
+                // Notify parent of completed uploads
+                const successFiles = updated.filter((f) => f.status === "success");
+                onUploadComplete(successFiles);
+
+                return updated;
+            });
+        } catch (error) {
+            console.error('[Upload] Failed:', error);
             setFiles((prev) =>
                 prev.map((f) =>
-                    f.id === uploadedFile.id ? { ...f, progress: i } : f
+                    f.id === uploadedFile.id
+                        ? {
+                            ...f,
+                            status: "error" as const,
+                            error: error instanceof Error ? error.message : 'Upload failed',
+                        }
+                        : f
                 )
             );
         }
-
-        // Simulate success (in real implementation, this would upload to Facebook)
-        setFiles((prev) => {
-            const updated = prev.map((f) =>
-                f.id === uploadedFile.id
-                    ? {
-                        ...f,
-                        status: "success" as const,
-                        hash: `hash_${uploadedFile.id}`,
-                        url: uploadedFile.preview,
-                    }
-                    : f
-            );
-
-            // Notify parent of completed uploads
-            const successFiles = updated.filter((f) => f.status === "success");
-            onUploadComplete(successFiles);
-
-            return updated;
-        });
     }, [onUploadComplete]);
 
     const createVideoThumbnail = (file: File): Promise<string> => {
@@ -175,13 +202,13 @@ export function CreativeUploader({
 
         setFiles((prev) => [...prev, ...processedFiles]);
 
-        // Simulate upload for valid files
+        // Upload valid files to B2
         for (const file of processedFiles) {
             if (file.status === "uploading") {
-                simulateUpload(file);
+                uploadFile(file);
             }
         }
-    }, [files.length, maxFiles, validateFile, simulateUpload]);
+    }, [files.length, maxFiles, validateFile, uploadFile]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();

@@ -9,12 +9,16 @@ import {
     List,
     Download,
     Eye,
-    MoreVertical,
     Plus,
     CheckCircle,
     X,
 } from "lucide-react";
 import { CreativeUploader } from "../components/CreativeUploader";
+import {
+    getCreatives,
+    deleteCreative as deleteCreativeFromDb,
+    getCreativeUrl,
+} from "../lib/supabase-service";
 
 interface MediaItem {
     id: string;
@@ -28,6 +32,7 @@ interface MediaItem {
     hash?: string;
     dimensions?: { width: number; height: number };
     duration?: number; // for videos
+    dbId?: string; // Supabase ID for deletion
 }
 
 interface UploadedFile {
@@ -42,7 +47,7 @@ interface UploadedFile {
     error?: string;
 }
 
-// Sample data for demonstration
+// Sample data for demonstration (used as fallback)
 const SAMPLE_MEDIA: MediaItem[] = [
     {
         id: "1",
@@ -78,13 +83,12 @@ const SAMPLE_MEDIA: MediaItem[] = [
     },
 ];
 
-// Storage key for sharing with Launch page
+// Storage key for sharing with Launch page (session cache)
 const STORAGE_KEY = "admachin_creative_library";
 
-// Save media to localStorage for sharing with other pages
-function saveMediaLibrary(items: MediaItem[]): void {
+// Save media to localStorage for quick access on Launch page
+function saveMediaToCache(items: MediaItem[]): void {
     try {
-        // Store simplified version for the launcher
         const simplified = items.map(m => ({
             id: m.id,
             name: m.name,
@@ -99,27 +103,33 @@ function saveMediaLibrary(items: MediaItem[]): void {
     }
 }
 
-// Load media from localStorage or use sample data
-function loadMediaLibrary(): MediaItem[] {
+// Load media from Supabase
+async function loadMediaFromDb(): Promise<MediaItem[]> {
     try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            // Need to convert date strings back to Date objects and add missing fields
-            return parsed.map((m: MediaItem) => ({
-                ...m,
-                size: m.size || 0,
-                uploadedAt: m.uploadedAt ? new Date(m.uploadedAt) : new Date(),
-            }));
-        }
-    } catch {
-        // Ignore parse errors
+        const creatives = await getCreatives();
+        return creatives.map(c => ({
+            id: c.id,
+            dbId: c.id,
+            name: c.name,
+            type: c.type,
+            preview: getCreativeUrl(c.storage_path),
+            url: getCreativeUrl(c.storage_path),
+            size: c.file_size,
+            uploadedAt: new Date(c.created_at),
+            uploadedBy: c.uploaded_by,
+            hash: c.fb_hash || undefined,
+            dimensions: c.dimensions as { width: number; height: number } | undefined,
+            duration: c.duration || undefined,
+        }));
+    } catch (error) {
+        console.error('[Creatives] Failed to load from Supabase:', error);
+        return SAMPLE_MEDIA; // Fallback to sample data
     }
-    return SAMPLE_MEDIA;
 }
 
 export function Creatives() {
-    const [media, setMedia] = useState<MediaItem[]>(() => loadMediaLibrary());
+    const [media, setMedia] = useState<MediaItem[]>([]);
+    const [_isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [filterType, setFilterType] = useState<"all" | "image" | "video">("all");
     const [searchQuery, setSearchQuery] = useState("");
@@ -127,9 +137,20 @@ export function Creatives() {
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
 
-    // Save to localStorage whenever media changes
+    // Load from Supabase on mount
     useEffect(() => {
-        saveMediaLibrary(media);
+        loadMediaFromDb().then(items => {
+            setMedia(items);
+            saveMediaToCache(items); // Cache for Launch page
+            setIsLoading(false);
+        });
+    }, []);
+
+    // Update cache whenever media changes
+    useEffect(() => {
+        if (media.length > 0) {
+            saveMediaToCache(media);
+        }
     }, [media]);
 
 
@@ -166,10 +187,21 @@ export function Creatives() {
         });
     };
 
-    const deleteSelected = () => {
+    const deleteSelected = useCallback(() => {
+        // Delete from local state
+        const itemsToDelete = media.filter(item => selectedItems.has(item.id));
         setMedia((prev) => prev.filter((item) => !selectedItems.has(item.id)));
         setSelectedItems(new Set());
-    };
+
+        // Delete from Supabase asynchronously
+        itemsToDelete.forEach(item => {
+            if (item.dbId) {
+                deleteCreativeFromDb(item.dbId).catch(err =>
+                    console.error('[Creatives] Failed to delete from DB:', err)
+                );
+            }
+        });
+    }, [media, selectedItems]);
 
     const formatFileSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
@@ -503,6 +535,9 @@ export function Creatives() {
                                     Dimensions
                                 </th>
                                 <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                    B2 URL
+                                </th>
+                                <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                     Uploaded By
                                 </th>
                                 <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -566,13 +601,28 @@ export function Creatives() {
                                             : "-"}
                                     </td>
                                     <td className="p-3 text-sm">
+                                        {item.url ? (
+                                            <a
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-primary hover:underline truncate block max-w-[150px]"
+                                                title={item.url}
+                                            >
+                                                View File ↗
+                                            </a>
+                                        ) : (
+                                            <span className="text-muted-foreground">-</span>
+                                        )}
+                                    </td>
+                                    <td className="p-3 text-sm">
                                         <div className="flex items-center gap-2">
                                             <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
                                                 <span className="text-xs font-medium text-primary">
-                                                    {(item.uploadedBy || "U").charAt(0)}
+                                                    {(item.uploadedBy || "H").charAt(0)}
                                                 </span>
                                             </div>
-                                            <span className="text-muted-foreground">{item.uploadedBy || "Unknown"}</span>
+                                            <span className="text-muted-foreground">{item.uploadedBy || "Harry"}</span>
                                         </div>
                                     </td>
                                     <td className="p-3 text-sm text-muted-foreground">
@@ -583,14 +633,32 @@ export function Creatives() {
                                             <button
                                                 onClick={() => setPreviewItem(item)}
                                                 className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                                                title="Preview"
                                             >
                                                 <Eye className="h-4 w-4 text-muted-foreground" />
                                             </button>
-                                            <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                                            <button
+                                                onClick={() => {
+                                                    if (item.url) {
+                                                        window.open(item.url, '_blank');
+                                                    }
+                                                }}
+                                                className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                                                title="Download"
+                                            >
                                                 <Download className="h-4 w-4 text-muted-foreground" />
                                             </button>
-                                            <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
-                                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm('Delete this item?')) {
+                                                        setSelectedItems(new Set([item.id]));
+                                                        setTimeout(() => deleteSelected(), 0);
+                                                    }
+                                                }}
+                                                className="p-1.5 hover:bg-muted rounded-md transition-colors text-red-500 hover:text-red-600"
+                                                title="Delete"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </td>
