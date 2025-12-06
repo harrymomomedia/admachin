@@ -1,5 +1,5 @@
 // Team Members API - CRUD for team members
-import { TeamStorage, TeamMember } from '../services/teamStorage';
+import { TeamStorage, TeamMember } from '../services/teamStorage.js';
 
 export default async function handler(request: Request) {
     const method = request.method;
