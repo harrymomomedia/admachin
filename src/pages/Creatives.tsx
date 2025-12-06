@@ -549,9 +549,7 @@ export function Creatives() {
                                 <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                     Dimensions
                                 </th>
-                                <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                    B2 URL
-                                </th>
+
                                 <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                     Uploaded By
                                 </th>
@@ -621,21 +619,7 @@ export function Creatives() {
                                             ? `${item.dimensions.width} × ${item.dimensions.height}`
                                             : "-"}
                                     </td>
-                                    <td className="p-3 text-sm">
-                                        {item.url ? (
-                                            <a
-                                                href={item.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-primary hover:underline truncate block max-w-[150px]"
-                                                title={item.url}
-                                            >
-                                                View File ↗
-                                            </a>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </td>
+
                                     <td className="p-3 text-sm">
                                         <div className="flex items-center gap-2">
                                             <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
