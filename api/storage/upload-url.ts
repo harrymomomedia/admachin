@@ -38,6 +38,9 @@ async function getB2Auth(): Promise<B2AuthResponse> {
     const keyId = process.env.B2_APPLICATION_KEY_ID;
     const appKey = process.env.B2_APPLICATION_KEY;
 
+    console.log('[B2] Auth attempt with keyId:', keyId?.substring(0, 8) + '...');
+    console.log('[B2] appKey present:', !!appKey, 'length:', appKey?.length);
+
     if (!keyId || !appKey) {
         throw new Error('B2 credentials not configured');
     }
@@ -53,7 +56,8 @@ async function getB2Auth(): Promise<B2AuthResponse> {
 
     if (!response.ok) {
         const error = await response.text();
-        console.error('[B2] Auth failed:', error);
+        console.error('[B2] Auth failed with status:', response.status);
+        console.error('[B2] Auth failed response:', error);
         throw new Error('Failed to authenticate with B2');
     }
 
