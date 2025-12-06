@@ -236,21 +236,17 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
     // Initialize on mount
     useEffect(() => {
-        console.log('[FB Context] Init effect. Config valid:', configValidation.valid);
-        if (!configValidation.valid) {
-            console.warn('[FB Context] Missing config:', configValidation.missing);
-            setIsLoading(false);
-            return;
-        }
-
         const init = async () => {
+            setIsLoading(true);
             try {
-                // Load saved profiles from storage FIRST
+                // Always try to load profiles from DB, regardless of SDK config
+                // This ensures persistence works even if env vars are missing
                 let savedProfiles = await loadProfilesFromDb();
                 console.log('[FB Context] Loaded profiles from DB:', savedProfiles.length);
 
-                // Auto-Login Logic: Check Server-Side Session
+                // Auto-Login / Refresh Logic
                 if (savedProfiles.length === 0) {
+                    // No profiles? Maybe check server session if we had one (optional)
                     try {
                         console.log('[FB] Checking server-side session...');
                         const controller = new AbortController();
