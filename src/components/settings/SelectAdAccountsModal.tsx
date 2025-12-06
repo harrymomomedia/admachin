@@ -9,6 +9,7 @@ interface SelectAdAccountsModalProps {
     onConfirmed: (selectedIds: string[]) => void;
     accounts: AdAccount[];
     isLoading?: boolean;
+    profileName?: string;
 }
 
 export function SelectAdAccountsModal({
@@ -16,7 +17,8 @@ export function SelectAdAccountsModal({
     onClose,
     onConfirmed,
     accounts,
-    isLoading
+    isLoading,
+    profileName
 }: SelectAdAccountsModalProps) {
     // Start with NO accounts selected, letting user choose.
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -60,7 +62,9 @@ export function SelectAdAccountsModal({
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Select Ad Accounts to Connect</h2>
+                        <h2 className="text-lg font-semibold text-gray-900">
+                            Select Ad Accounts {profileName ? `for ${profileName}` : ''}
+                        </h2>
                         <p className="text-sm text-gray-500 mt-1">
                             Choose which Facebook Ad Accounts you want to manage in AdMachin.
                         </p>

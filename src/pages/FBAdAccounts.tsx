@@ -80,8 +80,16 @@ export function FBAdAccounts() {
         setAvailableAccounts([]);
 
         try {
-            const accounts = await fetchAvailableAccounts(profileId);
-            setAvailableAccounts(accounts);
+            const rawAccounts = await fetchAvailableAccounts(profileId);
+
+            // Filter out already connected accounts
+            const profile = connectedProfiles.find(p => p.id === profileId);
+            const connectedIds = new Set(profile?.adAccounts.map(a => a.account_id) || []);
+
+            // Only show accounts that are NOT connected
+            const newAccounts = rawAccounts.filter(acc => !connectedIds.has(acc.account_id));
+
+            setAvailableAccounts(newAccounts);
         } catch (error) {
             console.error('Failed to fetch available accounts:', error);
             // Optionally show toast error
@@ -94,10 +102,26 @@ export function FBAdAccounts() {
         if (!managingProfileId) return;
 
         // Filter available accounts to get the full objects for selected IDs
+        // Note: availableAccounts only contains the new ones, which is what we want
         const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.id));
 
+        // We need to APPEND these to the existing accounts, updateConnectedAccounts expects the NEW TOTAL list?
+        // Let's check updateConnectedAccounts impl. 
+        // "return { ...p, adAccounts: accounts };" -> It REPLACES the list.
+        // So we need to merge with existing connected accounts.
+
         try {
-            await updateConnectedAccounts(managingProfileId, selectedAccounts);
+            const profile = connectedProfiles.find(p => p.id === managingProfileId);
+            if (!profile) return;
+
+            const existingAccounts = profile.adAccounts;
+            // Map existing accounts to ensure they match AdAccount structure if needed, 
+            // but they should be compatible or we might need to be careful about fields.
+            // The type is shared so it should be fine.
+
+            const mergedAccounts = [...existingAccounts, ...selectedAccounts];
+
+            await updateConnectedAccounts(managingProfileId, mergedAccounts);
         } catch (error) {
             console.error('Failed to update connections:', error);
         } finally {
@@ -105,6 +129,8 @@ export function FBAdAccounts() {
             setManagingProfileId(null);
         }
     };
+
+    const managingProfileName = connectedProfiles.find(p => p.id === managingProfileId)?.name;
 
     return (
         <div className="p-6 space-y-6">
@@ -210,6 +236,7 @@ export function FBAdAccounts() {
                         onConfirmed={handleConnectionConfirmed}
                         accounts={availableAccounts}
                         isLoading={isLoadingAccounts}
+                        profileName={managingProfileName}
                     />
 
                     {/* Table */}
