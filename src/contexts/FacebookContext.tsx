@@ -42,11 +42,11 @@ const RATE_LIMIT_KEY = 'admachin_rate_limit_reset';
 async function loadProfilesFromDb(): Promise<ConnectedProfile[]> {
     try {
         const profiles = await getProfiles();
-        const now = Date.now();
 
-        // Filter out expired tokens and map to ConnectedProfile
+
+        // Map to ConnectedProfile without filtering expired tokens
+        // We want to show them so we can attempt to refresh or prompt user to reconnect
         const validProfiles = profiles
-            .filter(p => new Date(p.token_expiry).getTime() > now)
             .map((p: ProfileWithAccounts) => ({
                 id: p.fb_user_id,
                 name: p.fb_name,
