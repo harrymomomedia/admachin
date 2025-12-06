@@ -118,12 +118,14 @@ async function saveToRedis(session: any): Promise<void> {
     }
 }
 
-export default async function handler(request: Request) {
+export default async function handler(request: any) {
     console.log('[FB Callback] === CALLBACK STARTED ===');
 
     // Construct absolute URL from request
-    const protocol = request.headers.get('x-forwarded-proto') || 'https';
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'admachin-momomedia.vercel.app';
+    // Vercel passes headers as plain object, not Headers API
+    const headers = request.headers || {};
+    const protocol = headers['x-forwarded-proto'] || 'https';
+    const host = headers['x-forwarded-host'] || headers['host'] || 'admachin-momomedia.vercel.app';
     const requestUrl = request.url.startsWith('http') ? request.url : `${protocol}://${host}${request.url}`;
 
     const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
