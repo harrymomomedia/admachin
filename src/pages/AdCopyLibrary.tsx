@@ -292,7 +292,8 @@ export function AdCopyLibrary() {
                                                     <p
                                                         className={cn(
                                                             "text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
-                                                            !showFullText && "line-clamp-2"
+                                                            !showFullText && "line-clamp-2",
+                                                            showFullText && "whitespace-pre-wrap"
                                                         )}
                                                         title="Click to edit"
                                                         onClick={() => handleEditStart(copy)}
