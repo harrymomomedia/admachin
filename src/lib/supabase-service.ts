@@ -2,7 +2,12 @@
 // Provides typed functions for database operations
 
 import { supabase } from './supabase';
-import type { Database, Profile, AdAccount, Creative } from './database.types';
+import type { Database } from './database.types';
+
+export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
+export type Creative = Database['public']['Tables']['creatives']['Row'];
+export type AdCopy = Database['public']['Tables']['ad_copies']['Row'];
 
 // ============================================
 // PROFILES
@@ -317,4 +322,91 @@ export function getCreativeUrl(storagePath: string): string {
         .getPublicUrl(storagePath);
 
     return data.publicUrl;
+}
+
+// ============================================
+// AD COPIES
+// ============================================
+
+/**
+ * Get all Ad Copies
+ */
+export async function getAdCopies(): Promise<AdCopy[]> {
+    const { data: copies, error } = await supabase
+        .from('ad_copies')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching ad copies:', error);
+        throw error;
+    }
+
+    return copies || [];
+}
+
+/**
+ * Create a new Ad Copy
+ */
+export async function createAdCopy(copy: {
+    user_id?: string | null;
+    text: string;
+    type: string;
+    project?: string;
+    platform?: string;
+    name?: string;
+}): Promise<AdCopy> {
+    const { data, error } = await supabase
+        .from('ad_copies')
+        .insert({
+            user_id: copy.user_id || null,
+            text: copy.text,
+            type: copy.type,
+            project: copy.project || null,
+            platform: copy.platform || null,
+            name: copy.name || null,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating ad copy:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Update an Ad Copy
+ */
+export async function updateAdCopy(id: string, updates: Partial<AdCopy>): Promise<AdCopy> {
+    const { data, error } = await supabase
+        .from('ad_copies')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating ad copy:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete an Ad Copy
+ */
+export async function deleteAdCopy(id: string): Promise<void> {
+    const { error } = await supabase
+        .from('ad_copies')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting ad copy:', error);
+        throw error;
+    }
 }

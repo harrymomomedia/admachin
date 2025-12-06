@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database } from "lucide-react";
+import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database, Type } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 
@@ -14,6 +14,7 @@ const mainNavigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Launch Ad", href: "/launch", icon: Rocket },
     { name: "Creatives", href: "/creatives", icon: Image },
+    { name: "Ad Text", href: "/ad-copies", icon: Type },
     { name: "Campaigns", href: "/campaigns", icon: BarChart3 },
 ];
 

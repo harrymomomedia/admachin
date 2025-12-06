@@ -8,6 +8,7 @@ import { FBProfiles } from "./pages/FBProfiles";
 import { FBAdAccounts } from "./pages/FBAdAccounts";
 import { TeamSettings } from "./pages/TeamSettings";
 import { AccessGate } from "./components/AccessGate";
+import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
               <Route path="facebook/ad-accounts" element={<FBAdAccounts />} />
               {/* Redirect old ad-accounts path */}
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
+              <Route path="ad-copies" element={<AdCopyLibrary />} />
               <Route path="team-settings" element={<TeamSettings />} />
             </Route>
           </Routes>

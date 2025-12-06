@@ -12,6 +12,50 @@ export type Json =
 export interface Database {
     public: {
         Tables: {
+            ad_copies: {
+                Row: {
+                    id: string
+                    user_id: string | null
+                    text: string
+                    type: string
+                    project: string | null
+                    platform: string | null
+                    name: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id?: string | null
+                    text: string
+                    type: string
+                    project?: string | null
+                    platform?: string | null
+                    name?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string | null
+                    text?: string
+                    type?: string
+                    project?: string | null
+                    platform?: string | null
+                    name?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "ad_copies_user_id_fkey"
+                        columns: ["user_id"]
+                        isOneToOne: false
+                        referencedRelation: "users"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
             profiles: {
                 Row: {
                     id: string
