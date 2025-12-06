@@ -7,7 +7,7 @@
 //     runtime: 'edge',
 // };
 
-import { TokenStorage } from '../../services/tokenStorage';
+import { TokenStorage } from '../../services/tokenStorage.js';
 
 interface FacebookTokenResponse {
     access_token: string;
