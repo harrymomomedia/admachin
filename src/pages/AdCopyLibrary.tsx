@@ -251,14 +251,14 @@ export function AdCopyLibrary() {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th className="px-6 py-3 font-medium text-gray-500">Ad Text</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-32">Type</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-32">Project</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-24">Traffic</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-40">Name</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-32">Date</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-24">Creator</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 w-24">Actions</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 min-w-[300px]">Ad Text</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Type</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Project</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Traffic</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-40">Name</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Date</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Creator</th>
+                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -277,7 +277,7 @@ export function AdCopyLibrary() {
                             ) : (
                                 filteredCopies.map((copy) => (
                                     <tr key={copy.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-200 last:border-0">
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 min-w-[300px]">
                                             <div className="max-w-xl">
                                                 {editingId === copy.id ? (
                                                     <textarea
@@ -312,7 +312,7 @@ export function AdCopyLibrary() {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={cn(
                                                 "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border",
                                                 copy.type === 'primary_text' ? "bg-blue-50 text-blue-700 border-blue-200" :
@@ -323,7 +323,7 @@ export function AdCopyLibrary() {
                                                     copy.type === 'headline' ? 'Headline' : 'Description'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             {copy.project ? (
                                                 <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-pink-50 text-pink-700 border border-pink-200">
                                                     {copy.project}
@@ -332,7 +332,7 @@ export function AdCopyLibrary() {
                                                 <span className="text-gray-400">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             {copy.platform ? (
                                                 <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 border border-green-200">
                                                     {copy.platform}
@@ -341,13 +341,13 @@ export function AdCopyLibrary() {
                                                 <span className="text-gray-400">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">
+                                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
                                             {copy.name || '-'}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600 whitespace-nowrap text-xs">
                                             {new Date(copy.created_at).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={cn(
                                                 "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium",
                                                 copy.user_id === currentUserId
@@ -357,7 +357,7 @@ export function AdCopyLibrary() {
                                                 {copy.user_id === currentUserId ? 'Me' : 'User'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button
                                                     onClick={() => copyToClipboard(copy.text, copy.id)}
