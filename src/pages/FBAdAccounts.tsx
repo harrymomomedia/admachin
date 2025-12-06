@@ -60,6 +60,7 @@ export function FBAdAccounts() {
     const [managingProfileId, setManagingProfileId] = useState<string | null>(null);
     const [availableAccounts, setAvailableAccounts] = useState<AdAccount[]>([]);
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+    const [initialSelectedIds, setInitialSelectedIds] = useState<string[]>([]);
 
     const handleRefreshAll = async () => {
         if (isRefreshing) return;
@@ -79,20 +80,17 @@ export function FBAdAccounts() {
         setIsLoadingAccounts(true);
         setAvailableAccounts([]);
 
+        // Calculate initial selection from currently connected accounts
+        const profile = connectedProfiles.find(p => p.id === profileId);
+        const connectedIds = profile?.adAccounts.map(a => a.account_id) || [];
+        setInitialSelectedIds(connectedIds);
+
         try {
             const rawAccounts = await fetchAvailableAccounts(profileId);
-
-            // Filter out already connected accounts
-            const profile = connectedProfiles.find(p => p.id === profileId);
-            const connectedIds = new Set(profile?.adAccounts.map(a => a.account_id) || []);
-
-            // Only show accounts that are NOT connected
-            const newAccounts = rawAccounts.filter(acc => !connectedIds.has(acc.account_id));
-
-            setAvailableAccounts(newAccounts);
+            // Show ALL accounts, do not filter.
+            setAvailableAccounts(rawAccounts);
         } catch (error) {
             console.error('Failed to fetch available accounts:', error);
-            // Optionally show toast error
         } finally {
             setIsLoadingAccounts(false);
         }
@@ -101,32 +99,18 @@ export function FBAdAccounts() {
     const handleConnectionConfirmed = async (selectedIds: string[]) => {
         if (!managingProfileId) return;
 
-        // Filter available accounts to get the full objects for selected IDs
-        // Note: availableAccounts only contains the new ones, which is what we want
+        // The user has made their selection from the full list.
+        // We sync the profile's accounts to match this selection exactly.
         const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.id));
 
-        // We need to APPEND these to the existing accounts, updateConnectedAccounts expects the NEW TOTAL list?
-        // Let's check updateConnectedAccounts impl. 
-        // "return { ...p, adAccounts: accounts };" -> It REPLACES the list.
-        // So we need to merge with existing connected accounts.
-
         try {
-            const profile = connectedProfiles.find(p => p.id === managingProfileId);
-            if (!profile) return;
-
-            const existingAccounts = profile.adAccounts;
-            // Map existing accounts to ensure they match AdAccount structure if needed, 
-            // but they should be compatible or we might need to be careful about fields.
-            // The type is shared so it should be fine.
-
-            const mergedAccounts = [...existingAccounts, ...selectedAccounts];
-
-            await updateConnectedAccounts(managingProfileId, mergedAccounts);
+            await updateConnectedAccounts(managingProfileId, selectedAccounts);
         } catch (error) {
             console.error('Failed to update connections:', error);
         } finally {
             setIsModalOpen(false);
             setManagingProfileId(null);
+            setInitialSelectedIds([]);
         }
     };
 
@@ -237,6 +221,7 @@ export function FBAdAccounts() {
                         accounts={availableAccounts}
                         isLoading={isLoadingAccounts}
                         profileName={managingProfileName}
+                        initialSelectedIds={initialSelectedIds}
                     />
 
                     {/* Table */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, X, Search } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import type { AdAccount } from '../../services/facebook';
@@ -7,9 +7,9 @@ interface SelectAdAccountsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onConfirmed: (selectedIds: string[]) => void;
-    accounts: AdAccount[];
     isLoading?: boolean;
     profileName?: string;
+    initialSelectedIds?: string[];
 }
 
 export function SelectAdAccountsModal({
@@ -18,13 +18,21 @@ export function SelectAdAccountsModal({
     onConfirmed,
     accounts,
     isLoading,
-    profileName
+    profileName,
+    initialSelectedIds = []
 }: SelectAdAccountsModalProps) {
-    // Start with NO accounts selected, letting user choose.
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    // Start with provided selection
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
     const [searchQuery, setSearchQuery] = useState('');
 
     if (!isOpen) return null;
+
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedIds(new Set(initialSelectedIds));
+            setSearchQuery('');
+        }
+    }, [isOpen, initialSelectedIds]);
 
     const filteredAccounts = accounts.filter(acc =>
         acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
