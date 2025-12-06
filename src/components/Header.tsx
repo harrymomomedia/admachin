@@ -1,6 +1,9 @@
 import { Bell, Search } from "lucide-react";
+import { useFacebook } from "../contexts/FacebookContext";
 
 export function Header() {
+    const { currentUser, teamName } = useFacebook();
+
     return (
         <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
             <div className="flex items-center gap-4 w-96">
@@ -18,8 +21,20 @@ export function Header() {
                     <Bell className="h-5 w-5" />
                     <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full"></span>
                 </button>
-                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium">
-                    JD
+
+                {/* Team & User Info */}
+                <div className="flex items-center gap-3 pl-4 border-l border-border">
+                    <div className="text-right hidden md:block">
+                        <div className="text-sm font-semibold text-foreground">
+                            {currentUser ? currentUser.name : 'Not Connected'}
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center justify-end gap-1">
+                            {teamName} <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">ADMIN</span>
+                        </div>
+                    </div>
+                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-medium shadow-sm">
+                        {currentUser ? currentUser.name.charAt(0).toUpperCase() : '?'}
+                    </div>
                 </div>
             </div>
         </header>

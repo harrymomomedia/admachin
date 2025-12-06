@@ -116,6 +116,10 @@ interface FacebookContextType {
     clearError: () => void;
     setActiveProfile: (profileId: string) => void;
     addProfileFromOAuth: (profileData: ConnectedProfile) => void; // For server-side OAuth
+
+    // Team & User Info
+    teamName: string;
+    currentUser: ConnectedProfile | null;
 }
 
 const FacebookContext = createContext<FacebookContextType | null>(null);
@@ -476,6 +480,8 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 clearError,
                 setActiveProfile,
                 addProfileFromOAuth,
+                teamName: 'Momomedia', // Hardcoded for now as per requirement, or could be state
+                currentUser: connectedProfiles.length > 0 ? connectedProfiles[0] : null,
             }}
         >
             {children}
