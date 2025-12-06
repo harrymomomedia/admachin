@@ -19,7 +19,7 @@ export default function handler(request: Request) {
     // Build the callback URL based on the request origin
     const url = new URL(request.url);
     const origin = url.origin;
-    const redirectUri = `${origin}/api/auth/facebook/callback`;
+    const redirectUri = `${origin}/api/auth/facebook/callback2`;
 
     console.log('[FB OAuth] Initiating login...');
     console.log('[FB OAuth] Using config_id:', !!FACEBOOK_CONFIG_ID);
