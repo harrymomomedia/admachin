@@ -8,8 +8,7 @@ import {
     CheckCircle,
     Loader2,
 } from "lucide-react";
-import { uploadToB2 } from "../lib/b2-storage";
-import { addCreative } from "../lib/supabase-service";
+import { uploadCreativeFile, addCreative } from "../lib/supabase-service";
 
 interface UploadedFile {
     id: string;
@@ -81,8 +80,8 @@ export function CreativeUploader({
 
     const uploadFile = useCallback(async (uploadedFile: UploadedFile) => {
         try {
-            // Upload to B2
-            const result = await uploadToB2(uploadedFile.file, (progress) => {
+            // Upload to Supabase Storage
+            const result = await uploadCreativeFile(uploadedFile.file, (progress: number) => {
                 setFiles((prev) =>
                     prev.map((f) =>
                         f.id === uploadedFile.id ? { ...f, progress } : f
@@ -94,8 +93,8 @@ export function CreativeUploader({
             await addCreative({
                 name: uploadedFile.file.name,
                 type: uploadedFile.type,
-                storage_path: result.fileName,
-                file_size: result.contentLength,
+                storage_path: result.path,
+                file_size: uploadedFile.file.size,
                 dimensions: null, // TODO: extract from image/video
                 duration: null, // TODO: extract from video
                 uploaded_by: 'Harry',
