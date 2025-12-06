@@ -127,11 +127,13 @@ export function SelectAdAccountsModal({
                     ) : (
                         filteredAccounts.map((account) => {
                             // Using account_id for matching to avoid "act_" prefix issues
-                            const isSelected = selectedIds.has(account.account_id);
+                            // Force String conversion to ensure checking '123' (string) vs 123 (number) works
+                            const accountId = String(account.account_id);
+                            const isSelected = selectedIds.has(accountId);
                             return (
                                 <div
                                     key={account.id}
-                                    onClick={() => toggleSelection(account.account_id)}
+                                    onClick={() => toggleSelection(accountId)}
                                     className={cn(
                                         "group flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all duration-200",
                                         isSelected

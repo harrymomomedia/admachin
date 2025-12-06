@@ -102,8 +102,8 @@ export function FBAdAccounts() {
 
         // The user has made their selection from the full list.
         // We sync the profile's accounts to match this selection exactly.
-        // Important: selectedIds are now account_id (numeric), so we match against acc.account_id
-        const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(acc.account_id));
+        // Important: selectedIds are now account_id (numeric string), so we match against String(acc.account_id)
+        const selectedAccounts = availableAccounts.filter(acc => selectedIds.includes(String(acc.account_id)));
 
         try {
             await updateConnectedAccounts(managingProfileId, selectedAccounts);
