@@ -1,8 +1,10 @@
 // FB Profiles Page - Manage connected Facebook profiles
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, RefreshCw, Clock, CheckCircle, AlertTriangle, User } from 'lucide-react';
-import { useFacebook } from '../contexts/FacebookContext';
+import { useFacebook, type ConnectedProfile } from '../contexts/FacebookContext';
+import { SelectAdAccountsModal } from '../components/settings/SelectAdAccountsModal';
 import { cn } from '../utils/cn';
 
 export function FBProfiles() {
@@ -14,9 +16,82 @@ export function FBProfiles() {
         disconnectProfile,
         refreshProfile,
         clearError,
+        addProfileFromOAuth,
     } = useFacebook();
 
+    const [searchParams, setSearchParams] = useSearchParams();
     const [refreshingId, setRefreshingId] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    // Modal State
+    const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
+    const [pendingProfile, setPendingProfile] = useState<ConnectedProfile | null>(null);
+
+    // Track if we've processed the OAuth callback
+    const processedOAuth = useRef(false);
+
+    // Parse OAuth callback parameters
+    const oauthData = useMemo(() => {
+        const success = searchParams.get('success');
+        const profileData = searchParams.get('profile');
+        const errorParam = searchParams.get('error');
+
+        if (success === 'true' && profileData) {
+            try {
+                return { profile: JSON.parse(decodeURIComponent(profileData)) as ConnectedProfile };
+            } catch (e) {
+                console.error('Failed to parse OAuth profile data:', e);
+                return null;
+            }
+        } else if (errorParam) {
+            return { error: errorParam };
+        }
+        return null;
+    }, [searchParams]);
+
+    // Handle OAuth callback
+    useEffect(() => {
+        if (!oauthData || processedOAuth.current) return;
+
+        processedOAuth.current = true;
+
+        if ('profile' in oauthData && oauthData.profile) {
+            // Schedule state updates for next tick
+            setTimeout(() => {
+                setPendingProfile(oauthData.profile);
+                setIsSelectionModalOpen(true);
+                setSearchParams({}, { replace: true });
+            }, 0);
+        } else if ('error' in oauthData) {
+            setTimeout(() => {
+                setSearchParams({}, { replace: true });
+            }, 0);
+        }
+    }, [oauthData, setSearchParams]);
+
+    // Handle Modal Confirmation
+    const handleSelectionConfirmed = (selectedIds: string[]) => {
+        if (!pendingProfile) return;
+
+        // Filter the profile's accounts to only the selected ones
+        const filteredAccounts = pendingProfile.adAccounts.filter(acc =>
+            selectedIds.includes(acc.id)
+        );
+
+        const newProfile = {
+            ...pendingProfile,
+            adAccounts: filteredAccounts
+        };
+
+        // Add to context
+        addProfileFromOAuth(newProfile);
+
+        setSuccessMessage(`Connected ${newProfile.name} with ${filteredAccounts.length} ad account(s). Token valid for ~60 days!`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+
+        setIsSelectionModalOpen(false);
+        setPendingProfile(null);
+    };
 
     const handleRefresh = async (profileId: string) => {
         setRefreshingId(profileId);
@@ -59,6 +134,16 @@ export function FBProfiles() {
                     Connect Profile
                 </button>
             </div>
+
+            {/* Success Message */}
+            {successMessage && (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 flex items-start gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="text-sm font-medium text-green-700">{successMessage}</p>
+                    </div>
+                </div>
+            )}
 
             {/* Error Banner */}
             {error && (
@@ -162,6 +247,17 @@ export function FBProfiles() {
                     })}
                 </div>
             )}
+
+            {/* Ad Account Selection Modal */}
+            <SelectAdAccountsModal
+                isOpen={isSelectionModalOpen}
+                onClose={() => {
+                    setIsSelectionModalOpen(false);
+                    setPendingProfile(null);
+                }}
+                onConfirmed={handleSelectionConfirmed}
+                accounts={pendingProfile?.adAccounts || []}
+            />
         </div>
     );
 }
