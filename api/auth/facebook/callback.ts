@@ -1,5 +1,7 @@
-// Facebook OAuth Callback - ZERO IMPORTS VERSION
-// All code inlined to avoid import issues
+// Facebook OAuth Callback - Using Vercel Node.js API format
+// This uses Express-style req/res instead of Web API Request/Response
+
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 interface FacebookTokenResponse {
     access_token: string;
@@ -13,9 +15,6 @@ interface FacebookUserResponse {
     email?: string;
 }
 
-/**
- * Exchange authorization code for short-lived access token
- */
 async function exchangeCodeForToken(
     code: string,
     redirectUri: string,
@@ -34,13 +33,9 @@ async function exchangeCodeForToken(
     if (!data.access_token) {
         throw new Error('Failed to exchange code for token');
     }
-
     return data.access_token;
 }
 
-/**
- * Exchange short-lived token for long-lived token (60 days)
- */
 async function getLongLivedToken(
     shortLivedToken: string,
     appId: string,
@@ -58,112 +53,51 @@ async function getLongLivedToken(
     if (!data.access_token) {
         throw new Error('Failed to exchange for long-lived token');
     }
-
-    return {
-        token: data.access_token,
-        expiresIn: data.expires_in || 5184000,
-    };
+    return { token: data.access_token, expiresIn: data.expires_in || 5184000 };
 }
 
-/**
- * Get user info from Facebook
- */
 async function getMe(accessToken: string): Promise<FacebookUserResponse> {
     const url = new URL('https://graph.facebook.com/v21.0/me');
     url.searchParams.set('access_token', accessToken);
     url.searchParams.set('fields', 'id,name,email');
 
     const response = await fetch(url.toString());
-
     if (!response.ok) {
         throw new Error(`Failed to get user info: ${response.statusText}`);
     }
-
     return response.json() as Promise<FacebookUserResponse>;
 }
 
-/**
- * Save to Redis - INLINED
- */
-async function saveToRedis(session: any): Promise<void> {
-    const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-
-    console.log('[Save] Redis URL exists:', !!url);
-    console.log('[Save] Redis Token exists:', !!token);
-
-    if (!url || !token) {
-        console.error('[Save] Redis not configured');
-        return;
-    }
-
-    try {
-        // Use Upstash REST API directly
-        const response = await fetch(`${url}/set/momomedia_team_session`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(session)
-        });
-
-        if (!response.ok) {
-            throw new Error(`Redis save failed: ${response.statusText}`);
-        }
-
-        console.log('[Save] Session saved to Redis');
-    } catch (err) {
-        console.error('[Save] Redis error:', err);
-    }
-}
-
-export default async function handler(request: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('[FB Callback] === CALLBACK STARTED ===');
-
-    // Construct absolute URL from request
-    // Vercel passes headers as plain object, not Headers API
-    const headers = request.headers || {};
-    const protocol = headers['x-forwarded-proto'] || 'https';
-    const host = headers['x-forwarded-host'] || headers['host'] || 'admachin-momomedia.vercel.app';
-    const requestUrl = request.url.startsWith('http') ? request.url : `${protocol}://${host}${request.url}`;
 
     const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
     const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
 
+    // Get origin from headers
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers['host'] || 'admachin-momomedia.vercel.app';
+    const origin = `${protocol}://${host}`;
+
     if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
         console.error('[FB Callback] Missing Facebook App ID or Secret');
-        const origin = new URL(requestUrl).origin;
-        return new Response(null, {
-            status: 302,
-            headers: { 'Location': `${origin}/ad-accounts?error=${encodeURIComponent('Server configuration error')}` }
-        });
+        return res.redirect(`${origin}/ad-accounts?error=server_config_error`);
     }
 
-    const url = new URL(requestUrl);
-    const code = url.searchParams.get('code');
-    const error = url.searchParams.get('error');
+    const code = req.query.code as string;
+    const error = req.query.error as string;
 
-    // Handle user cancellation or errors
     if (error) {
         console.log('[FB Callback] User cancelled or error:', error);
-        const errorReason = url.searchParams.get('error_reason') || 'Authentication cancelled';
-        return new Response(null, {
-            status: 302,
-            headers: { 'Location': `${url.origin}/ad-accounts?error=${encodeURIComponent(errorReason)}` }
-        });
+        return res.redirect(`${origin}/ad-accounts?error=${encodeURIComponent(error)}`);
     }
 
     if (!code) {
         console.error('[FB Callback] No authorization code received');
-        return new Response(null, {
-            status: 302,
-            headers: { 'Location': `${url.origin}/ad-accounts?error=${encodeURIComponent('No authorization code received')}` }
-        });
+        return res.redirect(`${origin}/ad-accounts?error=no_code`);
     }
 
     try {
-        const origin = url.origin;
         const redirectUri = `${origin}/api/auth/facebook/callback`;
 
         console.log('[FB Callback] Step 1: Exchanging code for token...');
@@ -178,42 +112,15 @@ export default async function handler(request: any) {
         const user = await getMe(longLivedToken);
         console.log('[FB Callback] ✓ Got user info:', user.name, user.id);
 
-        console.log('[FB Callback] Step 4: Saving session...');
-        const tokenExpiry = Date.now() + (expiresIn * 1000);
-
-        // TEMPORARILY DISABLED - Testing if Redis is causing timeout
-        // saveToRedis({
-        //     accessToken: longLivedToken,
-        //     tokenExpiry: tokenExpiry,
-        //     userName: user.name,
-        //     userId: user.id,
-        //     connectedAt: Date.now()
-        // }).catch(err => console.error('[FB Callback] Redis save failed:', err));
-
-        console.log('[FB Callback] Skipping Redis for now - testing redirect');
-        console.log('[FB Callback] Token:', longLivedToken.substring(0, 20) + '...');
-        console.log('[FB Callback] User:', user.name, user.id);
-
+        // For now, pass token via URL params (will fix storage later)
         console.log('[FB Callback] SUCCESS! Redirecting to app...');
-        const redirectUrl = `${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`;
-        console.log('[FB Callback] Redirect URL:', redirectUrl);
+        const successUrl = `${origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}&token=${encodeURIComponent(longLivedToken)}&expires=${expiresIn}&user_id=${user.id}`;
 
-        // Manual redirect for Vercel Node.js runtime
-        return new Response(null, {
-            status: 302,
-            headers: {
-                'Location': redirectUrl
-            }
-        });
+        return res.redirect(successUrl);
 
     } catch (err) {
         console.error('[FB Callback] ERROR:', err);
-        console.error('[FB Callback] Stack:', err instanceof Error ? err.stack : 'No stack');
         const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
-        const origin = new URL(requestUrl).origin;
-        return new Response(null, {
-            status: 302,
-            headers: { 'Location': `${origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}` }
-        });
+        return res.redirect(`${origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`);
     }
 }
