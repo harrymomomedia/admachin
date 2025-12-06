@@ -181,14 +181,18 @@ export default async function handler(request: any) {
         console.log('[FB Callback] Step 4: Saving session...');
         const tokenExpiry = Date.now() + (expiresIn * 1000);
 
-        // Save to Redis without awaiting to prevent timeout
-        saveToRedis({
-            accessToken: longLivedToken,
-            tokenExpiry: tokenExpiry,
-            userName: user.name,
-            userId: user.id,
-            connectedAt: Date.now()
-        }).catch(err => console.error('[FB Callback] Redis save failed:', err));
+        // TEMPORARILY DISABLED - Testing if Redis is causing timeout
+        // saveToRedis({
+        //     accessToken: longLivedToken,
+        //     tokenExpiry: tokenExpiry,
+        //     userName: user.name,
+        //     userId: user.id,
+        //     connectedAt: Date.now()
+        // }).catch(err => console.error('[FB Callback] Redis save failed:', err));
+
+        console.log('[FB Callback] Skipping Redis for now - testing redirect');
+        console.log('[FB Callback] Token:', longLivedToken.substring(0, 20) + '...');
+        console.log('[FB Callback] User:', user.name, user.id);
 
         console.log('[FB Callback] SUCCESS! Redirecting to app...');
         const redirectUrl = `${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`;
