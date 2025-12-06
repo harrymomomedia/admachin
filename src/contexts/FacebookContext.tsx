@@ -109,7 +109,7 @@ interface FacebookContextType {
     allAdAccounts: AdAccount[];
 
     // Actions
-    connectNewProfile: () => Promise<void>;
+    connectNewProfile: () => void;
     disconnectProfile: (profileId: string) => void;
     disconnectAdAccount: (profileId: string, accountId: string) => void;
     refreshProfile: (profileId: string) => Promise<void>;
@@ -351,7 +351,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         return false;
     }, []);
 
-    const connectNewProfile = useCallback(async () => {
+    const connectNewProfile = useCallback(() => {
         // Check rate limiting first
         if (isRateLimited()) {
             const resetTime = getRateLimitResetTime();
@@ -363,23 +363,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         setError(null);
 
         try {
-            // Client-Side FB SDK Flow:
-            // FB.login() opens popup -> user approves -> token sent to backend
-            const result = await loginWithFacebook();
-
-            if (!result.success) {
-                setError(result.error || 'Failed to connect Facebook account');
-                setIsLoading(false);
-                return;
-            }
-
-            console.log('[FB Context] Login successful, reloading profiles...');
-
-            // Reload profiles from storage (backend saved it)
-            const updatedProfiles = loadProfiles();
-            setConnectedProfiles(updatedProfiles);
-            setIsLoading(false);
-
+            // Server-side OAuth - redirects browser to Facebook
+            loginWithFacebook();
+            // Note: page redirects, so code below never runs
         } catch (err) {
             console.error('[FB] Connect error:', err);
             setError(err instanceof Error ? err.message : 'Failed to initiate connection');
