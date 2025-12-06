@@ -1,5 +1,5 @@
 // Team Settings API - GET/POST team info (name, logo)
-import { TeamStorage } from '../services/teamStorage.js';
+import { TeamStorage } from '../services/teamStorage';
 
 export default async function handler(request: Request) {
     const method = request.method;

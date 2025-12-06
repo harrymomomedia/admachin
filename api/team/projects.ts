@@ -1,5 +1,5 @@
 // Team Projects API - CRUD for projects
-import { TeamStorage, Project } from '../services/teamStorage.js';
+import { TeamStorage, Project } from '../services/teamStorage';
 
 export default async function handler(request: Request) {
     const method = request.method;
