@@ -121,16 +121,21 @@ async function saveToRedis(session: any): Promise<void> {
 export default async function handler(request: Request) {
     console.log('[FB Callback] === CALLBACK STARTED ===');
 
+    // Construct absolute URL from request
+    const protocol = request.headers.get('x-forwarded-proto') || 'https';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'admachin-momomedia.vercel.app';
+    const requestUrl = request.url.startsWith('http') ? request.url : `${protocol}://${host}${request.url}`;
+
     const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
     const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
 
     if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
         console.error('[FB Callback] Missing Facebook App ID or Secret');
-        const origin = new URL(request.url).origin;
+        const origin = new URL(requestUrl).origin;
         return Response.redirect(`${origin}/ad-accounts?error=${encodeURIComponent('Server configuration error')}`, 302);
     }
 
-    const url = new URL(request.url);
+    const url = new URL(requestUrl);
     const code = url.searchParams.get('code');
     const error = url.searchParams.get('error');
 
