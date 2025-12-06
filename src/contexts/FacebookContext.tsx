@@ -187,7 +187,14 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 if (savedProfiles.length === 0) {
                     try {
                         console.log('[FB] Checking server-side session...');
-                        const response = await fetch('/api/auth/facebook/session');
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout to prevent UI hanging
+
+                        const response = await fetch('/api/auth/facebook/session', {
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+
                         console.log('[FB] Server session response status:', response.status);
 
                         if (response.ok) {
@@ -202,14 +209,14 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                                     connectedAt: Date.now()
                                 };
                                 savedProfiles = [serverProfile];
-                                setConnectedProfiles(savedProfiles); // Trigger state update immediately
+                                setConnectedProfiles(savedProfiles);
                                 saveProfiles(savedProfiles);
                             } else {
                                 console.log('[FB] Server session not authenticated');
                             }
                         }
                     } catch (sessionErr) {
-                        console.warn('[FB] Failed to check server session:', sessionErr);
+                        console.warn('[FB] Failed to check server session (timeout or error):', sessionErr);
                     }
                 }
 
