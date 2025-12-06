@@ -1,5 +1,5 @@
 // Facebook OAuth Callback - Using Vercel Node.js API format
-// This uses Express-style req/res instead of Web API Request/Response
+// Fetches ad accounts and returns complete profile data
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -13,6 +13,18 @@ interface FacebookUserResponse {
     id: string;
     name: string;
     email?: string;
+}
+
+interface AdAccountData {
+    id: string;
+    name: string;
+    account_status: number;
+    currency?: string;
+    timezone_name?: string;
+}
+
+interface AdAccountsResponse {
+    data: AdAccountData[];
 }
 
 async function exchangeCodeForToken(
@@ -68,6 +80,22 @@ async function getMe(accessToken: string): Promise<FacebookUserResponse> {
     return response.json() as Promise<FacebookUserResponse>;
 }
 
+async function getAdAccounts(accessToken: string): Promise<AdAccountData[]> {
+    const url = new URL('https://graph.facebook.com/v21.0/me/adaccounts');
+    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set('fields', 'id,name,account_status,currency,timezone_name');
+    url.searchParams.set('limit', '100');
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+        console.error('[FB Callback] Failed to fetch ad accounts:', response.statusText);
+        return [];
+    }
+
+    const data = await response.json() as AdAccountsResponse;
+    return data.data || [];
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('[FB Callback] === CALLBACK STARTED ===');
 
@@ -112,9 +140,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const user = await getMe(longLivedToken);
         console.log('[FB Callback] ✓ Got user info:', user.name, user.id);
 
-        // For now, pass token via URL params (will fix storage later)
-        console.log('[FB Callback] SUCCESS! Redirecting to app...');
-        const successUrl = `${origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}&token=${encodeURIComponent(longLivedToken)}&expires=${expiresIn}&user_id=${user.id}`;
+        console.log('[FB Callback] Step 4: Getting ad accounts...');
+        const adAccounts = await getAdAccounts(longLivedToken);
+        console.log('[FB Callback] ✓ Got', adAccounts.length, 'ad accounts');
+
+        // Build complete profile object matching ConnectedProfile type
+        const profile = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            accessToken: longLivedToken,
+            tokenExpiry: Date.now() + (expiresIn * 1000),
+            adAccounts: adAccounts.map(acc => ({
+                id: acc.id,
+                name: acc.name,
+                account_status: acc.account_status,
+                currency: acc.currency || 'USD',
+                timezone_name: acc.timezone_name || 'America/Los_Angeles'
+            })),
+            connectedAt: Date.now()
+        };
+
+        console.log('[FB Callback] SUCCESS! Profile with', profile.adAccounts.length, 'accounts');
+
+        // Encode profile as URL parameter
+        const profileParam = encodeURIComponent(JSON.stringify(profile));
+        const successUrl = `${origin}/ad-accounts?success=true&profile=${profileParam}`;
 
         return res.redirect(successUrl);
 
