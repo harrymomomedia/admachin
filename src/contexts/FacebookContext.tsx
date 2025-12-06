@@ -236,7 +236,9 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 
     // Initialize on mount
     useEffect(() => {
+        console.log('[FB Context] Init effect. Config valid:', configValidation.valid);
         if (!configValidation.valid) {
+            console.warn('[FB Context] Missing config:', configValidation.missing);
             setIsLoading(false);
             return;
         }
@@ -245,6 +247,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
             try {
                 // Load saved profiles from storage FIRST
                 let savedProfiles = await loadProfilesFromDb();
+                console.log('[FB Context] Loaded profiles from DB:', savedProfiles.length);
 
                 // Auto-Login Logic: Check Server-Side Session
                 if (savedProfiles.length === 0) {
