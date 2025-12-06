@@ -165,13 +165,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Encode profile as URL parameter
         const profileParam = encodeURIComponent(JSON.stringify(profile));
-        const successUrl = `${origin}/ad-accounts?success=true&profile=${profileParam}`;
+        const successUrl = `${origin}/facebook/profiles?success=true&profile=${profileParam}`;
 
         return res.redirect(successUrl);
 
     } catch (err) {
         console.error('[FB Callback] ERROR:', err);
         const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
-        return res.redirect(`${origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`);
+        return res.redirect(`${origin}/facebook/profiles?error=${encodeURIComponent(errorMessage)}`);
     }
 }
