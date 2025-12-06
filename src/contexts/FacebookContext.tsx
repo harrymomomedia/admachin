@@ -181,10 +181,40 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         const init = async () => {
             try {
                 // Load saved profiles from storage FIRST
-                const savedProfiles = loadProfiles();
+                let savedProfiles = loadProfiles();
+
+                // Auto-Login Logic: Check Server-Side Session
+                if (savedProfiles.length === 0) {
+                    try {
+                        console.log('[FB] Checking server-side session...');
+                        const response = await fetch('/api/auth/facebook/session');
+                        console.log('[FB] Server session response status:', response.status);
+
+                        if (response.ok) {
+                            const session = await response.json();
+                            console.log('[FB] Server session data:', session);
+
+                            if (session.isAuthenticated && session.profile) {
+                                console.log('[FB] Inherited server-side session for:', session.profile.name);
+                                const serverProfile: ConnectedProfile = {
+                                    ...session.profile,
+                                    adAccounts: [], // accounts will be fetched on refresh
+                                    connectedAt: Date.now()
+                                };
+                                savedProfiles = [serverProfile];
+                                setConnectedProfiles(savedProfiles); // Trigger state update immediately
+                                saveProfiles(savedProfiles);
+                            } else {
+                                console.log('[FB] Server session not authenticated');
+                            }
+                        }
+                    } catch (sessionErr) {
+                        console.warn('[FB] Failed to check server session:', sessionErr);
+                    }
+                }
 
                 if (savedProfiles.length > 0) {
-                    console.log('[FB] Found', savedProfiles.length, 'saved profiles');
+                    console.log('[FB] Found', savedProfiles.length, 'profiles (local or inherited)');
                     setConnectedProfiles(savedProfiles);
 
                     // Set the first profile as active for API calls
@@ -196,7 +226,10 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                     // If token expires in less than 7 days, try to refresh it
                     const now = Date.now();
                     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-                    if (activeProfile.tokenExpiry - now < sevenDaysMs) {
+
+                    // Only attempt refresh if it's NOT a system/persistent token
+                    // System tokens (from env) are assumed managed by admin/server
+                    if (activeProfile.tokenExpiry - now < sevenDaysMs && activeProfile.id !== 'system_persistent_id') {
                         console.log('[FB] Token expiring soon, attempting refresh...');
                         try {
                             const refreshData = await refreshFacebookToken(activeProfile.accessToken);

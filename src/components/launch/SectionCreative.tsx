@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Sparkles, ChevronDown, Image as ImageIcon, Film, X, Plus, Upload } from "lucide-react";
 import type { LaunchAdFormData, CreativeData } from "../../types/launch";
 import type { FacebookPage, CallToActionType } from "../../types/facebook";
@@ -74,23 +74,17 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
     const creative = data.creative || {};
     const [showCTADropdown, setShowCTADropdown] = useState(false);
     const [showMediaPicker, setShowMediaPicker] = useState(false);
-    const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
-    const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
 
-    // Load media library on mount
-    useEffect(() => {
-        setMediaLibrary(loadMediaLibrary());
-    }, []);
+    // Use lazy initializer to load media library once
+    const [mediaLibrary] = useState<MediaItem[]>(() => loadMediaLibrary());
 
-    // Sync selected media with creative state
-    useEffect(() => {
+    // Derive selected media from creative state using useMemo
+    const selectedMedia = useMemo(() => {
         if (creative.imageUrl || creative.mediaPreview) {
             const url = creative.imageUrl || creative.mediaPreview;
-            const found = mediaLibrary.find(m => m.preview === url || m.url === url);
-            if (found) {
-                setSelectedMedia(found);
-            }
+            return mediaLibrary.find(m => m.preview === url || m.url === url) || null;
         }
+        return null;
     }, [mediaLibrary, creative.imageUrl, creative.mediaPreview]);
 
     const updateCreative = (updates: Partial<CreativeData>) => {
@@ -101,7 +95,6 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
     };
 
     const handleSelectMedia = (media: MediaItem) => {
-        setSelectedMedia(media);
         updateCreative({
             mediaPreview: media.preview,
             mediaType: media.type,
@@ -112,7 +105,6 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
     };
 
     const handleClearMedia = () => {
-        setSelectedMedia(null);
         updateCreative({
             mediaPreview: undefined,
             mediaType: undefined,
@@ -214,8 +206,8 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
                                             key={media.id}
                                             onClick={() => handleSelectMedia(media)}
                                             className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 ${selectedMedia?.id === media.id
-                                                    ? "border-blue-500 ring-2 ring-blue-500/30"
-                                                    : "border-transparent hover:border-gray-300"
+                                                ? "border-blue-500 ring-2 ring-blue-500/30"
+                                                : "border-transparent hover:border-gray-300"
                                                 }`}
                                         >
                                             <img

@@ -105,4 +105,9 @@ export interface LaunchAdFormData {
     creative?: CreativeData;
     budget?: BudgetData;
     placements?: PlacementData;
+    specialAdCategories?: string[]; // CREDIT, HOUSING, EMPLOYMENT, ISSUES_ELECTIONS_POLITICS
+    conversion?: {
+        pixelId?: string;
+        customEvent?: string; // e.g. LEAD, PURCHASE, COMPLETE_REGISTRATION
+    };
 }

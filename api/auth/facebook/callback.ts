@@ -1,9 +1,13 @@
 // Facebook OAuth Callback - Handles the redirect from Facebook and exchanges tokens
 // Endpoint: GET /api/auth/facebook/callback
 
-export const config = {
-    runtime: 'edge',
-};
+// NOTE: Switched to Node.js runtime to support local file system persistence
+// In production with KV, this could be switched back to Edge if using @vercel/kv HTTP API
+// export const config = {
+//     runtime: 'edge',
+// };
+
+import { TokenStorage } from '../../services/tokenStorage';
 
 interface FacebookTokenResponse {
     access_token: string;
@@ -15,20 +19,6 @@ interface FacebookUserResponse {
     id: string;
     name: string;
     email?: string;
-}
-
-interface AdAccountResponse {
-    data: Array<{
-        id: string;
-        name: string;
-        account_id: string;
-        account_status: number;
-        currency: string;
-        timezone_name: string;
-        amount_spent?: string;
-        balance?: string;
-        business?: { id: string; name: string };
-    }>;
 }
 
 /**
@@ -95,18 +85,6 @@ async function getMe(accessToken: string): Promise<FacebookUserResponse> {
     return response.json() as Promise<FacebookUserResponse>;
 }
 
-/**
- * Get user's ad accounts
- */
-async function getAdAccounts(accessToken: string): Promise<AdAccountResponse> {
-    const url = new URL('https://graph.facebook.com/v21.0/me/adaccounts');
-    url.searchParams.set('access_token', accessToken);
-    url.searchParams.set('fields', 'id,name,account_id,account_status,currency,timezone_name,amount_spent,balance,business{id,name}');
-
-    const response = await fetch(url.toString());
-    return response.json() as Promise<AdAccountResponse>;
-}
-
 export default async function handler(request: Request) {
     const FACEBOOK_APP_ID = process.env.VITE_FB_APP_ID || process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID;
     const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
@@ -148,26 +126,21 @@ export default async function handler(request: Request) {
         console.log('[FB OAuth] Getting user info...');
         const user = await getMe(longLivedToken);
 
-        // Step 4: Get ad accounts
-        console.log('[FB OAuth] Getting ad accounts...');
-        const adAccounts = await getAdAccounts(longLivedToken);
+        // Step 4: Persist the session to the Server Store (Auto-Login System)
+        console.log(`[FB OAuth] Saving permanent session for user: ${user.name}`);
+        const tokenExpiry = Date.now() + (expiresIn * 1000);
 
-        // Build the profile data to pass to frontend
-        const profileData = {
-            id: user.id,
-            name: user.name || `Facebook Profile`,
-            email: user.email,
+        await TokenStorage.save({
             accessToken: longLivedToken,
-            tokenExpiry: Date.now() + (expiresIn * 1000), // Convert to timestamp
-            adAccounts: adAccounts.data || [],
-            connectedAt: Date.now(),
-        };
+            tokenExpiry: tokenExpiry,
+            userName: user.name,
+            userId: user.id,
+            connectedAt: Date.now()
+        });
 
-        // Encode the data for passing via URL (will be decoded by frontend)
-        const encodedData = encodeURIComponent(JSON.stringify(profileData));
-
-        // Redirect back to app with the profile data
-        return Response.redirect(`${url.origin}/ad-accounts?success=true&profile=${encodedData}`, 302);
+        // Redirect back to app - success!
+        // The frontend will now call /api/auth/facebook/session and find the token we just saved.
+        return Response.redirect(`${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`, 302);
 
     } catch (err) {
         console.error('[FB OAuth] Error:', err);

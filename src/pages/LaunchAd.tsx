@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, FileBox, FilePlus2, AlertCircle, Rocket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFacebook } from "../contexts/FacebookContext";
-import api from "../services/facebook/api";
+import api, { FacebookApiError } from "../services/facebook/api";
 import { getSelectedAdAccountId, setSelectedAdAccountId } from "../services/facebook/config";
 import { SectionAccountCampaign } from "../components/launch/SectionAccountCampaign";
 import { SectionLocationAudience } from "../components/launch/SectionLocationAudience";
 import { SectionPlacements } from "../components/launch/SectionPlacements";
 import { SectionCreative } from "../components/launch/SectionCreative";
+import { SectionConversion } from "../components/launch/SectionConversion";
 import type { LaunchAdFormData, CreationMode } from "../types/launch";
 import type { CreateCampaignParams, CreateAdSetParams, CreateAdParams, Campaign, AdSet, FacebookPage } from "../types/facebook";
 
@@ -178,15 +179,30 @@ export function LaunchAd() {
             errors.push("Minimum daily budget is $1");
         }
 
+        // Conversion validation
+        if (["OUTCOME_LEADS", "OUTCOME_SALES"].includes(formData.objective || "")) {
+            if (!formData.conversion?.pixelId) {
+                errors.push("Pixel is required for this objective");
+            }
+        }
+
         // Creative validation
         if (!formData.creative?.pageId) {
             errors.push("Facebook Page is required");
         }
+        if (!formData.creative?.headline?.trim()) {
+            errors.push("Headline is required");
+        }
         if (!formData.creative?.primaryText?.trim()) {
             errors.push("Primary text is required");
         }
-        if (!formData.creative?.url?.trim()) {
+
+        // URL validation
+        const url = formData.creative?.url?.trim();
+        if (!url) {
             errors.push("Link URL is required");
+        } else if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            errors.push("Link URL must start with http:// or https://");
         }
 
         return errors;
@@ -207,17 +223,22 @@ export function LaunchAd() {
             let campaignId = formData.existingCampaignId;
             let adSetId = formData.existingAdSetId;
 
+            console.log("=== LAUNCH AD DEBUG ===");
+            console.log("Mode:", mode);
+            console.log("Form Data:", JSON.stringify(formData, null, 2));
+
             // 1. Create Campaign (if new)
             if (mode === "new_campaign") {
                 const campaignParams: CreateCampaignParams = {
                     name: formData.name || "New Campaign",
                     objective: (formData.objective as CreateCampaignParams["objective"]) || "OUTCOME_TRAFFIC",
                     status: "PAUSED",
-                    special_ad_categories: [],
+                    special_ad_categories: (formData.specialAdCategories || []) as ("CREDIT" | "HOUSING" | "EMPLOYMENT" | "ISSUES_ELECTIONS_POLITICS")[],
                 };
+                console.log("Creating Campaign with params:", JSON.stringify(campaignParams, null, 2));
                 const campaign = await api.createCampaign(campaignParams);
                 campaignId = campaign.id;
-                console.log("Created Campaign:", campaignId);
+                console.log("✓ Created Campaign:", campaignId);
             }
 
             // 2. Create Ad Set (if new campaign or add to campaign)
@@ -262,32 +283,59 @@ export function LaunchAd() {
                     }
                 }
 
-                const budgetAmount = parseFloat(formData.budget?.amount || "20");
+                // Convert budget to cents (FB API requires cents)
+                const budgetAmount = Math.round(parseFloat(formData.budget?.amount || "20") * 100);
+
+                // Map objective to optimization goal
+                type OptGoal = "LINK_CLICKS" | "LEAD_GENERATION" | "REACH" | "OFFSITE_CONVERSIONS" | "POST_ENGAGEMENT";
+                const getOptimizationGoal = (objective: string): OptGoal => {
+                    const mapping: Record<string, OptGoal> = {
+                        "OUTCOME_TRAFFIC": "LINK_CLICKS",
+                        "OUTCOME_LEADS": "LEAD_GENERATION",
+                        "OUTCOME_AWARENESS": "REACH",
+                        "OUTCOME_SALES": "OFFSITE_CONVERSIONS",
+                        "OUTCOME_ENGAGEMENT": "POST_ENGAGEMENT",
+                    };
+                    return mapping[objective] || "LINK_CLICKS";
+                };
 
                 const adSetParams: CreateAdSetParams = {
                     name: formData.adSetName || `${formData.name || "Campaign"} - Ad Set`,
                     campaign_id: campaignId!,
                     status: "PAUSED",
                     billing_event: "IMPRESSIONS",
-                    optimization_goal: formData.objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "REACH",
+                    optimization_goal: getOptimizationGoal(formData.objective || "OUTCOME_TRAFFIC"),
                     targeting,
                     daily_budget: budgetAmount,
+                    // Add promoted object for conversion objectives
+                    ...(["OUTCOME_LEADS", "OUTCOME_SALES", "OUTCOME_CONVERSIONS"].includes(formData.objective || "") && formData.conversion?.pixelId ? {
+                        promoted_object: {
+                            pixel_id: formData.conversion.pixelId,
+                            custom_event_type: formData.conversion.customEvent || "LEAD"
+                        }
+                    } : {})
                 };
 
+                console.log("Creating Ad Set with params:", JSON.stringify(adSetParams, null, 2));
                 const adSet = await api.createAdSet(adSetParams);
                 adSetId = adSet.id;
-                console.log("Created Ad Set:", adSetId);
+                console.log("✓ Created Ad Set:", adSetId);
             }
 
             // 3. Create Ad
+            // Get the image URL from selected media or fallback
+            const imageUrl = formData.creative?.mediaPreview || formData.creative?.imageUrl;
+
             const creativeSpec = {
                 name: `${formData.name || "Ad"} - Creative`,
                 object_story_spec: {
                     page_id: formData.creative?.pageId || "",
                     link_data: {
                         link: formData.creative?.url || "https://example.com",
-                        message: formData.creative?.primaryText,
-                        name: formData.creative?.headline,
+                        message: formData.creative?.primaryText || "",
+                        name: formData.creative?.headline || "",
+                        // Use picture for image URL (FB API requirement)
+                        ...(imageUrl && { picture: imageUrl }),
                         call_to_action: {
                             type: (formData.creative?.cta || "LEARN_MORE") as "LEARN_MORE" | "SHOP_NOW" | "SIGN_UP" | "BOOK_TRAVEL" | "CONTACT_US" | "DOWNLOAD" | "GET_OFFER" | "GET_QUOTE" | "ORDER_NOW" | "SUBSCRIBE" | "WATCH_MORE" | "MESSAGE_PAGE" | "WHATSAPP_MESSAGE",
                             value: { link: formData.creative?.url || "https://example.com" },
@@ -303,14 +351,40 @@ export function LaunchAd() {
                 status: "PAUSED",
             };
 
+            console.log("Creating Ad with params:", JSON.stringify(adParams, null, 2));
             await api.createAd(adParams);
-            console.log("Created Ad");
+            console.log("✓ Created Ad");
 
             setIsSubmitting(false);
             navigate("/");
         } catch (error: unknown) {
             console.error("Launch failed:", error);
-            const errorMessage = error instanceof Error ? error.message : "Failed to launch campaign. Please check your inputs.";
+            let errorMessage = "Failed to launch campaign. Please check your inputs.";
+
+            if (error instanceof FacebookApiError) {
+                // Build detailed error message from Facebook API
+                errorMessage = `Facebook API Error: ${error.message}`;
+                if (error.code) {
+                    errorMessage += ` (Code: ${error.code}`;
+                    if (error.subcode) {
+                        errorMessage += `, Subcode: ${error.subcode}`;
+                    }
+                    errorMessage += `)`;
+                }
+                // Add trace ID for debugging
+                if (error.fbtraceId) {
+                    errorMessage += ` [Trace: ${error.fbtraceId}]`;
+                }
+                console.error("FB Error Details:", {
+                    message: error.message,
+                    code: error.code,
+                    subcode: error.subcode,
+                    fbtraceId: error.fbtraceId,
+                });
+            } else if (error instanceof Error) {
+                errorMessage = error.message;
+            }
+
             setLaunchError(errorMessage);
             setIsSubmitting(false);
         }
@@ -321,9 +395,46 @@ export function LaunchAd() {
     return (
         <div className="max-w-5xl mx-auto pb-24">
             {/* Header */}
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-900">Create New Ad</h1>
-                <p className="text-gray-500 mt-1">Configure your campaign, targeting, and creative</p>
+            <div className="mb-8 flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Create New Ad</h1>
+                    <p className="text-gray-500 mt-1">Configure your campaign, targeting, and creative</p>
+                </div>
+                {/* Dev Helper */}
+                <button
+                    onClick={() => {
+                        const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+                        updateData({
+                            creationMode: "new_campaign",
+                            name: `Test Traffic ${now}`,
+                            objective: "OUTCOME_TRAFFIC",
+                            specialAdCategories: [],
+                            budget: { type: "daily", amount: "1" }, // $1 minimum
+                            audience: {
+                                locations: [{ id: "US", name: "United States", type: "country", country_code: "US" }],
+                                ageMin: 18,
+                                ageMax: 65,
+                                gender: [1, 2],
+                            },
+                            placements: {
+                                advantagePlus: true,
+                                platforms: { facebook: true, instagram: true, messenger: true, audienceNetwork: true }
+                            },
+                            creative: {
+                                pageId: pages[0]?.id || "",
+                                headline: "Test Ad Headline",
+                                primaryText: "This is a test ad created by AdMachin.",
+                                url: "https://example.com",
+                                cta: "LEARN_MORE",
+                                imageUrl: "https://picsum.photos/seed/test/1200/628", // Sample image
+                            }
+                        });
+                    }}
+                    className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                    title="Fill with valid test data ($1 budget, Traffic)"
+                >
+                    🛠️ Dev: Quick Fill
+                </button>
             </div>
 
             {/* Creation Mode Tabs */}
@@ -407,6 +518,13 @@ export function LaunchAd() {
                     onAccountChange={handleAccountChange}
                     existingCampaigns={existingCampaigns}
                     existingAdSets={existingAdSets}
+                    isConnected={isConnected}
+                />
+
+                {/* Conversion Destination (for Leads/Sales) */}
+                <SectionConversion
+                    data={formData}
+                    updateData={updateData}
                     isConnected={isConnected}
                 />
 

@@ -168,6 +168,30 @@ export function SectionAccountCampaign({
                         </div>
                     )}
 
+                    {/* Special Ad Categories */}
+                    {creationMode === "new_campaign" && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">
+                                Special Ad Category <span className="text-gray-400 font-normal">(if applicable)</span>
+                            </label>
+                            <select
+                                value={(data.specialAdCategories || [])[0] || "NONE"}
+                                onChange={(e) => updateData({
+                                    ...data,
+                                    specialAdCategories: e.target.value === "NONE" ? [] : [e.target.value]
+                                })}
+                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            >
+                                <option value="NONE">None</option>
+                                <option value="CREDIT">Credit</option>
+                                <option value="HOUSING">Housing</option>
+                                <option value="EMPLOYMENT">Employment</option>
+                                <option value="ISSUES_ELECTIONS_POLITICS">Social Issues, Elections or Politics</option>
+                            </select>
+                            <p className="text-xs text-gray-500">Required for ads about credit, housing, jobs, or political topics</p>
+                        </div>
+                    )}
+
                     {/* Ad Set Name (optional) */}
                     {(creationMode === "new_campaign" || creationMode === "add_to_campaign") && (
                         <div className="space-y-2">

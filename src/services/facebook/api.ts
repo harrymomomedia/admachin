@@ -126,6 +126,7 @@ async function apiRequest<T>(
     const rateLimitInfo = parseRateLimitHeader(response);
 
     if (data.error) {
+        console.error("Facebook API Error Response:", JSON.stringify(data.error, null, 2));
         throw new FacebookApiError(
             data.error.message,
             data.error.code,
@@ -735,4 +736,20 @@ export async function refreshFacebookToken(currentToken: string): Promise<{ acce
 }
 
 
+// ===== Pixels =====
 
+export interface Pixel {
+    id: string;
+    name: string;
+    code: string;
+}
+
+/**
+ * Get available pixels for the ad account
+ */
+export async function getPixels(): Promise<FacebookPaginatedResponse<Pixel>> {
+    const adAccountId = requireAdAccountId();
+    return apiRequest<FacebookPaginatedResponse<Pixel>>(`/${adAccountId}/adspixels`, 'GET', {
+        fields: 'id,name,code',
+    });
+}
