@@ -55,9 +55,20 @@ function DebugSupabaseConnection() {
         try {
             const { getProfiles } = await import('../lib/supabase-service');
             const data = await getProfiles();
-            setDumpData(JSON.stringify(data, null, 2));
+
+            // Also fetch raw ad_accounts to check orphans
+            const { data: rawAccounts, error } = await import('../lib/supabase').then(m =>
+                m.supabase.from('ad_accounts').select('*').limit(20)
+            );
+
+            const dump = {
+                getProfilesResult: data,
+                rawAdAccountsTable: rawAccounts || error
+            };
+
+            setDumpData(JSON.stringify(dump, null, 2));
         } catch (err) {
-            setDumpData(`Error fetching profiles: ${err instanceof Error ? err.message : String(err)}`);
+            setDumpData(`Error fetching data: ${err instanceof Error ? err.message : String(err)}`);
         }
     };
 
