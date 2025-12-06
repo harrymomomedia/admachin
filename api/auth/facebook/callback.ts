@@ -116,34 +116,46 @@ export default async function handler(request: Request) {
 
         // Step 1: Exchange code for short-lived token
         console.log('[FB OAuth] Exchanging code for token...');
+        console.log('[FB OAuth] Using App ID:', FACEBOOK_APP_ID?.substring(0, 5) + '***');
         const shortLivedToken = await exchangeCodeForToken(code, redirectUri, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET);
+        console.log('[FB OAuth] Got short-lived token');
 
         // Step 2: Exchange for long-lived token (60 days!)
         console.log('[FB OAuth] Getting long-lived token...');
         const { token: longLivedToken, expiresIn } = await getLongLivedToken(shortLivedToken, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET);
+        console.log('[FB OAuth] Got long-lived token, expires in:', expiresIn);
 
         // Step 3: Get user info
         console.log('[FB OAuth] Getting user info...');
         const user = await getMe(longLivedToken);
+        console.log('[FB OAuth] Got user info:', user.name, user.id);
 
         // Step 4: Persist the session to the Server Store (Auto-Login System)
         console.log(`[FB OAuth] Saving permanent session for user: ${user.name}`);
         const tokenExpiry = Date.now() + (expiresIn * 1000);
 
-        await TokenStorage.save({
-            accessToken: longLivedToken,
-            tokenExpiry: tokenExpiry,
-            userName: user.name,
-            userId: user.id,
-            connectedAt: Date.now()
-        });
+        try {
+            await TokenStorage.save({
+                accessToken: longLivedToken,
+                tokenExpiry: tokenExpiry,
+                userName: user.name,
+                userId: user.id,
+                connectedAt: Date.now()
+            });
+            console.log('[FB OAuth] Session saved successfully');
+        } catch (storageError) {
+            console.error('[FB OAuth] CRITICAL: Failed to save session to storage:', storageError);
+            // Don't fail the entire flow - redirect with a warning
+            return Response.redirect(`${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}&warning=storage_failed`, 302);
+        }
 
         // Redirect back to app - success!
-        // The frontend will now call /api/auth/facebook/session and find the token we just saved.
+        console.log('[FB OAuth] Redirecting to app with success');
         return Response.redirect(`${url.origin}/ad-accounts?success=true&connected_user=${encodeURIComponent(user.name)}`, 302);
 
     } catch (err) {
         console.error('[FB OAuth] Error:', err);
+        console.error('[FB OAuth] Error stack:', err instanceof Error ? err.stack : 'No stack trace');
         const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
         return Response.redirect(`${url.origin}/ad-accounts?error=${encodeURIComponent(errorMessage)}`, 302);
     }
