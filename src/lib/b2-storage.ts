@@ -1,5 +1,5 @@
 // Backblaze B2 Client-Side Storage Service
-// Handles file uploads directly to B2 from the browser
+// Uploads files via our backend proxy to bypass B2 CORS limitations
 
 export interface B2UploadResult {
     fileId: string;
@@ -9,112 +9,73 @@ export interface B2UploadResult {
     contentLength: number;
 }
 
-interface B2UploadCredentials {
-    uploadUrl: string;
-    authorizationToken: string;
-    bucketId: string;
-    downloadUrl: string;
-}
-
 /**
- * Get upload credentials from our backend
+ * Convert File to base64 string
  */
-async function getUploadCredentials(): Promise<B2UploadCredentials> {
-    const response = await fetch('/api/storage/upload-url', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            // Remove data URL prefix (e.g., "data:image/png;base64,")
+            const base64 = result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
     });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to get upload credentials');
-    }
-
-    return await response.json();
 }
 
 /**
- * Calculate SHA1 hash of a file (required by B2)
- */
-async function calculateSHA1(file: File): Promise<string> {
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-1', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Upload a file to Backblaze B2
+ * Upload a file to Backblaze B2 via our backend proxy
  */
 export async function uploadToB2(
     file: File,
     onProgress?: (progress: number) => void
 ): Promise<B2UploadResult> {
-    // Get upload credentials from backend
-    const credentials = await getUploadCredentials();
-
     if (onProgress) onProgress(10);
 
-    // Calculate SHA1 hash
-    const sha1Hash = await calculateSHA1(file);
+    // Convert file to base64
+    console.log('[B2] Converting file to base64...');
+    const fileData = await fileToBase64(file);
 
-    if (onProgress) onProgress(20);
+    if (onProgress) onProgress(30);
 
-    // Generate unique filename with timestamp
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const ext = file.name.split('.').pop() || 'bin';
-    const safeFileName = `creatives/${timestamp}-${randomStr}.${ext}`;
+    console.log('[B2] Uploading via proxy...', file.name, 'size:', file.size);
 
-    // Upload directly to B2
-    console.log('[B2] Uploading to:', credentials.uploadUrl);
-    console.log('[B2] File size:', file.size, 'type:', file.type);
-
-    let response: Response;
-    try {
-        response = await fetch(credentials.uploadUrl, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                'Authorization': credentials.authorizationToken,
-                'Content-Type': file.type || 'application/octet-stream',
-                // Note: Content-Length is set automatically by the browser
-                'X-Bz-File-Name': encodeURIComponent(safeFileName),
-                'X-Bz-Content-Sha1': sha1Hash,
-            },
-            body: file,
-        });
-    } catch (fetchError) {
-        console.error('[B2] Fetch error:', fetchError);
-        throw new Error(`Network error uploading to B2: ${fetchError instanceof Error ? fetchError.message : 'Failed to fetch'}. Check if B2 bucket has CORS configured.`);
-    }
+    // Upload via our backend proxy
+    const response = await fetch('/api/storage/upload', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            fileData,
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+        }),
+    });
 
     if (onProgress) onProgress(90);
 
     if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[B2] Upload failed:', errorText);
-        throw new Error('Failed to upload file to B2');
+        const error = await response.json();
+        console.error('[B2] Upload failed:', error);
+        throw new Error(error.error || 'Failed to upload file');
     }
 
     const result = await response.json();
 
     if (onProgress) onProgress(100);
 
-    // Construct the public download URL
-    // Format: {downloadUrl}/file/{bucketName}/{fileName}
-    // Note: We use /b2api/v2/b2_download_file_by_id for private buckets
-    // For public buckets, use: {downloadUrl}/file/{bucketName}/{fileName}
-    const publicUrl = `${credentials.downloadUrl}/file/admachin/${safeFileName}`;
+    console.log('[B2] Upload successful:', result.url);
 
     return {
         fileId: result.fileId,
-        fileName: safeFileName,
-        url: publicUrl,
-        contentType: file.type,
-        contentLength: file.size,
+        fileName: result.fileName,
+        url: result.url,
+        contentType: result.contentType,
+        contentLength: result.contentLength,
     };
 }
 
