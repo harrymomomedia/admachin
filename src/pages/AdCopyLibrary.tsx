@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     Plus,
     Search,
@@ -9,6 +9,7 @@ import {
 import {
     getAdCopies,
     createAdCopy,
+    updateAdCopy,
     deleteAdCopy,
     type AdCopy
 } from '../lib/supabase-service';
@@ -20,6 +21,11 @@ export function AdCopyLibrary() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+    // Inline Editing State
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState('');
+    const editInputRef = useRef<HTMLTextAreaElement>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -35,6 +41,18 @@ export function AdCopyLibrary() {
     useEffect(() => {
         loadCopies();
     }, []);
+
+    // Focus edit input when it opens
+    useEffect(() => {
+        if (editingId && editInputRef.current) {
+            editInputRef.current.focus();
+            // Optional: Move cursor to end
+            editInputRef.current.setSelectionRange(
+                editInputRef.current.value.length,
+                editInputRef.current.value.length
+            );
+        }
+    }, [editingId]);
 
     const loadCopies = async () => {
         setIsLoading(true);
@@ -58,6 +76,47 @@ export function AdCopyLibrary() {
         );
     });
 
+    // Inline Edit Handlers
+    const handleEditStart = (copy: AdCopy) => {
+        setEditingId(copy.id);
+        setEditingText(copy.text);
+    };
+
+    const handleEditSave = async () => {
+        if (!editingId) return;
+
+        const original = copies.find(c => c.id === editingId);
+        if (original && original.text === editingText) {
+            setEditingId(null);
+            return;
+        }
+
+        try {
+            // Optimistic update
+            setCopies(prev => prev.map(c =>
+                c.id === editingId ? { ...c, text: editingText } : c
+            ));
+
+            await updateAdCopy(editingId, { text: editingText });
+        } catch (error) {
+            console.error('Failed to update ad copy:', error);
+            // Revert on error
+            if (original) {
+                setCopies(prev => prev.map(c =>
+                    c.id === editingId ? original : c
+                ));
+            }
+            alert('Failed to save changes.');
+        } finally {
+            setEditingId(null);
+        }
+    };
+
+    const handleEditCancel = () => {
+        setEditingId(null);
+        setEditingText('');
+    };
+
     // Create Handler
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -65,11 +124,7 @@ export function AdCopyLibrary() {
         setIsSubmitting(true);
         try {
             const user = await getCurrentUser();
-            // Allow creation even if no user (triggers anonymouse/RLS defaults if allowed)
-            // if (!user) {
-            //     alert('You must be logged in to create ad copies.');
-            //     return;
-            // }
+            // Allow creation even if no user (anonymouse/RLS)
 
             await createAdCopy({
                 user_id: user?.id,
@@ -174,7 +229,32 @@ export function AdCopyLibrary() {
                                     <tr key={copy.id} className="group hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="max-w-xl">
-                                                <p className="text-gray-900 line-clamp-2" title={copy.text}>{copy.text}</p>
+                                                {editingId === copy.id ? (
+                                                    <textarea
+                                                        ref={editInputRef}
+                                                        value={editingText}
+                                                        onChange={(e) => setEditingText(e.target.value)}
+                                                        onBlur={handleEditSave}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                                e.preventDefault();
+                                                                handleEditSave();
+                                                            } else if (e.key === 'Escape') {
+                                                                handleEditCancel();
+                                                            }
+                                                        }}
+                                                        className="w-full p-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm"
+                                                        rows={2}
+                                                    />
+                                                ) : (
+                                                    <p
+                                                        className="text-gray-900 line-clamp-2 cursor-pointer hover:text-blue-600 transition-colors"
+                                                        title="Click to edit"
+                                                        onClick={() => handleEditStart(copy)}
+                                                    >
+                                                        {copy.text}
+                                                    </p>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
