@@ -467,11 +467,17 @@ export function Creatives() {
                                 className="aspect-square"
                                 onClick={() => setPreviewItem(item)}
                             >
-                                <img
-                                    src={item.preview}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover"
-                                />
+                                {item.type === "video" ? (
+                                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                                        <Film className="h-12 w-12 text-gray-400" />
+                                    </div>
+                                ) : (
+                                    <img
+                                        src={item.preview}
+                                        alt={item.name}
+                                        className="w-full h-full object-cover"
+                                    />
+                                )}
                             </div>
 
                             {/* Hover Actions */}
@@ -566,11 +572,17 @@ export function Creatives() {
                                     <td className="p-3">
                                         <div className="flex items-center gap-3">
                                             <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                                                <img
-                                                    src={item.preview}
-                                                    alt={item.name}
-                                                    className="w-full h-full object-cover"
-                                                />
+                                                {item.type === "video" ? (
+                                                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                                                        <Film className="h-5 w-5 text-gray-400" />
+                                                    </div>
+                                                ) : (
+                                                    <img
+                                                        src={item.preview}
+                                                        alt={item.name}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                )}
                                             </div>
                                             <span className="font-medium text-sm truncate max-w-[200px]">
                                                 {item.name}
