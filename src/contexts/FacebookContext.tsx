@@ -363,12 +363,21 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
         setError(null);
 
         try {
-            // New Server-Side Flow:
-            // This redirects the browser to /api/auth/facebook
-            // The user will return to the app via the callback URL with data
-            await loginWithFacebook();
+            // Client-Side FB SDK Flow:
+            // FB.login() opens popup -> user approves -> token sent to backend
+            const result = await loginWithFacebook();
 
-            // Note: execution stops here as page redirects
+            if (!result.success) {
+                setError(result.error || 'Failed to connect Facebook account');
+                setIsLoading(false);
+                return;
+            }
+
+            console.log('[FB Context] Login successful, reloading profiles...');
+
+            // Reload profiles from storage (backend saved it)
+            await init();
+
         } catch (err) {
             console.error('[FB] Connect error:', err);
             setError(err instanceof Error ? err.message : 'Failed to initiate connection');
