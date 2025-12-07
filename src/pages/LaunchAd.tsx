@@ -367,8 +367,18 @@ export function LaunchAd() {
             let errorMessage = "Failed to launch campaign. Please check your inputs.";
 
             if (error instanceof FacebookApiError) {
-                // Build detailed error message from Facebook API
-                errorMessage = `Facebook API Error: ${error.message}`;
+                // Use user-friendly error message if available
+                if (error.userTitle && error.userMsg) {
+                    errorMessage = `${error.userTitle}: ${error.userMsg}`;
+                } else if (error.userTitle) {
+                    errorMessage = error.userTitle;
+                } else if (error.userMsg) {
+                    errorMessage = error.userMsg;
+                } else {
+                    errorMessage = `Facebook API Error: ${error.message}`;
+                }
+
+                // Add technical details for debugging
                 if (error.code) {
                     errorMessage += ` (Code: ${error.code}`;
                     if (error.subcode) {
@@ -376,14 +386,13 @@ export function LaunchAd() {
                     }
                     errorMessage += `)`;
                 }
-                // Add trace ID for debugging
-                if (error.fbtraceId) {
-                    errorMessage += ` [Trace: ${error.fbtraceId}]`;
-                }
+
                 console.error("FB Error Details:", {
                     message: error.message,
                     code: error.code,
                     subcode: error.subcode,
+                    userTitle: error.userTitle,
+                    userMsg: error.userMsg,
                     fbtraceId: error.fbtraceId,
                 });
             } else if (error instanceof Error) {

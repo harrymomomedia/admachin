@@ -32,13 +32,17 @@ class FacebookApiError extends Error {
     subcode?: number;
     fbtraceId: string;
     rateLimitInfo?: RateLimitInfo;
+    userTitle?: string;
+    userMsg?: string;
 
     constructor(
         message: string,
         code: number,
         fbtraceId: string,
         subcode?: number,
-        rateLimitInfo?: RateLimitInfo
+        rateLimitInfo?: RateLimitInfo,
+        userTitle?: string,
+        userMsg?: string
     ) {
         super(message);
         this.name = 'FacebookApiError';
@@ -46,6 +50,8 @@ class FacebookApiError extends Error {
         this.subcode = subcode;
         this.fbtraceId = fbtraceId;
         this.rateLimitInfo = rateLimitInfo;
+        this.userTitle = userTitle;
+        this.userMsg = userMsg;
     }
 }
 
@@ -132,7 +138,9 @@ async function apiRequest<T>(
             data.error.code,
             data.error.fbtrace_id,
             data.error.error_subcode,
-            rateLimitInfo
+            rateLimitInfo,
+            data.error.error_user_title,
+            data.error.error_user_msg
         );
     }
 
