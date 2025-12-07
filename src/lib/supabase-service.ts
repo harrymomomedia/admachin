@@ -363,7 +363,8 @@ export async function createAdCopy(copy: {
     text: string;
     type: string;
     project?: string;
-    platform?: string;
+    project_id?: string | null;
+    platform?: string | null;
     name?: string;
 }): Promise<AdCopy> {
     const { data, error } = await supabase
@@ -373,6 +374,7 @@ export async function createAdCopy(copy: {
             text: copy.text,
             type: copy.type,
             project: copy.project || null,
+            project_id: copy.project_id || null,
             platform: copy.platform || null,
             name: copy.name || null,
         })

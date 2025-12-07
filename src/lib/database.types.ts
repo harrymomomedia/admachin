@@ -19,6 +19,7 @@ export interface Database {
                     text: string
                     type: string
                     project: string | null
+                    project_id: string | null // Linked project
                     platform: string | null
                     name: string | null
                     created_at: string
@@ -30,6 +31,7 @@ export interface Database {
                     text: string
                     type: string
                     project?: string | null
+                    project_id?: string | null
                     platform?: string | null
                     name?: string | null
                     created_at?: string
@@ -41,6 +43,7 @@ export interface Database {
                     text?: string
                     type?: string
                     project?: string | null
+                    project_id?: string | null
                     platform?: string | null
                     name?: string | null
                     created_at?: string

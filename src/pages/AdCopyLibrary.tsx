@@ -14,13 +14,19 @@ import {
     createAdCopy,
     updateAdCopy,
     deleteAdCopy,
-    type AdCopy
+    getProjects,
+    getUsers,
+    type AdCopy,
+    type Project,
+    type User
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
 
 export function AdCopyLibrary() {
     const [copies, setCopies] = useState<AdCopy[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -37,7 +43,8 @@ export function AdCopyLibrary() {
     const [formData, setFormData] = useState({
         text: '',
         type: 'primary_text', // primary_text, headline, description
-        project: '',
+        project_id: '',
+        project: '', // Legacy/Fallback text
         platform: 'FB',
         name: ''
     });
@@ -50,11 +57,11 @@ export function AdCopyLibrary() {
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
         text: 400,
         type: 100,
-        project: 100,
+        project: 120,
         platform: 80,
         name: 120,
         date: 90,
-        creator: 70,
+        creator: 120,
         actions: 80,
     });
     const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
@@ -86,7 +93,7 @@ export function AdCopyLibrary() {
 
     // Load Data
     useEffect(() => {
-        loadCopies();
+        loadData();
         getCurrentUser().then(user => setCurrentUserId(user?.id || null));
     }, []);
 
@@ -113,13 +120,19 @@ export function AdCopyLibrary() {
         }
     }, [editingId]);
 
-    const loadCopies = async () => {
+    const loadData = async () => {
         setIsLoading(true);
         try {
-            const data = await getAdCopies();
-            setCopies(data);
+            const [copiesData, projectsData, usersData] = await Promise.all([
+                getAdCopies(),
+                getProjects(),
+                getUsers()
+            ]);
+            setCopies(copiesData);
+            setProjects(projectsData);
+            setUsers(usersData);
         } catch (error) {
-            console.error('Failed to load ad copies:', error);
+            console.error('Failed to load data:', error);
         } finally {
             setIsLoading(false);
         }
@@ -133,12 +146,44 @@ export function AdCopyLibrary() {
         textarea.style.height = `${textarea.scrollHeight}px`;
     };
 
+    // Helper to get project name
+    const getProjectName = (copy: AdCopy) => {
+        if (copy.project_id) {
+            const proj = projects.find(p => p.id === copy.project_id);
+            if (proj) return proj.name;
+        }
+        return copy.project || '-';
+    };
+
+    // Helper to get creator name
+    const getCreatorName = (copy: AdCopy) => {
+        if (copy.user_id) {
+            const user = users.find(u => u.id === copy.user_id); // This matches if user_id is the public user id
+            // However, copy.user_id comes from auth.users. 
+            // The 'users' array from getUsers() is from public.users table.
+            // If they are not synced, we might miss it.
+            // If the schema uses the SAME ID for auth and public users (recommended), this works.
+            // If not, we might need to fallback.
+
+            // Let's try to find by ID first.
+            if (user) return `${user.first_name} ${user.last_name}`; // Found in public users
+
+            // Fallback for current user if IDs match auth
+            if (copy.user_id === currentUserId) return 'Me';
+        }
+        return 'Unknown';
+    };
+
     // Filter Logic
     const filteredCopies = copies.filter(copy => {
         const searchLower = searchQuery.toLowerCase();
+        const projectName = getProjectName(copy).toLowerCase();
+        const creatorName = getCreatorName(copy).toLowerCase();
+
         return (
             copy.text.toLowerCase().includes(searchLower) ||
-            (copy.project || '').toLowerCase().includes(searchLower) ||
+            projectName.includes(searchLower) ||
+            creatorName.includes(searchLower) ||
             (copy.name || '').toLowerCase().includes(searchLower)
         );
     });
@@ -190,18 +235,27 @@ export function AdCopyLibrary() {
 
         setIsSubmitting(true);
         try {
-            const user = await getCurrentUser();
-            // Allow creation even if no user (anonymouse/RLS)
+            const currentUser = await getCurrentUser();
+
+            // Find the project name for the legacy field if needed
+            const selectedProject = projects.find(p => p.id === formData.project_id);
+            const legacyProjectName = selectedProject ? selectedProject.name : '';
 
             await createAdCopy({
-                user_id: user?.id,
-                ...formData
+                user_id: currentUser?.id,
+                text: formData.text,
+                type: formData.type,
+                project: legacyProjectName, // Populate legacy field
+                project_id: formData.project_id || null, // Populate new field
+                platform: formData.platform,
+                name: formData.name
             });
-            await loadCopies();
+            await loadData();
             setIsCreateModalOpen(false);
             setFormData({
                 text: '',
                 type: 'primary_text',
+                project_id: '',
                 project: '',
                 platform: 'FB',
                 name: ''
@@ -224,8 +278,6 @@ export function AdCopyLibrary() {
             console.error('Failed to delete ad copy:', error);
         }
     };
-
-
 
     return (
         <div className="space-y-6">
@@ -347,7 +399,7 @@ export function AdCopyLibrary() {
                             {isLoading ? (
                                 <tr>
                                     <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
-                                        Loading ad copies...
+                                        Loading data...
                                     </td>
                                 </tr>
                             ) : filteredCopies.length === 0 ? (
@@ -406,9 +458,9 @@ export function AdCopyLibrary() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            {copy.project ? (
+                                            {copy.project_id || copy.project ? (
                                                 <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-pink-50 text-pink-700 border border-pink-200">
-                                                    {copy.project}
+                                                    {getProjectName(copy)}
                                                 </span>
                                             ) : (
                                                 <span className="text-gray-400">-</span>
@@ -436,7 +488,7 @@ export function AdCopyLibrary() {
                                                     ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
                                                     : "bg-gray-100 text-gray-600 border border-gray-200"
                                             )}>
-                                                {copy.user_id === currentUserId ? 'Me' : 'User'}
+                                                {getCreatorName(copy)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -529,14 +581,19 @@ export function AdCopyLibrary() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Project Tag</label>
-                                    <input
-                                        type="text"
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                                    <select
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="e.g. Summer Sale"
-                                        value={formData.project}
-                                        onChange={e => setFormData({ ...formData, project: e.target.value })}
-                                    />
+                                        value={formData.project_id}
+                                        onChange={e => setFormData({ ...formData, project_id: e.target.value })}
+                                    >
+                                        <option value="">Select Project</option>
+                                        {projects.map(project => (
+                                            <option key={project.id} value={project.id}>
+                                                {project.name}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Internal Name</label>
