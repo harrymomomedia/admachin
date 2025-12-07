@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, FileBox, FilePlus2, AlertCircle, Rocket, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFacebook } from "../contexts/FacebookContext";
-import api, { FacebookApiError } from "../services/facebook/api";
+import api from "../services/facebook/api";
 import { getSelectedAdAccountId, setSelectedAdAccountId } from "../services/facebook/config";
 import { SectionAccountCampaign } from "../components/launch/SectionAccountCampaign";
 import { SectionLocationAudience } from "../components/launch/SectionLocationAudience";
