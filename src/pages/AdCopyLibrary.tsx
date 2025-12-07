@@ -48,14 +48,14 @@ export function AdCopyLibrary() {
 
     // Column Resizing State
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
-        text: 300,
-        type: 120,
-        project: 120,
-        platform: 100,
-        name: 150,
-        date: 100,
-        creator: 80,
-        actions: 100,
+        text: 400,
+        type: 100,
+        project: 100,
+        platform: 80,
+        name: 120,
+        date: 90,
+        creator: 70,
+        actions: 80,
     });
     const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
 
@@ -286,10 +286,10 @@ export function AdCopyLibrary() {
             {/* Content Table */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm" style={{ tableLayout: 'fixed' }}>
+                    <table className="w-full text-left text-sm min-w-max">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th style={{ width: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
+                                <th style={{ minWidth: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
                                     Ad Text
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
