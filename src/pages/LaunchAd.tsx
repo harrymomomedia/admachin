@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, FileBox, FilePlus2, AlertCircle, Rocket } from "lucide-react";
+import { Plus, FileBox, FilePlus2, AlertCircle, Rocket, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFacebook } from "../contexts/FacebookContext";
 import api, { FacebookApiError } from "../services/facebook/api";
@@ -212,9 +212,22 @@ export function LaunchAd() {
         return errors;
     };
 
+    // Launch Logs
+    const [launchLogs, setLaunchLogs] = useState<string[]>([]);
+
+    const addLog = (message: string) => {
+        setLaunchLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+    };
+
     const handleLaunch = async () => {
+        if (!selectedAccount) return;
+        setIsSubmitting(true);
+        setLaunchLogs([]); // Clear previous logs
+        addLog("Starting ad launch sequence...");
+
         const errors = validateForm();
         if (errors.length > 0) {
+            setIsSubmitting(false);
             setValidationErrors(errors);
             return;
         }
@@ -327,13 +340,16 @@ export function LaunchAd() {
                     } : {}))
                 };
 
-                console.log("Creating Ad Set with params:", JSON.stringify(adSetParams, null, 2));
+                addLog(`Creating Ad Set with params: ${JSON.stringify(adSetParams, null, 2)}`);
                 const adSet = await api.createAdSet(adSetParams);
                 adSetId = adSet.id;
-                console.log("✓ Created Ad Set:", adSetId);
+                addLog(`✓ Created Ad Set ID: ${adSetId}`);
+            } else {
+                addLog(`Using existing Ad Set ID: ${adSetId}`);
             }
 
             // 3. Create Ad
+            addLog("Preparing Ad Creative...");
             // Get the media info from selected creative
             const imageUrl = formData.creative?.mediaPreview || formData.creative?.imageUrl;
             const imageHash = formData.creative?.imageHash;
@@ -341,7 +357,7 @@ export function LaunchAd() {
             let videoId = formData.creative?.videoId;
             const videoUrl = formData.creative?.videoUrl;
 
-            console.log("Creative debug:", { imageUrl, imageHash, mediaType, videoId, videoUrl });
+            addLog(`Creative debug: ${JSON.stringify({ imageUrl, imageHash, mediaType, videoId, videoUrl })}`);
 
             // For video ads, upload video to Facebook if not already uploaded
             if (mediaType === "video" && !videoId) {
@@ -351,7 +367,8 @@ export function LaunchAd() {
                     );
                 }
 
-                console.log("[LaunchAd] Uploading video to Facebook...");
+                addLog("Uploading video to Facebook (this may take a moment)...");
+                addLog(`Fetching video from: ${videoUrl.substring(0, 50)}...`);
 
                 // Fetch video from Supabase storage
                 const videoResponse = await fetch(videoUrl);
@@ -359,15 +376,17 @@ export function LaunchAd() {
                     throw new Error("Failed to fetch video file from storage.");
                 }
                 const videoBlob = await videoResponse.blob();
+                addLog(`Downloaded video: ${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`);
 
                 // Create a File object for the Facebook upload
                 const videoFileName = videoUrl.split('/').pop() || 'video.mp4';
                 const videoFile = new File([videoBlob], videoFileName, { type: videoBlob.type });
 
                 // Upload to Facebook
+                addLog("Starting Facebook upload...");
                 const fbVideo = await api.uploadVideo(videoFile, videoFileName);
                 videoId = fbVideo.id;
-                console.log("[LaunchAd] Video uploaded to Facebook, id:", videoId);
+                addLog(`✓ Video uploaded to Facebook! ID: ${videoId}`);
             }
 
             // Build the object_story_spec based on media type
@@ -379,6 +398,7 @@ export function LaunchAd() {
                     page_id: formData.creative?.pageId || "",
                     video_data: {
                         video_id: videoId,
+                        image_url: imageUrl,
                         message: formData.creative?.primaryText || "",
                         title: formData.creative?.headline || "",
                         call_to_action: {
@@ -418,71 +438,86 @@ export function LaunchAd() {
                 status: "PAUSED",
             };
 
-            console.log("Creating Ad with params:", JSON.stringify(adParams, null, 2));
-            await api.createAd(adParams);
-            console.log("✓ Created Ad");
+            addLog(`Creating Ad with params: ${JSON.stringify(adParams, null, 2)}`);
+            const ad = await api.createAd(adParams);
+            addLog(`✓ Created Ad ID: ${ad.id}`);
+            addLog("🎉 Launch Sequence Complete!");
 
-            // Store success message for dashboard to display
-            const successMode = formData.creationMode || "new_campaign";
-            let successMessage = "🎉 Campaign created successfully!";
-            if (successMode === "new_campaign") {
-                successMessage = `🎉 Campaign "${formData.name}" created successfully! Status: PAUSED`;
-            } else if (successMode === "add_to_campaign") {
-                successMessage = `🎉 Ad Set added to campaign successfully! Status: PAUSED`;
-            } else if (successMode === "add_to_adset") {
-                successMessage = `🎉 Ad added to ad set successfully! Status: PAUSED`;
+            // Prepare success message
+            let message = "";
+            switch (formData.creationMode) {
+                case "new_campaign":
+                    message = `Successfully launched new campaign "${formData.name}"`;
+                    break;
+                case "add_to_campaign":
+                    message = `Successfully added ad set to campaign`;
+                    break;
+                case "add_to_adset":
+                    message = `Successfully added ad to ad set`;
+                    break;
+                default:
+                    message = "Ad creation successful";
             }
 
+            // Wait a moment so user can see the success log
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Store success message in sessionStorage to display on dashboard
             sessionStorage.setItem('launch_success', JSON.stringify({
-                message: successMessage,
+                message,
                 timestamp: Date.now()
             }));
 
-            setIsSubmitting(false);
-            navigate("/", { state: { launchSuccess: true, message: successMessage } });
-        } catch (error: unknown) {
-            console.error("Launch failed:", error);
-            let errorMessage = "Failed to launch campaign. Please check your inputs.";
-
-            if (error instanceof FacebookApiError) {
-                // Use user-friendly error message if available
-                if (error.userTitle && error.userMsg) {
-                    errorMessage = `${error.userTitle}: ${error.userMsg}`;
-                } else if (error.userTitle) {
-                    errorMessage = error.userTitle;
-                } else if (error.userMsg) {
-                    errorMessage = error.userMsg;
-                } else {
-                    errorMessage = `Facebook API Error: ${error.message}`;
+            // Navigate to dashboard
+            navigate("/", {
+                state: {
+                    launchSuccess: true,
+                    message: message
                 }
-
-                // Add technical details for debugging
-                if (error.code) {
-                    errorMessage += ` (Code: ${error.code}`;
-                    if (error.subcode) {
-                        errorMessage += `, Subcode: ${error.subcode}`;
-                    }
-                    errorMessage += `)`;
-                }
-
-                console.error("FB Error Details:", {
-                    message: error.message,
-                    code: error.code,
-                    subcode: error.subcode,
-                    userTitle: error.userTitle,
-                    userMsg: error.userMsg,
-                    fbtraceId: error.fbtraceId,
-                });
-            } else if (error instanceof Error) {
-                errorMessage = error.message;
-            }
-
-            setLaunchError(errorMessage);
-            setIsSubmitting(false);
+            });
+        } catch (err: any) {
+            console.error("Launch failed:", err);
+            addLog(`❌ ERROR: ${err.message || "Unknown error"}`);
+            // Don't auto-close on error so user can read logs
         }
     };
 
     const currentMode = formData.creationMode || "new_campaign";
+
+    if (isSubmitting) {
+        return (
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-white w-full max-w-lg rounded-xl border shadow-lg p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                        <h3 className="text-xl font-semibold">Launching Campaign...</h3>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs space-y-1 border border-gray-200">
+                        {launchLogs.map((log, i) => (
+                            <div key={i} className={log.includes("ERROR") ? "text-red-500 font-bold" : log.includes("✓") ? "text-green-600 font-medium" : "text-gray-600"}>
+                                {log}
+                            </div>
+                        ))}
+                        {launchLogs.length === 0 && <div className="text-gray-400 italic">Initializing...</div>}
+                    </div>
+
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => setIsSubmitting(false)}
+                            disabled={!launchLogs.some(l => l.includes("ERROR"))}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${launchLogs.some(l => l.includes("ERROR"))
+                                ? "border-red-200 text-red-700 hover:bg-red-50"
+                                : "border-gray-200 text-gray-400 cursor-not-allowed"
+                                }`}
+                        >
+                            {launchLogs.some(l => l.includes("ERROR")) ? "Close" : "Please wait..."}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-5xl mx-auto pb-24">
