@@ -73,7 +73,7 @@ export function TeamSettings() {
                 const settingsData = await fetchWithTimeout('/api/team/settings');
                 setTeamName(settingsData.teamName || 'Momomedia');
                 setTeamLogo(settingsData.teamLogo || '');
-            } catch (e) {
+            } catch {
                 console.warn('[TeamSettings] Using fallback for settings');
                 setTeamName('Momomedia');
             }
@@ -83,7 +83,7 @@ export function TeamSettings() {
                 const membersData = await fetchWithTimeout('/api/team/members');
                 setMembers(membersData.members || []);
                 setPendingInvitations(membersData.pendingInvitations || []);
-            } catch (e) {
+            } catch {
                 console.warn('[TeamSettings] Using fallback for members');
                 setMembers([{
                     id: '1',
@@ -100,7 +100,7 @@ export function TeamSettings() {
             try {
                 const projectsData = await fetchWithTimeout('/api/team/projects');
                 setProjects(projectsData.projects || []);
-            } catch (e) {
+            } catch {
                 console.warn('[TeamSettings] Using fallback for projects');
                 setProjects([{
                     id: '1',

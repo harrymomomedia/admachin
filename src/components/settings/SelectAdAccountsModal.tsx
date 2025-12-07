@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Check, X, Search } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import type { AdAccount } from '../../services/facebook';
@@ -22,18 +22,34 @@ export function SelectAdAccountsModal({
     profileName,
     initialSelectedIds = []
 }: SelectAdAccountsModalProps) {
-    // Start with provided selection
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
-    const [searchQuery, setSearchQuery] = useState('');
-
-    useEffect(() => {
-        if (isOpen) {
-            setSelectedIds(new Set(initialSelectedIds));
-            setSearchQuery('');
-        }
-    }, [isOpen, initialSelectedIds]);
-
+    // Early return before any hooks to ensure clean remount behavior
     if (!isOpen) return null;
+
+    // These hooks only run when modal is open
+    return (
+        <SelectAdAccountsModalContent
+            onClose={onClose}
+            onConfirmed={onConfirmed}
+            accounts={accounts}
+            isLoading={isLoading}
+            profileName={profileName}
+            initialSelectedIds={initialSelectedIds}
+        />
+    );
+}
+
+// Inner component that remounts each time modal opens
+function SelectAdAccountsModalContent({
+    onClose,
+    onConfirmed,
+    accounts,
+    isLoading,
+    profileName,
+    initialSelectedIds = []
+}: Omit<SelectAdAccountsModalProps, 'isOpen'>) {
+    // Fresh state on each mount (when modal opens)
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(initialSelectedIds));
+    const [searchQuery, setSearchQuery] = useState('');
 
     const filteredAccounts = accounts.filter(acc =>
         acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

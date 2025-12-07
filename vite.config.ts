@@ -12,7 +12,7 @@ export default defineConfig({
     {
       name: 'api-middleware',
       configureServer(server) {
-        server.middlewares.use('/api/auth/facebook/session', (_req, res, _next) => {
+        server.middlewares.use('/api/auth/facebook/session', (_req, res) => {
           // Simulation of the serverless function for local dev
           // We must implement the TokenStorage read logic here as well
           const storageFile = path.resolve(process.cwd(), '.auth_store.json');

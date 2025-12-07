@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Lock, ArrowRight } from "lucide-react";
 
 interface AccessGateProps {
@@ -9,16 +9,13 @@ const PASSCODE = "demo2024"; // Simple hardcoded passcode
 const STORAGE_KEY = "admachin_access_unlocked";
 
 export function AccessGate({ children }: AccessGateProps) {
-    const [isUnlocked, setIsUnlocked] = useState(false);
+    // Use lazy initializer to read from localStorage synchronously
+    const [isUnlocked, setIsUnlocked] = useState(() => {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored === "true";
+    });
     const [input, setInput] = useState("");
     const [error, setError] = useState(false);
-
-    useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored === "true") {
-            setIsUnlocked(true);
-        }
-    }, []);
 
     const handleUnlock = (e: React.FormEvent) => {
         e.preventDefault();

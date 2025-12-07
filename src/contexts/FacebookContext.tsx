@@ -577,6 +577,7 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
 }
 
 // ============ Hook ============
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFacebook(): FacebookContextType {
     const context = useContext(FacebookContext);
     if (!context) {

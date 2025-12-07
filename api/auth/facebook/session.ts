@@ -17,7 +17,8 @@ interface FacebookSessionResponse {
     error?: string;
 }
 
-export default async function handler(request: Request) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default async function handler(_request: Request) {
     // 1. Check for "Team Store" token (The persistent Source of Truth)
     let storedSession = await TokenStorage.get();
 

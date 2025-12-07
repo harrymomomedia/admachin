@@ -138,7 +138,7 @@ async function loadMediaFromDb(): Promise<MediaItem[]> {
 
 export function Creatives() {
     const [media, setMedia] = useState<MediaItem[]>([]);
-    const [_isLoading, setIsLoading] = useState(true);
+    const [, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [filterType, setFilterType] = useState<"all" | "image" | "video">("all");
     const [searchQuery, setSearchQuery] = useState("");

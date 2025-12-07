@@ -284,6 +284,7 @@ export async function deleteCreative(creativeId: string): Promise<void> {
  */
 export async function uploadCreativeFile(
     file: File,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _onProgress?: (progress: number) => void
 ): Promise<{ path: string; url: string }> {
     const fileExt = file.name.split('.').pop();
