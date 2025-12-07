@@ -140,12 +140,17 @@ async function apiRequest<T>(
 }
 
 // Helper to get ad account ID with validation
+// Ensures the ID has the 'act_' prefix required by Facebook API
 function requireAdAccountId(): string {
     const adAccountId = getSelectedAdAccountId();
     if (!adAccountId) {
         throw new Error('No ad account selected. Please select an ad account first.');
     }
-    return adAccountId;
+    // Ensure act_ prefix is present (some stored IDs may not have it)
+    if (adAccountId.startsWith('act_')) {
+        return adAccountId;
+    }
+    return `act_${adAccountId}`;
 }
 
 // ===== Account & Pages =====
