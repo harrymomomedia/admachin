@@ -10,6 +10,7 @@ interface MediaItem {
     preview: string;
     url?: string;
     hash?: string;
+    videoId?: string; // Facebook video ID for video creatives
 }
 
 interface SectionCreativeProps {
@@ -100,6 +101,7 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
             mediaType: media.type,
             imageUrl: media.type === "image" ? media.preview : undefined,
             imageHash: media.hash,
+            videoId: media.type === "video" ? media.videoId : undefined,
         });
         setShowMediaPicker(false);
     };

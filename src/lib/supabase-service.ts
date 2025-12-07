@@ -232,6 +232,7 @@ export async function addCreative(creative: {
     duration?: number | null;
     uploaded_by: string;
     fb_hash?: string | null;
+    fb_video_id?: string | null;
 }): Promise<Creative> {
     const { data, error } = await supabase
         .from('creatives')
@@ -244,6 +245,7 @@ export async function addCreative(creative: {
             duration: creative.duration,
             uploaded_by: creative.uploaded_by,
             fb_hash: creative.fb_hash,
+            fb_video_id: creative.fb_video_id,
         })
         .select()
         .single();

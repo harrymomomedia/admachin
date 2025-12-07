@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { uploadCreativeFile, addCreative } from "../lib/supabase-service";
 import { supabase } from "../lib/supabase";
+import * as fbApi from "../services/facebook/api";
 
 interface UploadedFile {
     id: string;
@@ -19,7 +20,8 @@ interface UploadedFile {
     status: "uploading" | "success" | "error";
     progress: number;
     hash?: string; // Facebook image hash
-    url?: string; // B2 public URL
+    videoId?: string; // Facebook video ID
+    url?: string;
     error?: string;
 }
 
@@ -85,40 +87,68 @@ export function CreativeUploader({
             const result = await uploadCreativeFile(uploadedFile.file, (progress: number) => {
                 setFiles((prev) =>
                     prev.map((f) =>
-                        f.id === uploadedFile.id ? { ...f, progress } : f
+                        f.id === uploadedFile.id ? { ...f, progress: progress * 0.5 } : f // First 50% is Supabase upload
                     )
                 );
             });
 
             // For videos, upload the thumbnail too
             let thumbnailPath = null;
-            if (uploadedFile.type === 'video' && uploadedFile.preview) {
-                try {
-                    // Convert base64 to blob and upload
-                    const response = await fetch(uploadedFile.preview);
-                    const blob = await response.blob();
-                    const thumbName = `thumbnails/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-                    const { data: thumbData } = await supabase.storage
-                        .from('creatives')
-                        .upload(thumbName, blob, { contentType: 'image/jpeg' });
-                    if (thumbData) {
-                        thumbnailPath = thumbData.path;
+            let fbVideoId: string | null = null;
+
+            if (uploadedFile.type === 'video') {
+                // Upload thumbnail
+                if (uploadedFile.preview) {
+                    try {
+                        const response = await fetch(uploadedFile.preview);
+                        const blob = await response.blob();
+                        const thumbName = `thumbnails/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+                        const { data: thumbData } = await supabase.storage
+                            .from('creatives')
+                            .upload(thumbName, blob, { contentType: 'image/jpeg' });
+                        if (thumbData) {
+                            thumbnailPath = thumbData.path;
+                        }
+                    } catch (thumbErr) {
+                        console.warn('[Upload] Failed to save thumbnail:', thumbErr);
                     }
-                } catch (thumbErr) {
-                    console.warn('[Upload] Failed to save thumbnail:', thumbErr);
+                }
+
+                // Upload video to Facebook
+                try {
+                    console.log('[Upload] Uploading video to Facebook...');
+                    setFiles((prev) =>
+                        prev.map((f) =>
+                            f.id === uploadedFile.id ? { ...f, progress: 60 } : f
+                        )
+                    );
+
+                    const fbVideo = await fbApi.uploadVideo(uploadedFile.file, uploadedFile.file.name);
+                    fbVideoId = fbVideo.id;
+                    console.log('[Upload] Facebook video uploaded, id:', fbVideoId);
+
+                    setFiles((prev) =>
+                        prev.map((f) =>
+                            f.id === uploadedFile.id ? { ...f, progress: 90, videoId: fbVideoId || undefined } : f
+                        )
+                    );
+                } catch (fbErr) {
+                    console.warn('[Upload] Failed to upload video to Facebook:', fbErr);
+                    // Continue without FB video ID - can be uploaded later
                 }
             }
 
-            // Save metadata to Supabase - use thumbnail path for videos, storage path for images
+            // Save metadata to Supabase
             await addCreative({
                 name: uploadedFile.file.name,
                 type: uploadedFile.type,
                 storage_path: result.path,
                 file_size: uploadedFile.file.size,
-                dimensions: thumbnailPath ? { thumbnail: thumbnailPath } : null, // Store thumbnail in dimensions for now
-                duration: null, // TODO: extract from video
+                dimensions: thumbnailPath ? { thumbnail: thumbnailPath } : null,
+                duration: null,
                 uploaded_by: 'Harry',
                 fb_hash: null,
+                fb_video_id: fbVideoId,
             });
 
             // Update file status

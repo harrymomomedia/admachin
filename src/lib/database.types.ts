@@ -153,6 +153,7 @@ export interface Database {
                     duration: number | null
                     uploaded_by: string
                     fb_hash: string | null
+                    fb_video_id: string | null
                     created_at: string
                 }
                 Insert: {
@@ -166,6 +167,7 @@ export interface Database {
                     duration?: number | null
                     uploaded_by: string
                     fb_hash?: string | null
+                    fb_video_id?: string | null
                     created_at?: string
                 }
                 Update: {
@@ -179,6 +181,7 @@ export interface Database {
                     duration?: number | null
                     uploaded_by?: string
                     fb_hash?: string | null
+                    fb_video_id?: string | null
                     created_at?: string
                 }
                 Relationships: [

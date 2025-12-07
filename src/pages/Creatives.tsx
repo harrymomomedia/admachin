@@ -30,6 +30,7 @@ interface MediaItem {
     uploadedAt: Date;
     uploadedBy?: string; // Who uploaded this creative
     hash?: string;
+    videoId?: string; // Facebook video ID for video ads
     dimensions?: { width: number; height: number };
     duration?: number; // for videos
     dbId?: string; // Supabase ID for deletion
@@ -126,6 +127,7 @@ async function loadMediaFromDb(): Promise<MediaItem[]> {
                 uploadedAt: new Date(c.created_at),
                 uploadedBy: c.uploaded_by,
                 hash: c.fb_hash || undefined,
+                videoId: (c as unknown as { fb_video_id: string | null }).fb_video_id || undefined,
                 dimensions: typeof dims?.width === 'number' ? { width: dims.width!, height: dims.height! } : undefined,
                 duration: c.duration || undefined,
             };
