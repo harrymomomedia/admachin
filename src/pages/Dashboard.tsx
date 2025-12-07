@@ -1,5 +1,6 @@
-import { ArrowUpRight, ArrowDownRight, DollarSign, Eye, MousePointer, Percent } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, DollarSign, Eye, MousePointer, Percent, X, CheckCircle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useState, useEffect } from "react";
 
 const stats = [
     {
@@ -43,8 +44,47 @@ const data = [
 ];
 
 export function Dashboard() {
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    // Check for success message from LaunchAd
+    useEffect(() => {
+        const stored = sessionStorage.getItem('launch_success');
+        if (stored) {
+            try {
+                const data = JSON.parse(stored);
+                // Only show if message is recent (within 10 seconds)
+                if (Date.now() - data.timestamp < 10000) {
+                    setSuccessMessage(data.message);
+                    // Auto-dismiss after 8 seconds
+                    setTimeout(() => setSuccessMessage(null), 8000);
+                }
+            } catch {
+                // Ignore parse errors
+            }
+            sessionStorage.removeItem('launch_success');
+        }
+    }, []);
+
     return (
         <div className="space-y-6">
+            {/* Success Notification Banner */}
+            {successMessage && (
+                <div className="animate-in slide-in-from-top fade-in duration-300 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 rounded-full">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                        </div>
+                        <span className="text-green-800 font-medium">{successMessage}</span>
+                    </div>
+                    <button
+                        onClick={() => setSuccessMessage(null)}
+                        className="p-1 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold">Dashboard Overview</h1>
                 <div className="flex items-center gap-2">

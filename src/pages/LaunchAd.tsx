@@ -410,8 +410,24 @@ export function LaunchAd() {
             await api.createAd(adParams);
             console.log("✓ Created Ad");
 
+            // Store success message for dashboard to display
+            const successMode = formData.creationMode || "new_campaign";
+            let successMessage = "🎉 Campaign created successfully!";
+            if (successMode === "new_campaign") {
+                successMessage = `🎉 Campaign "${formData.name}" created successfully! Status: PAUSED`;
+            } else if (successMode === "add_to_campaign") {
+                successMessage = `🎉 Ad Set added to campaign successfully! Status: PAUSED`;
+            } else if (successMode === "add_to_adset") {
+                successMessage = `🎉 Ad added to ad set successfully! Status: PAUSED`;
+            }
+
+            sessionStorage.setItem('launch_success', JSON.stringify({
+                message: successMessage,
+                timestamp: Date.now()
+            }));
+
             setIsSubmitting(false);
-            navigate("/");
+            navigate("/", { state: { launchSuccess: true, message: successMessage } });
         } catch (error: unknown) {
             console.error("Launch failed:", error);
             let errorMessage = "Failed to launch campaign. Please check your inputs.";
