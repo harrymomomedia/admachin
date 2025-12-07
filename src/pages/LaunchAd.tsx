@@ -283,8 +283,8 @@ export function LaunchAd() {
                     }
                 }
 
-                // Convert budget to cents (FB API requires cents)
-                const budgetAmount = Math.round(parseFloat(formData.budget?.amount || "20") * 100);
+                // Budget in dollars - api.ts will convert to cents
+                const budgetAmount = parseFloat(formData.budget?.amount || "20");
 
                 // Map objective to optimization goal
                 type OptGoal = "LINK_CLICKS" | "LEAD_GENERATION" | "REACH" | "OFFSITE_CONVERSIONS" | "POST_ENGAGEMENT";
