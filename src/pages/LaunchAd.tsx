@@ -358,6 +358,9 @@ export function LaunchAd() {
             const videoUrl = formData.creative?.videoUrl;
 
             addLog(`Creative debug: ${JSON.stringify({ imageUrl, imageHash, mediaType, videoId, videoUrl })}`);
+            if (!imageUrl) {
+                addLog("⚠️ WARNING: No imageUrl (thumbnail) found for this creative!");
+            }
 
             // For video ads, upload video to Facebook if not already uploaded
             if (mediaType === "video" && !videoId) {

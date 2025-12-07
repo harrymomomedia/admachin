@@ -99,7 +99,7 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
         updateCreative({
             mediaPreview: media.preview,
             mediaType: media.type,
-            imageUrl: media.type === "image" ? media.preview : undefined,
+            imageUrl: media.preview, // Always use preview as the image URL (thumbnail for video)
             imageHash: media.hash,
             videoId: media.type === "video" ? media.videoId : undefined,
             videoUrl: media.type === "video" ? media.url : undefined,
