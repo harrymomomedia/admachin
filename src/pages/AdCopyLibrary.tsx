@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Plus,
     Search,
@@ -45,6 +45,44 @@ export function AdCopyLibrary() {
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    // Column Resizing State
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+        text: 300,
+        type: 120,
+        project: 120,
+        platform: 100,
+        name: 150,
+        date: 100,
+        creator: 80,
+        actions: 100,
+    });
+    const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
+
+    const handleResizeStart = useCallback((column: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        resizingRef.current = {
+            column,
+            startX: e.clientX,
+            startWidth: columnWidths[column],
+        };
+        document.addEventListener('mousemove', handleResizeMove);
+        document.addEventListener('mouseup', handleResizeEnd);
+    }, [columnWidths]);
+
+    const handleResizeMove = useCallback((e: MouseEvent) => {
+        if (!resizingRef.current) return;
+        const { column, startX, startWidth } = resizingRef.current;
+        const delta = e.clientX - startX;
+        const newWidth = Math.max(50, startWidth + delta); // Min width 50px
+        setColumnWidths(prev => ({ ...prev, [column]: newWidth }));
+    }, []);
+
+    const handleResizeEnd = useCallback(() => {
+        resizingRef.current = null;
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+    }, [handleResizeMove]);
 
     // Load Data
     useEffect(() => {
@@ -248,17 +286,61 @@ export function AdCopyLibrary() {
             {/* Content Table */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-left text-sm" style={{ tableLayout: 'fixed' }}>
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th className="px-6 py-3 font-medium text-gray-500 min-w-[300px]">Ad Text</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Type</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Project</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Traffic</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-40">Name</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-32">Date</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Creator</th>
-                                <th className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap w-24">Actions</th>
+                                <th style={{ width: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
+                                    Ad Text
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('text', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.type }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Type
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('type', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.project }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Project
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('project', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.platform }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Traffic
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('platform', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.name }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Name
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('name', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.date }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Date
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('date', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.creator }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                    Creator
+                                    <div
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                        onMouseDown={(e) => handleResizeStart('creator', e)}
+                                    />
+                                </th>
+                                <th style={{ width: columnWidths.actions }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap">
+                                    Actions
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
