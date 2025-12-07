@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, FolderKanban, Plus, Trash2, UserPlus, X, Check } from 'lucide-react';
+import { Users, FolderKanban, Plus, Trash2, UserPlus, X, Check, Pencil } from 'lucide-react';
 import {
     getProjects, createProject, deleteProject,
-    getUsers, createUser, deleteUser,
+    getUsers, createUser, deleteUser, updateUser,
     assignUserToProject, removeUserFromProject,
     type Project, type User
 } from '../lib/supabase-service';
@@ -23,6 +23,14 @@ export function TeamSettings() {
     const [newUserEmail, setNewUserEmail] = useState('');
     const [newUserPassword, setNewUserPassword] = useState('');
     const [newUserRole, setNewUserRole] = useState<'admin' | 'member'>('member');
+
+    // Edit User modal state
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [editUserFirstName, setEditUserFirstName] = useState('');
+    const [editUserLastName, setEditUserLastName] = useState('');
+    const [editUserEmail, setEditUserEmail] = useState('');
+    const [editUserPassword, setEditUserPassword] = useState('');
+    const [editUserRole, setEditUserRole] = useState<'admin' | 'member'>('member');
 
     // Add Project modal state
     const [showAddProject, setShowAddProject] = useState(false);
@@ -69,6 +77,39 @@ export function TeamSettings() {
         } catch (error) {
             console.error('Error creating user:', error);
             alert('Error creating user. Email might already exist.');
+        }
+    };
+
+    const openEditUser = (user: User) => {
+        setEditingUser(user);
+        setEditUserFirstName(user.first_name);
+        setEditUserLastName(user.last_name);
+        setEditUserEmail(user.email);
+        setEditUserPassword('');
+        setEditUserRole(user.role as 'admin' | 'member');
+    };
+
+    const handleEditUser = async () => {
+        if (!editingUser || !editUserFirstName.trim() || !editUserLastName.trim() || !editUserEmail.trim()) return;
+
+        try {
+            const updates: { first_name?: string; last_name?: string; email?: string; password?: string; role?: string } = {
+                first_name: editUserFirstName,
+                last_name: editUserLastName,
+                email: editUserEmail,
+                role: editUserRole
+            };
+            // Only update password if provided
+            if (editUserPassword.trim()) {
+                updates.password = editUserPassword;
+            }
+
+            const updatedUser = await updateUser(editingUser.id, updates);
+            setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
+            setEditingUser(null);
+        } catch (error) {
+            console.error('Error updating user:', error);
+            alert('Error updating user.');
         }
     };
 
@@ -237,12 +278,22 @@ export function TeamSettings() {
                                                 {new Date(user.created_at).toLocaleDateString()}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <button
-                                                    onClick={() => handleDeleteUser(user.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => openEditUser(user)}
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                        title="Edit user"
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteUser(user.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                        title="Delete user"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -422,6 +473,90 @@ export function TeamSettings() {
                             >
                                 <Check className="w-4 h-4" />
                                 Add User
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit User Modal */}
+            {editingUser && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Edit User</h3>
+                            <button onClick={() => setEditingUser(null)} className="p-1 hover:bg-gray-100 rounded">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={editUserFirstName}
+                                        onChange={(e) => setEditUserFirstName(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={editUserLastName}
+                                        onChange={(e) => setEditUserLastName(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
+                                <input
+                                    type="email"
+                                    value={editUserEmail}
+                                    onChange={(e) => setEditUserEmail(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-gray-400">(leave blank to keep current)</span></label>
+                                <input
+                                    type="password"
+                                    value={editUserPassword}
+                                    onChange={(e) => setEditUserPassword(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                                <select
+                                    value={editUserRole}
+                                    onChange={(e) => setEditUserRole(e.target.value as 'admin' | 'member')}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="member">Member</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setEditingUser(null)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleEditUser}
+                                disabled={!editUserFirstName.trim() || !editUserLastName.trim() || !editUserEmail.trim()}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Check className="w-4 h-4" />
+                                Save Changes
                             </button>
                         </div>
                     </div>

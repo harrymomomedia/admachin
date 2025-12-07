@@ -552,6 +552,25 @@ export async function deleteUser(id: string): Promise<void> {
     }
 }
 
+/**
+ * Update a user
+ */
+export async function updateUser(id: string, updates: { first_name?: string; last_name?: string; email?: string; password?: string; role?: string }): Promise<User> {
+    const { data, error } = await supabaseUntyped
+        .from('users')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating user:', error);
+        throw error;
+    }
+
+    return data;
+}
+
 // ============================================
 // PROJECT USER ASSIGNMENTS
 // ============================================
