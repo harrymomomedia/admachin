@@ -325,15 +325,50 @@ export function LaunchAd() {
             }
 
             // 3. Create Ad
-            // Get the image URL or hash from selected media
+            // Get the media info from selected creative
             const imageUrl = formData.creative?.mediaPreview || formData.creative?.imageUrl;
             const imageHash = formData.creative?.imageHash;
+            const mediaType = formData.creative?.mediaType || "image";
+            const videoId = formData.creative?.videoId;
 
-            console.log("Creative debug:", { imageUrl, imageHash, mediaType: formData.creative?.mediaType });
+            console.log("Creative debug:", { imageUrl, imageHash, mediaType, videoId });
 
-            const creativeSpec = {
-                name: `${formData.name || "Ad"} - Creative`,
-                object_story_spec: {
+            // Build the object_story_spec based on media type
+            let objectStorySpec: Record<string, unknown>;
+
+            if (mediaType === "video" && videoId) {
+                // Video ad with uploaded video (has Facebook video_id)
+                objectStorySpec = {
+                    page_id: formData.creative?.pageId || "",
+                    video_data: {
+                        video_id: videoId,
+                        message: formData.creative?.primaryText || "",
+                        title: formData.creative?.headline || "",
+                        call_to_action: {
+                            type: formData.creative?.cta || "LEARN_MORE",
+                            value: { link: formData.creative?.url || "https://example.com" },
+                        },
+                    },
+                };
+            } else if (mediaType === "video") {
+                // Video without Facebook video_id - use link_data with video URL
+                // Note: Facebook may not support all video URLs, proper upload to FB is recommended
+                objectStorySpec = {
+                    page_id: formData.creative?.pageId || "",
+                    link_data: {
+                        link: formData.creative?.url || "https://example.com",
+                        message: formData.creative?.primaryText || "",
+                        name: formData.creative?.headline || "",
+                        call_to_action: {
+                            type: formData.creative?.cta || "LEARN_MORE",
+                            value: { link: formData.creative?.url || "https://example.com" },
+                        },
+                    },
+                };
+                console.warn("Video does not have Facebook video_id - ad may not work correctly. Consider uploading video directly to Facebook.");
+            } else {
+                // Image ad
+                objectStorySpec = {
                     page_id: formData.creative?.pageId || "",
                     link_data: {
                         link: formData.creative?.url || "https://example.com",
@@ -342,17 +377,23 @@ export function LaunchAd() {
                         // Use image_hash if available (uploaded to Facebook), otherwise use picture URL
                         ...(imageHash ? { image_hash: imageHash } : (imageUrl ? { picture: imageUrl } : {})),
                         call_to_action: {
-                            type: (formData.creative?.cta || "LEARN_MORE") as "LEARN_MORE" | "SHOP_NOW" | "SIGN_UP" | "BOOK_TRAVEL" | "CONTACT_US" | "DOWNLOAD" | "GET_OFFER" | "GET_QUOTE" | "ORDER_NOW" | "SUBSCRIBE" | "WATCH_MORE" | "MESSAGE_PAGE" | "WHATSAPP_MESSAGE",
+                            type: formData.creative?.cta || "LEARN_MORE",
                             value: { link: formData.creative?.url || "https://example.com" },
                         },
                     },
-                },
+                };
+            }
+
+            const creativeSpec = {
+                name: `${formData.name || "Ad"} - Creative`,
+                object_story_spec: objectStorySpec,
             };
 
             const adParams: CreateAdParams = {
                 name: `${formData.name || "Ad"} - Ad`,
                 adset_id: adSetId!,
-                creative: creativeSpec,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                creative: creativeSpec as any,
                 status: "PAUSED",
             };
 

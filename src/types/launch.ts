@@ -39,6 +39,7 @@ export interface CreativeData {
     mediaType?: "image" | "video";
     imageHash?: string;
     imageUrl?: string; // Direct URL for simple image ads
+    videoId?: string;  // Facebook video ID for video ads
     primaryText?: string;
     headline?: string;
     description?: string;
