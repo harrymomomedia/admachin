@@ -96,16 +96,20 @@ export function LaunchAd() {
             }).catch(console.error);
             // Load pages
             api.getPages().then((res) => {
+                console.log('[LaunchAd] Loaded pages:', res.data?.length || 0, res.data);
                 setPages(res.data);
                 // Auto-select first page if available and not already set
                 if (res.data.length > 0 && !pageIdSet.current) {
                     pageIdSet.current = true;
+                    console.log('[LaunchAd] Auto-selecting first page:', res.data[0].id);
                     setFormData((prev) => ({
                         ...prev,
                         creative: { ...prev.creative, pageId: res.data[0].id },
                     }));
                 }
-            }).catch(console.error);
+            }).catch((err) => {
+                console.error('[LaunchAd] Failed to load pages:', err);
+            });
         }
     }, [selectedAccount, isConnected]);
 
