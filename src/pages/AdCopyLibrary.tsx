@@ -286,7 +286,7 @@ export function AdCopyLibrary() {
             {/* Content Table */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="text-left text-sm" style={{ minWidth: '1200px', tableLayout: 'fixed' }}>
+                    <table className="text-left text-sm" style={{ width: Object.values(columnWidths).reduce((a, b) => a + b, 0), tableLayout: 'fixed' }}>
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                                 <th style={{ width: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
