@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database, Type } from "lucide-react";
+import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database, Type, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 
@@ -27,7 +27,11 @@ const bottomNavigation = [
     { name: "Team Settings", href: "/team-settings", icon: Users },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+    onClose?: () => void;
+}
+
+export function Sidebar({ onClose }: SidebarProps) {
     const location = useLocation();
     const [isFacebookExpanded, setIsFacebookExpanded] = useState(
         location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts'
@@ -35,11 +39,29 @@ export function Sidebar() {
 
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
 
+    const handleNavClick = () => {
+        // Close sidebar on mobile when navigating
+        if (onClose) {
+            onClose();
+        }
+    };
+
     return (
         <div className="flex h-full w-64 flex-col bg-card border-r border-border">
-            <div className="flex h-16 items-center px-6 border-b border-border">
-                <Rocket className="h-6 w-6 text-primary mr-2" />
-                <span className="text-xl font-bold text-foreground">AdMachin</span>
+            <div className="flex h-16 items-center justify-between px-6 border-b border-border">
+                <div className="flex items-center">
+                    <Rocket className="h-6 w-6 text-primary mr-2" />
+                    <span className="text-xl font-bold text-foreground">AdMachin</span>
+                </div>
+                {/* Close button for mobile */}
+                {onClose && (
+                    <button
+                        onClick={onClose}
+                        className="md:hidden p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                )}
             </div>
             <div className="flex-1 flex flex-col gap-1 p-4 overflow-y-auto">
                 {/* Main Navigation */}
@@ -49,6 +71,7 @@ export function Sidebar() {
                         <Link
                             key={item.name}
                             to={item.href}
+                            onClick={handleNavClick}
                             className={cn(
                                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                                 isActive
@@ -92,6 +115,7 @@ export function Sidebar() {
                                     <Link
                                         key={item.name}
                                         to={item.href}
+                                        onClick={handleNavClick}
                                         className={cn(
                                             "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                                             isActive
@@ -116,6 +140,7 @@ export function Sidebar() {
                             <Link
                                 key={item.name}
                                 to={item.href}
+                                onClick={handleNavClick}
                                 className={cn(
                                     "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                                     isActive
