@@ -133,8 +133,13 @@ export function CreativeUploader({
                         )
                     );
                 } catch (fbErr) {
-                    console.warn('[Upload] Failed to upload video to Facebook:', fbErr);
-                    // Continue without FB video ID - can be uploaded later
+                    console.error('[Upload] Failed to upload video to Facebook:', fbErr);
+                    // Throw error so user knows video wasn't uploaded to Facebook
+                    const errorMessage = fbErr instanceof Error ? fbErr.message : 'Unknown error';
+                    throw new Error(
+                        `Failed to upload video to Facebook: ${errorMessage}. ` +
+                        `Please ensure you're connected to Facebook with proper permissions and try again.`
+                    );
                 }
             }
 

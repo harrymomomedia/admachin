@@ -342,6 +342,15 @@ export function LaunchAd() {
 
             console.log("Creative debug:", { imageUrl, imageHash, mediaType, videoId });
 
+            // Validate video creatives have been uploaded to Facebook
+            if (mediaType === "video" && !videoId) {
+                throw new Error(
+                    "This video hasn't been uploaded to Facebook yet. Please go to the Creatives page and re-upload the video, " +
+                    "or select a different video that has been properly uploaded to Facebook. " +
+                    "(Videos must be uploaded to Facebook before they can be used in ads)"
+                );
+            }
+
             // Build the object_story_spec based on media type
             let objectStorySpec: Record<string, unknown>;
 
@@ -359,22 +368,6 @@ export function LaunchAd() {
                         },
                     },
                 };
-            } else if (mediaType === "video") {
-                // Video without Facebook video_id - use link_data with video URL
-                // Note: Facebook may not support all video URLs, proper upload to FB is recommended
-                objectStorySpec = {
-                    page_id: formData.creative?.pageId || "",
-                    link_data: {
-                        link: formData.creative?.url || "https://example.com",
-                        message: formData.creative?.primaryText || "",
-                        name: formData.creative?.headline || "",
-                        call_to_action: {
-                            type: formData.creative?.cta || "LEARN_MORE",
-                            value: { link: formData.creative?.url || "https://example.com" },
-                        },
-                    },
-                };
-                console.warn("Video does not have Facebook video_id - ad may not work correctly. Consider uploading video directly to Facebook.");
             } else {
                 // Image ad
                 objectStorySpec = {
