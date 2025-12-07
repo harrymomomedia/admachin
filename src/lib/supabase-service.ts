@@ -2,7 +2,14 @@
 // Provides typed functions for database operations
 
 import { supabase } from './supabase';
+import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+
+// Untyped client for new tables not yet in database.types.ts
+const supabaseUntyped = createClient(
+    import.meta.env.VITE_SUPABASE_URL || '',
+    import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+);
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
@@ -408,6 +415,193 @@ export async function deleteAdCopy(id: string): Promise<void> {
 
     if (error) {
         console.error('[Supabase] Error deleting ad copy:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// PROJECTS
+// ============================================
+
+export interface Project {
+    id: string;
+    name: string;
+    description: string | null;
+    created_at: string;
+    created_by: string | null;
+}
+
+export interface User {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    created_at: string;
+}
+
+export interface ProjectUserAssignment {
+    id: string;
+    project_id: string;
+    user_id: string;
+    assigned_at: string;
+}
+
+/**
+ * Get all projects
+ */
+export async function getProjects(): Promise<Project[]> {
+    const { data, error } = await supabaseUntyped
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching projects:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+/**
+ * Create a new project
+ */
+export async function createProject(name: string, description?: string): Promise<Project> {
+    const { data, error } = await supabaseUntyped
+        .from('projects')
+        .insert({ name, description: description || null })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating project:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete a project
+ */
+export async function deleteProject(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('projects')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting project:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// USERS
+// ============================================
+
+/**
+ * Get all users
+ */
+export async function getUsers(): Promise<User[]> {
+    const { data, error } = await supabaseUntyped
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching users:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+/**
+ * Create a new user
+ */
+export async function createUser(email: string, name?: string, role: string = 'member'): Promise<User> {
+    const { data, error } = await supabaseUntyped
+        .from('users')
+        .insert({ email, name: name || null, role })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating user:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete a user
+ */
+export async function deleteUser(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('users')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting user:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// PROJECT USER ASSIGNMENTS
+// ============================================
+
+/**
+ * Get users assigned to a project
+ */
+export async function getProjectUsers(projectId: string): Promise<User[]> {
+    const { data, error } = await supabaseUntyped
+        .from('project_user_assignments')
+        .select(`
+            user_id,
+            users (*)
+        `)
+        .eq('project_id', projectId);
+
+    if (error) {
+        console.error('[Supabase] Error fetching project users:', error);
+        throw error;
+    }
+
+    // Extract the user objects from the join
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data || []).map((item: any) => item.users as User);
+}
+
+/**
+ * Assign a user to a project
+ */
+export async function assignUserToProject(projectId: string, userId: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('project_user_assignments')
+        .insert({ project_id: projectId, user_id: userId });
+
+    if (error) {
+        console.error('[Supabase] Error assigning user to project:', error);
+        throw error;
+    }
+}
+
+/**
+ * Remove a user from a project
+ */
+export async function removeUserFromProject(projectId: string, userId: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('project_user_assignments')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', userId);
+
+    if (error) {
+        console.error('[Supabase] Error removing user from project:', error);
         throw error;
     }
 }

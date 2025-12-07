@@ -26,7 +26,7 @@ function App() {
               {/* Redirect old ad-accounts path */}
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
               <Route path="ad-copies" element={<AdCopyLibrary />} />
-              <Route path="team-settings" element={<TeamSettings />} />
+              <Route path="admin" element={<TeamSettings />} />
             </Route>
           </Routes>
         </BrowserRouter>

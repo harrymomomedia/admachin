@@ -24,7 +24,7 @@ const facebookSubNav = [
 ];
 
 const bottomNavigation = [
-    { name: "Team Settings", href: "/team-settings", icon: Users },
+    { name: "Admin", href: "/admin", icon: Users },
 ];
 
 interface SidebarProps {
