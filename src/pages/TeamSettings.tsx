@@ -1,48 +1,37 @@
 import { useState, useEffect } from 'react';
-import { Users, Building2, FolderKanban, Plus, Mail, Trash2, Shield } from 'lucide-react';
-
-interface TeamMember {
-    id: string;
-    name: string;
-    email: string;
-    role: 'Admin' | 'Editor' | 'Viewer';
-    status: 'Active' | 'Suspended' | 'Pending';
-    joinedAt: number;
-}
-
-interface Project {
-    id: string;
-    name: string;
-    description?: string;
-    createdAt: number;
-    campaignCount: number;
-}
-
-interface PendingInvitation {
-    email: string;
-    role: string;
-    invitedAt: number;
-}
+import { Users, FolderKanban, Plus, Trash2, UserPlus, X, Check } from 'lucide-react';
+import {
+    getProjects, createProject, deleteProject,
+    getUsers, createUser, deleteUser,
+    assignUserToProject, removeUserFromProject,
+    type Project, type User
+} from '../lib/supabase-service';
 
 export function TeamSettings() {
-    const [teamName, setTeamName] = useState('Momomedia');
-    const [teamLogo, setTeamLogo] = useState('');
-    const [members, setMembers] = useState<TeamMember[]>([]);
+    const [activeTab, setActiveTab] = useState<'users' | 'projects'>('users');
+
+    // Data state
+    const [users, setUsers] = useState<User[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
-    const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
-
+    const [projectAssignments, setProjectAssignments] = useState<Record<string, string[]>>({}); // projectId -> userIds[]
     const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
 
-    // Invite member modal state
-    const [showInviteModal, setShowInviteModal] = useState(false);
-    const [inviteEmail, setInviteEmail] = useState('');
-    const [inviteRole, setInviteRole] = useState<'Admin' | 'Editor' | 'Viewer'>('Editor');
+    // Add User modal state
+    const [showAddUser, setShowAddUser] = useState(false);
+    const [newUserFirstName, setNewUserFirstName] = useState('');
+    const [newUserLastName, setNewUserLastName] = useState('');
+    const [newUserEmail, setNewUserEmail] = useState('');
+    const [newUserPassword, setNewUserPassword] = useState('');
+    const [newUserRole, setNewUserRole] = useState<'admin' | 'member'>('member');
 
-    // Add project modal state
+    // Add Project modal state
     const [showAddProject, setShowAddProject] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDesc, setNewProjectDesc] = useState('');
+
+    // Assign user modal state
+    const [assigningProject, setAssigningProject] = useState<Project | null>(null);
+    const [selectedUserForAssignment, setSelectedUserForAssignment] = useState<string>('');
 
     // Load data on mount
     useEffect(() => {
@@ -51,448 +40,492 @@ export function TeamSettings() {
 
     const loadData = async () => {
         setIsLoading(true);
-
-        // Helper to fetch with timeout
-        const fetchWithTimeout = async (url: string, timeout = 1500) => {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
-            try {
-                const response = await fetch(url, { signal: controller.signal });
-                clearTimeout(id);
-                if (!response.ok) throw new Error('API response not ok');
-                return await response.json();
-            } catch (err) {
-                clearTimeout(id);
-                throw err;
-            }
-        };
-
         try {
-            // Load team settings with fallback
-            try {
-                const settingsData = await fetchWithTimeout('/api/team/settings');
-                setTeamName(settingsData.teamName || 'Momomedia');
-                setTeamLogo(settingsData.teamLogo || '');
-            } catch {
-                console.warn('[TeamSettings] Using fallback for settings');
-                setTeamName('Momomedia');
-            }
-
-            // Load members with fallback
-            try {
-                const membersData = await fetchWithTimeout('/api/team/members');
-                setMembers(membersData.members || []);
-                setPendingInvitations(membersData.pendingInvitations || []);
-            } catch {
-                console.warn('[TeamSettings] Using fallback for members');
-                setMembers([{
-                    id: '1',
-                    name: 'Harry Jung',
-                    email: 'harry@momomedia.io',
-                    role: 'Admin',
-                    status: 'Active',
-                    joinedAt: Date.now(),
-                }]);
-                setPendingInvitations([]);
-            }
-
-            // Load projects with fallback
-            try {
-                const projectsData = await fetchWithTimeout('/api/team/projects');
-                setProjects(projectsData.projects || []);
-            } catch {
-                console.warn('[TeamSettings] Using fallback for projects');
-                setProjects([{
-                    id: '1',
-                    name: 'Auto Insurance',
-                    createdAt: Date.now(),
-                    campaignCount: 0
-                }]);
-            }
+            const [usersData, projectsData] = await Promise.all([
+                getUsers(),
+                getProjects()
+            ]);
+            setUsers(usersData);
+            setProjects(projectsData);
         } catch (error) {
-            console.error('Failed to load team data:', error);
+            console.error('Error loading data:', error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const saveTeamInfo = async () => {
-        setIsSaving(true);
+    const handleAddUser = async () => {
+        if (!newUserFirstName.trim() || !newUserLastName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) return;
+
         try {
-            await fetch('/api/team/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ teamName, teamLogo })
-            });
-            alert('Team information saved!');
+            const user = await createUser(newUserFirstName, newUserLastName, newUserEmail, newUserPassword, newUserRole);
+            setUsers([user, ...users]);
+            setShowAddUser(false);
+            setNewUserFirstName('');
+            setNewUserLastName('');
+            setNewUserEmail('');
+            setNewUserPassword('');
+            setNewUserRole('member');
         } catch (error) {
-            console.error('Failed to save team info:', error);
-            alert('Failed to save team information');
-        } finally {
-            setIsSaving(false);
+            console.error('Error creating user:', error);
+            alert('Error creating user. Email might already exist.');
         }
     };
 
-    const handleInviteMember = async () => {
-        if (!inviteEmail || !inviteRole) {
-            alert('Please enter email and select a role');
-            return;
-        }
+    const handleDeleteUser = async (userId: string) => {
+        if (!confirm('Are you sure you want to delete this user?')) return;
 
         try {
-            const res = await fetch('/api/team/members', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: inviteEmail, role: inviteRole })
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                setPendingInvitations(data.pendingInvitations);
-                setInviteEmail('');
-                setInviteRole('Editor');
-                setShowInviteModal(false);
-                alert(`Invitation sent to ${inviteEmail} (Note: Email sending not implemented yet)`);
-            }
+            await deleteUser(userId);
+            setUsers(users.filter(u => u.id !== userId));
         } catch (error) {
-            console.error('Failed to invite member:', error);
-            alert('Failed to send invitation');
+            console.error('Error deleting user:', error);
         }
     };
 
     const handleAddProject = async () => {
-        if (!newProjectName) {
-            alert('Please enter a project name');
-            return;
-        }
+        if (!newProjectName.trim()) return;
 
         try {
-            const res = await fetch('/api/team/projects', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newProjectName, description: newProjectDesc })
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                setProjects(data.projects);
-                setNewProjectName('');
-                setNewProjectDesc('');
-                setShowAddProject(false);
-            }
+            const project = await createProject(newProjectName, newProjectDesc);
+            setProjects([project, ...projects]);
+            setShowAddProject(false);
+            setNewProjectName('');
+            setNewProjectDesc('');
         } catch (error) {
-            console.error('Failed to add project:', error);
-            alert('Failed to add project');
+            console.error('Error creating project:', error);
         }
     };
 
     const handleDeleteProject = async (projectId: string) => {
-        if (!confirm('Are you sure you want to delete this project?')) {
-            return;
-        }
+        if (!confirm('Are you sure you want to delete this project?')) return;
 
         try {
-            const res = await fetch(`/api/team/projects?id=${projectId}`, {
-                method: 'DELETE'
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                setProjects(data.projects);
-            }
+            await deleteProject(projectId);
+            setProjects(projects.filter(p => p.id !== projectId));
         } catch (error) {
-            console.error('Failed to delete project:', error);
-            alert('Failed to delete project');
+            console.error('Error deleting project:', error);
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="text-muted-foreground">Loading team settings...</div>
-            </div>
-        );
-    }
+    const handleAssignUser = async () => {
+        if (!assigningProject || !selectedUserForAssignment) return;
+
+        try {
+            await assignUserToProject(assigningProject.id, selectedUserForAssignment);
+            // Update local state
+            setProjectAssignments(prev => ({
+                ...prev,
+                [assigningProject.id]: [...(prev[assigningProject.id] || []), selectedUserForAssignment]
+            }));
+            setAssigningProject(null);
+            setSelectedUserForAssignment('');
+        } catch (error) {
+            console.error('Error assigning user:', error);
+        }
+    };
+
+    const handleRemoveUserFromProject = async (projectId: string, userId: string) => {
+        try {
+            await removeUserFromProject(projectId, userId);
+            setProjectAssignments(prev => ({
+                ...prev,
+                [projectId]: (prev[projectId] || []).filter(id => id !== userId)
+            }));
+        } catch (error) {
+            console.error('Error removing user from project:', error);
+        }
+    };
+
+    const getAssignedUsers = (projectId: string) => {
+        const userIds = projectAssignments[projectId] || [];
+        return users.filter(u => userIds.includes(u.id));
+    };
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Team Settings</h1>
+            <div>
+                <h1 className="text-2xl font-bold text-gray-900">Admin</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                    Manage users and projects.
+                </p>
             </div>
 
-            {/* Organization Section */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-6">
-                    <Building2 className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold">Organization</h2>
-                </div>
-
-                <div className="space-y-4 max-w-2xl">
-                    <div>
-                        <label className="block text-sm font-medium mb-2">Team Name</label>
-                        <input
-                            type="text"
-                            value={teamName}
-                            onChange={(e) => setTeamName(e.target.value)}
-                            className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="Enter team name"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium mb-2">Team Logo URL</label>
-                        <input
-                            type="text"
-                            value={teamLogo}
-                            onChange={(e) => setTeamLogo(e.target.value)}
-                            className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="https://example.com/logo.png (optional)"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Enter a URL to your company logo
-                        </p>
-                    </div>
-
+            {/* Tabs */}
+            <div className="border-b border-gray-200">
+                <nav className="flex gap-4" aria-label="Tabs">
                     <button
-                        onClick={saveTeamInfo}
-                        disabled={isSaving}
-                        className="px-6 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        onClick={() => setActiveTab('users')}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'users'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
                     >
-                        {isSaving ? 'Saving...' : 'Save Changes'}
+                        <Users className="w-4 h-4" />
+                        Users
                     </button>
-                </div>
+                    <button
+                        onClick={() => setActiveTab('projects')}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'projects'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        <FolderKanban className="w-4 h-4" />
+                        Projects
+                    </button>
+                </nav>
             </div>
 
-            {/* Projects Section */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-2">
-                        <FolderKanban className="h-5 w-5 text-primary" />
-                        <h2 className="text-lg font-semibold">Projects</h2>
+            {/* Users Tab */}
+            {activeTab === 'users' && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-900">Users</h2>
+                        <button
+                            onClick={() => setShowAddUser(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add User
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setShowAddProject(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Add Project
-                    </button>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {projects.map((project) => (
-                        <div key={project.id} className="border border-border rounded-lg p-4 hover:border-primary/50 transition-colors">
-                            <div className="flex items-start justify-between mb-2">
-                                <h3 className="font-semibold">{project.name}</h3>
-                                <button
-                                    onClick={() => handleDeleteProject(project.id)}
-                                    className="text-muted-foreground hover:text-red-500 transition-colors"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
-                            </div>
-                            {project.description && (
-                                <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
-                            )}
-                            <div className="text-xs text-muted-foreground">
-                                {project.campaignCount} campaigns
-                            </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Email</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Role</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Created</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                            Loading users...
+                                        </td>
+                                    </tr>
+                                ) : users.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                            No users yet. Add your first user.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    users.map(user => (
+                                        <tr key={user.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 font-medium text-gray-900">
+                                                {user.first_name} {user.last_name}
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-600">{user.email}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
+                                                        ? 'bg-purple-100 text-purple-700'
+                                                        : 'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-500">
+                                                {new Date(user.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button
+                                                    onClick={() => handleDeleteUser(user.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Projects Tab */}
+            {activeTab === 'projects' && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-900">Projects</h2>
+                        <button
+                            onClick={() => setShowAddProject(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Project
+                        </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Description</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Assigned Users</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Created</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                            Loading projects...
+                                        </td>
+                                    </tr>
+                                ) : projects.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                            No projects yet. Add your first project.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    projects.map(project => (
+                                        <tr key={project.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 font-medium text-gray-900">{project.name}</td>
+                                            <td className="px-6 py-4 text-gray-600">{project.description || '-'}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {getAssignedUsers(project.id).map(user => (
+                                                        <span
+                                                            key={user.id}
+                                                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs"
+                                                        >
+                                                            {user.first_name} {user.last_name}
+                                                            <button
+                                                                onClick={() => handleRemoveUserFromProject(project.id, user.id)}
+                                                                className="hover:text-red-600"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => setAssigningProject(project)}
+                                                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                        title="Assign user"
+                                                    >
+                                                        <UserPlus className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-500">
+                                                {new Date(project.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button
+                                                    onClick={() => handleDeleteProject(project.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Add User Modal */}
+            {showAddUser && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Add New User</h3>
+                            <button onClick={() => setShowAddUser(false)} className="p-1 hover:bg-gray-100 rounded">
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
-                    ))}
-                </div>
 
-                {/* Add Project Modal */}
-                {showAddProject && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md">
-                            <h3 className="text-lg font-semibold mb-4">Add New Project</h3>
-                            <div className="space-y-4">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Project Name</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                                     <input
                                         type="text"
-                                        value={newProjectName}
-                                        onChange={(e) => setNewProjectName(e.target.value)}
-                                        className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                        placeholder="e.g., Auto Insurance"
+                                        value={newUserFirstName}
+                                        onChange={(e) => setNewUserFirstName(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="John"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Description (optional)</label>
-                                    <textarea
-                                        value={newProjectDesc}
-                                        onChange={(e) => setNewProjectDesc(e.target.value)}
-                                        className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                        rows={3}
-                                        placeholder="Brief description of this project"
-                                    />
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={handleAddProject}
-                                        className="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
-                                    >
-                                        Add Project
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setShowAddProject(false);
-                                            setNewProjectName('');
-                                            setNewProjectDesc('');
-                                        }}
-                                        className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg font-medium hover:bg-muted/80 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Team Members Section */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-2">
-                        <Users className="h-5 w-5 text-primary" />
-                        <h2 className="text-lg font-semibold">Team Members</h2>
-                    </div>
-                    <button
-                        onClick={() => setShowInviteModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors"
-                    >
-                        <Mail className="h-4 w-4" />
-                        Invite Member
-                    </button>
-                </div>
-
-                <div className="space-y-3">
-                    {members.map((member) => (
-                        <div key={member.id} className="flex items-center justify-between p-4 border border-border rounded-lg hover:border-primary/50 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-medium">
-                                    {member.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                    <div className="font-semibold">{member.name}</div>
-                                    <div className="text-sm text-muted-foreground">{member.email}</div>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${member.role === 'Admin' ? 'bg-primary/10 text-primary' :
-                                    member.role === 'Editor' ? 'bg-blue-500/10 text-blue-600' :
-                                        'bg-muted text-muted-foreground'
-                                    }`}>
-                                    {member.role}
-                                </span>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${member.status === 'Active' ? 'bg-green-500/10 text-green-600' :
-                                    'bg-muted text-muted-foreground'
-                                    }`}>
-                                    {member.status}
-                                </span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Pending Invitations */}
-                {pendingInvitations.length > 0 && (
-                    <div className="mt-6 pt-6 border-t border-border">
-                        <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Pending Invitations</h3>
-                        <div className="space-y-2">
-                            {pendingInvitations.map((inv, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 border border-dashed border-border rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <Mail className="h-4 w-4 text-muted-foreground" />
-                                        <div className="text-sm">{inv.email}</div>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">{inv.role}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Invite Modal */}
-                {showInviteModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md">
-                            <h3 className="text-lg font-semibold mb-4">Invite Team Member</h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Email Address</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                                     <input
-                                        type="email"
-                                        value={inviteEmail}
-                                        onChange={(e) => setInviteEmail(e.target.value)}
-                                        className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                        placeholder="colleague@example.com"
+                                        type="text"
+                                        value={newUserLastName}
+                                        onChange={(e) => setNewUserLastName(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Doe"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Role</label>
-                                    <select
-                                        value={inviteRole}
-                                        onChange={(e) => setInviteRole(e.target.value as 'Admin' | 'Editor' | 'Viewer')}
-                                        className="w-full bg-muted/50 border border-border rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                    >
-                                        <option value="Viewer">Viewer - Read-only access</option>
-                                        <option value="Editor">Editor - Can create & edit</option>
-                                        <option value="Admin">Admin - Full access</option>
-                                    </select>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={handleInviteMember}
-                                        className="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
-                                    >
-                                        Send Invitation
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setShowInviteModal(false);
-                                            setInviteEmail('');
-                                            setInviteRole('Editor');
-                                        }}
-                                        className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg font-medium hover:bg-muted/80 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    value={newUserEmail}
+                                    onChange={(e) => setNewUserEmail(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="john@example.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <input
+                                    type="password"
+                                    value={newUserPassword}
+                                    onChange={(e) => setNewUserPassword(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                                <select
+                                    value={newUserRole}
+                                    onChange={(e) => setNewUserRole(e.target.value as 'admin' | 'member')}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="member">Member</option>
+                                    <option value="admin">Admin</option>
+                                </select>
                             </div>
                         </div>
-                    </div>
-                )}
-            </div>
 
-            {/* Role Definitions */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                    <Shield className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold">Role Definitions</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-4 border border-border rounded-lg">
-                        <h3 className="font-semibold text-sm mb-2">Admin</h3>
-                        <p className="text-xs text-muted-foreground">
-                            Full access to all features including team management, billing, and settings
-                        </p>
-                    </div>
-                    <div className="p-4 border border-border rounded-lg">
-                        <h3 className="font-semibold text-sm mb-2">Editor</h3>
-                        <p className="text-xs text-muted-foreground">
-                            Can create and edit campaigns, creatives, and view analytics
-                        </p>
-                    </div>
-                    <div className="p-4 border border-border rounded-lg">
-                        <h3 className="font-semibold text-sm mb-2">Viewer</h3>
-                        <p className="text-xs text-muted-foreground">
-                            Read-only access to campaigns and analytics
-                        </p>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setShowAddUser(false)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddUser}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                                <Check className="w-4 h-4" />
+                                Add User
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
+
+            {/* Add Project Modal */}
+            {showAddProject && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Add New Project</h3>
+                            <button onClick={() => setShowAddProject(false)} className="p-1 hover:bg-gray-100 rounded">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                <input
+                                    type="text"
+                                    value={newProjectName}
+                                    onChange={(e) => setNewProjectName(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="My Project"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                                <textarea
+                                    value={newProjectDesc}
+                                    onChange={(e) => setNewProjectDesc(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    placeholder="Project description..."
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setShowAddProject(false)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddProject}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                                <Check className="w-4 h-4" />
+                                Add Project
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Assign User Modal */}
+            {assigningProject && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Assign User to {assigningProject.name}</h3>
+                            <button onClick={() => setAssigningProject(null)} className="p-1 hover:bg-gray-100 rounded">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Select User</label>
+                            <select
+                                value={selectedUserForAssignment}
+                                onChange={(e) => setSelectedUserForAssignment(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select a user...</option>
+                                {users
+                                    .filter(u => !(projectAssignments[assigningProject.id] || []).includes(u.id))
+                                    .map(user => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.first_name} {user.last_name} ({user.email})
+                                        </option>
+                                    ))
+                                }
+                            </select>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setAssigningProject(null)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAssignUser}
+                                disabled={!selectedUserForAssignment}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <UserPlus className="w-4 h-4" />
+                                Assign
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

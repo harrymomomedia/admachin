@@ -433,8 +433,10 @@ export interface Project {
 
 export interface User {
     id: string;
+    first_name: string;
+    last_name: string;
     email: string;
-    name: string | null;
+    password: string;
     role: string;
     created_at: string;
 }
@@ -520,10 +522,10 @@ export async function getUsers(): Promise<User[]> {
 /**
  * Create a new user
  */
-export async function createUser(email: string, name?: string, role: string = 'member'): Promise<User> {
+export async function createUser(firstName: string, lastName: string, email: string, password: string, role: string = 'member'): Promise<User> {
     const { data, error } = await supabaseUntyped
         .from('users')
-        .insert({ email, name: name || null, role })
+        .insert({ first_name: firstName, last_name: lastName, email, password, role })
         .select()
         .single();
 
