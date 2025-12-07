@@ -305,6 +305,8 @@ export function LaunchAd() {
                     status: "PAUSED",
                     billing_event: "IMPRESSIONS",
                     optimization_goal: getOptimizationGoal(formData.objective || "OUTCOME_TRAFFIC"),
+                    // Use LOWEST_COST_WITHOUT_CAP to avoid requiring bid amounts
+                    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                     targeting,
                     daily_budget: budgetAmount,
                     // Add promoted object for conversion objectives

@@ -296,6 +296,7 @@ export async function createAdSet(params: CreateAdSetParams): Promise<{ id: stri
     if (params.daily_budget) body.daily_budget = params.daily_budget * 100;
     if (params.lifetime_budget) body.lifetime_budget = params.lifetime_budget * 100;
     if (params.bid_amount) body.bid_amount = params.bid_amount * 100;
+    if (params.bid_strategy) body.bid_strategy = params.bid_strategy;
     if (params.start_time) body.start_time = params.start_time;
     if (params.end_time) body.end_time = params.end_time;
 

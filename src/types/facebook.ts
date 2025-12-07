@@ -99,6 +99,7 @@ export interface CreateAdSetParams {
     daily_budget?: number;
     lifetime_budget?: number;
     bid_amount?: number;
+    bid_strategy?: 'LOWEST_COST_WITHOUT_CAP' | 'LOWEST_COST_WITH_BID_CAP' | 'COST_CAP' | 'LOWEST_COST_WITH_MIN_ROAS';
     billing_event: BillingEvent;
     optimization_goal: OptimizationGoal;
     targeting: Targeting;
