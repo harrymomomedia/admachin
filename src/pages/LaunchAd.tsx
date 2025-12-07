@@ -323,8 +323,11 @@ export function LaunchAd() {
             }
 
             // 3. Create Ad
-            // Get the image URL from selected media or fallback
+            // Get the image URL or hash from selected media
             const imageUrl = formData.creative?.mediaPreview || formData.creative?.imageUrl;
+            const imageHash = formData.creative?.imageHash;
+
+            console.log("Creative debug:", { imageUrl, imageHash, mediaType: formData.creative?.mediaType });
 
             const creativeSpec = {
                 name: `${formData.name || "Ad"} - Creative`,
@@ -334,8 +337,8 @@ export function LaunchAd() {
                         link: formData.creative?.url || "https://example.com",
                         message: formData.creative?.primaryText || "",
                         name: formData.creative?.headline || "",
-                        // Use picture for image URL (FB API requirement)
-                        ...(imageUrl && { picture: imageUrl }),
+                        // Use image_hash if available (uploaded to Facebook), otherwise use picture URL
+                        ...(imageHash ? { image_hash: imageHash } : (imageUrl ? { picture: imageUrl } : {})),
                         call_to_action: {
                             type: (formData.creative?.cta || "LEARN_MORE") as "LEARN_MORE" | "SHOP_NOW" | "SIGN_UP" | "BOOK_TRAVEL" | "CONTACT_US" | "DOWNLOAD" | "GET_OFFER" | "GET_QUOTE" | "ORDER_NOW" | "SUBSCRIBE" | "WATCH_MORE" | "MESSAGE_PAGE" | "WHATSAPP_MESSAGE",
                             value: { link: formData.creative?.url || "https://example.com" },
