@@ -754,7 +754,17 @@ export interface Pixel {
  */
 export async function getPixels(): Promise<FacebookPaginatedResponse<Pixel>> {
     const adAccountId = requireAdAccountId();
-    return apiRequest<FacebookPaginatedResponse<Pixel>>(`/${adAccountId}/adspixels`, 'GET', {
-        fields: 'id,name,code',
-    });
+    console.log('[getPixels] Fetching pixels for account:', adAccountId);
+    console.log('[getPixels] Token available:', !!getAccessToken());
+
+    try {
+        const result = await apiRequest<FacebookPaginatedResponse<Pixel>>(`/${adAccountId}/adspixels`, 'GET', {
+            fields: 'id,name,code',
+        });
+        console.log('[getPixels] Success, found', result.data?.length || 0, 'pixels');
+        return result;
+    } catch (error) {
+        console.error('[getPixels] Error fetching pixels:', error);
+        throw error;
+    }
 }

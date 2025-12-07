@@ -32,11 +32,17 @@ export function SectionConversion({ data, updateData, isConnected }: SectionConv
 
     useEffect(() => {
         const loadPixels = async () => {
-            if (!isConnected) return;
+            if (!isConnected) {
+                console.log('[Pixels] Not connected, skipping load');
+                return;
+            }
 
             setLoading(true);
+            setError(null);
             try {
+                console.log('[Pixels] Loading pixels...');
                 const response = await getPixels();
+                console.log('[Pixels] Response:', response);
                 setPixels(response.data);
 
                 // Auto-select first pixel if none selected
@@ -51,8 +57,10 @@ export function SectionConversion({ data, updateData, isConnected }: SectionConv
                     });
                 }
             } catch (err) {
-                console.error("Failed to load pixels:", err);
-                setError("Failed to load pixels");
+                console.error("[Pixels] Failed to load pixels:", err);
+                // Show more detailed error message
+                const errorMessage = err instanceof Error ? err.message : "Failed to load pixels";
+                setError(errorMessage);
             } finally {
                 setLoading(false);
             }
