@@ -338,17 +338,36 @@ export function LaunchAd() {
             const imageUrl = formData.creative?.mediaPreview || formData.creative?.imageUrl;
             const imageHash = formData.creative?.imageHash;
             const mediaType = formData.creative?.mediaType || "image";
-            const videoId = formData.creative?.videoId;
+            let videoId = formData.creative?.videoId;
+            const videoUrl = formData.creative?.videoUrl;
 
-            console.log("Creative debug:", { imageUrl, imageHash, mediaType, videoId });
+            console.log("Creative debug:", { imageUrl, imageHash, mediaType, videoId, videoUrl });
 
-            // Validate video creatives have been uploaded to Facebook
+            // For video ads, upload video to Facebook if not already uploaded
             if (mediaType === "video" && !videoId) {
-                throw new Error(
-                    "This video hasn't been uploaded to Facebook yet. Please go to the Creatives page and re-upload the video, " +
-                    "or select a different video that has been properly uploaded to Facebook. " +
-                    "(Videos must be uploaded to Facebook before they can be used in ads)"
-                );
+                if (!videoUrl) {
+                    throw new Error(
+                        "Video URL is missing. Please select a video from your Creatives library."
+                    );
+                }
+
+                console.log("[LaunchAd] Uploading video to Facebook...");
+
+                // Fetch video from Supabase storage
+                const videoResponse = await fetch(videoUrl);
+                if (!videoResponse.ok) {
+                    throw new Error("Failed to fetch video file from storage.");
+                }
+                const videoBlob = await videoResponse.blob();
+
+                // Create a File object for the Facebook upload
+                const videoFileName = videoUrl.split('/').pop() || 'video.mp4';
+                const videoFile = new File([videoBlob], videoFileName, { type: videoBlob.type });
+
+                // Upload to Facebook
+                const fbVideo = await api.uploadVideo(videoFile, videoFileName);
+                videoId = fbVideo.id;
+                console.log("[LaunchAd] Video uploaded to Facebook, id:", videoId);
             }
 
             // Build the object_story_spec based on media type

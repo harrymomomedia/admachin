@@ -40,6 +40,7 @@ export interface CreativeData {
     imageHash?: string;
     imageUrl?: string; // Direct URL for simple image ads
     videoId?: string;  // Facebook video ID for video ads
+    videoUrl?: string; // Supabase URL for video file (used to upload to FB at launch)
     primaryText?: string;
     headline?: string;
     description?: string;

@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { uploadCreativeFile, addCreative } from "../lib/supabase-service";
 import { supabase } from "../lib/supabase";
-import * as fbApi from "../services/facebook/api";
 
 interface UploadedFile {
     id: string;
@@ -87,63 +86,32 @@ export function CreativeUploader({
             const result = await uploadCreativeFile(uploadedFile.file, (progress: number) => {
                 setFiles((prev) =>
                     prev.map((f) =>
-                        f.id === uploadedFile.id ? { ...f, progress: progress * 0.5 } : f // First 50% is Supabase upload
+                        f.id === uploadedFile.id ? { ...f, progress } : f
                     )
                 );
             });
 
             // For videos, upload the thumbnail too
             let thumbnailPath = null;
-            let fbVideoId: string | null = null;
 
-            if (uploadedFile.type === 'video') {
-                // Upload thumbnail
-                if (uploadedFile.preview) {
-                    try {
-                        const response = await fetch(uploadedFile.preview);
-                        const blob = await response.blob();
-                        const thumbName = `thumbnails/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-                        const { data: thumbData } = await supabase.storage
-                            .from('creatives')
-                            .upload(thumbName, blob, { contentType: 'image/jpeg' });
-                        if (thumbData) {
-                            thumbnailPath = thumbData.path;
-                        }
-                    } catch (thumbErr) {
-                        console.warn('[Upload] Failed to save thumbnail:', thumbErr);
-                    }
-                }
-
-                // Upload video to Facebook
+            if (uploadedFile.type === 'video' && uploadedFile.preview) {
                 try {
-                    console.log('[Upload] Uploading video to Facebook...');
-                    setFiles((prev) =>
-                        prev.map((f) =>
-                            f.id === uploadedFile.id ? { ...f, progress: 60 } : f
-                        )
-                    );
-
-                    const fbVideo = await fbApi.uploadVideo(uploadedFile.file, uploadedFile.file.name);
-                    fbVideoId = fbVideo.id;
-                    console.log('[Upload] Facebook video uploaded, id:', fbVideoId);
-
-                    setFiles((prev) =>
-                        prev.map((f) =>
-                            f.id === uploadedFile.id ? { ...f, progress: 90, videoId: fbVideoId || undefined } : f
-                        )
-                    );
-                } catch (fbErr) {
-                    console.error('[Upload] Failed to upload video to Facebook:', fbErr);
-                    // Throw error so user knows video wasn't uploaded to Facebook
-                    const errorMessage = fbErr instanceof Error ? fbErr.message : 'Unknown error';
-                    throw new Error(
-                        `Failed to upload video to Facebook: ${errorMessage}. ` +
-                        `Please ensure you're connected to Facebook with proper permissions and try again.`
-                    );
+                    const response = await fetch(uploadedFile.preview);
+                    const blob = await response.blob();
+                    const thumbName = `thumbnails/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+                    const { data: thumbData } = await supabase.storage
+                        .from('creatives')
+                        .upload(thumbName, blob, { contentType: 'image/jpeg' });
+                    if (thumbData) {
+                        thumbnailPath = thumbData.path;
+                    }
+                } catch (thumbErr) {
+                    console.warn('[Upload] Failed to save thumbnail:', thumbErr);
                 }
             }
 
             // Save metadata to Supabase
+            // Note: fb_video_id will be set when video is uploaded to Facebook at ad creation time
             await addCreative({
                 name: uploadedFile.file.name,
                 type: uploadedFile.type,
@@ -153,7 +121,7 @@ export function CreativeUploader({
                 duration: null,
                 uploaded_by: 'Harry',
                 fb_hash: null,
-                fb_video_id: fbVideoId,
+                fb_video_id: null, // Set at launch time, not upload time
             });
 
             // Update file status

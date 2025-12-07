@@ -102,6 +102,7 @@ export function SectionCreative({ data, updateData, pages }: SectionCreativeProp
             imageUrl: media.type === "image" ? media.preview : undefined,
             imageHash: media.hash,
             videoId: media.type === "video" ? media.videoId : undefined,
+            videoUrl: media.type === "video" ? media.url : undefined,
         });
         setShowMediaPicker(false);
     };
