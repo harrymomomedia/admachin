@@ -358,6 +358,7 @@ export function LaunchAd() {
             const videoUrl = formData.creative?.videoUrl;
 
             addLog(`Creative debug: ${JSON.stringify({ imageUrl, imageHash, mediaType, videoId, videoUrl })}`);
+            console.log("=== CREATIVE DEBUG ===", { imageUrl, imageHash, mediaType, videoId, videoUrl });
             if (!imageUrl) {
                 addLog("⚠️ WARNING: No imageUrl (thumbnail) found for this creative!");
             }
