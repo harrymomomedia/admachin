@@ -113,7 +113,6 @@ export function TeamSettings() {
 
         try {
             await assignUserToProject(assigningProject.id, selectedUserForAssignment);
-            // Update local state
             setProjectAssignments(prev => ({
                 ...prev,
                 [assigningProject.id]: [...(prev[assigningProject.id] || []), selectedUserForAssignment]
@@ -140,6 +139,10 @@ export function TeamSettings() {
     const getAssignedUsers = (projectId: string) => {
         const userIds = projectAssignments[projectId] || [];
         return users.filter(u => userIds.includes(u.id));
+    };
+
+    const getUserDisplayName = (user: User) => {
+        return `${user.first_name} ${user.last_name}`;
     };
 
     return (
@@ -219,7 +222,7 @@ export function TeamSettings() {
                                     users.map(user => (
                                         <tr key={user.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 font-medium text-gray-900">
-                                                {user.first_name} {user.last_name}
+                                                {getUserDisplayName(user)}
                                             </td>
                                             <td className="px-6 py-4 text-gray-600">{user.email}</td>
                                             <td className="px-6 py-4">
@@ -300,7 +303,7 @@ export function TeamSettings() {
                                                             key={user.id}
                                                             className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs"
                                                         >
-                                                            {user.first_name} {user.last_name}
+                                                            {getUserDisplayName(user)}
                                                             <button
                                                                 onClick={() => handleRemoveUserFromProject(project.id, user.id)}
                                                                 className="hover:text-red-600"
@@ -352,7 +355,7 @@ export function TeamSettings() {
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={newUserFirstName}
@@ -362,7 +365,7 @@ export function TeamSettings() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={newUserLastName}
@@ -373,7 +376,7 @@ export function TeamSettings() {
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
                                 <input
                                     type="email"
                                     value={newUserEmail}
@@ -383,7 +386,7 @@ export function TeamSettings() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-red-500">*</span></label>
                                 <input
                                     type="password"
                                     value={newUserPassword}
@@ -414,7 +417,8 @@ export function TeamSettings() {
                             </button>
                             <button
                                 onClick={handleAddUser}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                disabled={!newUserFirstName.trim() || !newUserLastName.trim() || !newUserEmail.trim() || !newUserPassword.trim()}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Check className="w-4 h-4" />
                                 Add User
@@ -437,7 +441,7 @@ export function TeamSettings() {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
                                     value={newProjectName}
@@ -447,7 +451,7 @@ export function TeamSettings() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                 <textarea
                                     value={newProjectDesc}
                                     onChange={(e) => setNewProjectDesc(e.target.value)}
@@ -467,7 +471,8 @@ export function TeamSettings() {
                             </button>
                             <button
                                 onClick={handleAddProject}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                disabled={!newProjectName.trim()}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Check className="w-4 h-4" />
                                 Add Project
@@ -500,7 +505,7 @@ export function TeamSettings() {
                                     .filter(u => !(projectAssignments[assigningProject.id] || []).includes(u.id))
                                     .map(user => (
                                         <option key={user.id} value={user.id}>
-                                            {user.first_name} {user.last_name} ({user.email})
+                                            {getUserDisplayName(user)} ({user.email})
                                         </option>
                                     ))
                                 }
