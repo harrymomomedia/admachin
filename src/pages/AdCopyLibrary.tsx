@@ -284,61 +284,61 @@ export function AdCopyLibrary() {
             </div>
 
             {/* Content Table */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm min-w-max">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden w-full">
+                <div className="overflow-x-auto w-full">
+                    <table className="w-full text-left text-sm table-fixed">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th style={{ minWidth: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
+                                <th style={{ width: '35%' }} className="px-6 py-3 font-medium text-gray-500 relative">
                                     Ad Text
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('text', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.type }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '10%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Type
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('type', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.project }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '12%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Project
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('project', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.platform }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '8%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Traffic
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('platform', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.name }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '12%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Name
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('name', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.date }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '10%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Date
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('date', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.creator }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: '8%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
                                     Creator
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('creator', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.actions }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap">
+                                <th style={{ width: '5%' }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap">
                                     Actions
                                 </th>
                             </tr>
