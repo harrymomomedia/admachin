@@ -309,13 +309,18 @@ export function LaunchAd() {
                     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                     targeting,
                     daily_budget: budgetAmount,
-                    // Add promoted object for conversion objectives
-                    ...(["OUTCOME_LEADS", "OUTCOME_SALES", "OUTCOME_CONVERSIONS"].includes(formData.objective || "") && formData.conversion?.pixelId ? {
+                    // Add promoted object for Lead/Sales objectives
+                    // Lead campaigns need page_id, Sales/Conversion campaigns need pixel_id
+                    ...(formData.objective === "OUTCOME_LEADS" ? {
+                        promoted_object: {
+                            page_id: formData.creative?.pageId,
+                        }
+                    } : (["OUTCOME_SALES", "OUTCOME_CONVERSIONS"].includes(formData.objective || "") && formData.conversion?.pixelId ? {
                         promoted_object: {
                             pixel_id: formData.conversion.pixelId,
-                            custom_event_type: formData.conversion.customEvent || "LEAD"
+                            custom_event_type: formData.conversion.customEvent || "PURCHASE"
                         }
-                    } : {})
+                    } : {}))
                 };
 
                 console.log("Creating Ad Set with params:", JSON.stringify(adSetParams, null, 2));
