@@ -125,6 +125,18 @@ function SortableRow<T>({
                 inputRef.current.style.height = 'auto';
                 inputRef.current.style.height = `${inputRef.current.scrollHeight}px`;
             }
+            // Auto-open dropdown for select elements
+            if (inputRef.current instanceof HTMLSelectElement) {
+                // Use showPicker() if available (modern browsers)
+                if ('showPicker' in inputRef.current) {
+                    try {
+                        (inputRef.current as HTMLSelectElement).showPicker();
+                    } catch (e) {
+                        // Fallback: trigger click to open dropdown
+                        inputRef.current.click();
+                    }
+                }
+            }
         }
     }, [editingCell, rowId]);
 
