@@ -8,13 +8,17 @@
     const ADMACHIN_API_URL = 'https://admachin.vercel.app/api/save-fb-ad';
 
     // Helper: Capture video from a video element using MediaRecorder
-    async function captureVideoFromElement(videoElement, maxDurationMs = 5000) {
+    // Records the FULL video duration (max 2 minutes for safety)
+    async function captureVideoFromElement(videoElement) {
         return new Promise((resolve, reject) => {
             try {
-                // Ensure video is playing
-                if (videoElement.paused) {
-                    videoElement.muted = true;
-                    videoElement.play().catch(() => { }); // Ignore autoplay errors
+                // Ensure video is playing from the start
+                videoElement.muted = true;
+                videoElement.currentTime = 0;
+
+                const playPromise = videoElement.play();
+                if (playPromise) {
+                    playPromise.catch(() => { }); // Ignore autoplay errors
                 }
 
                 const stream = videoElement.captureStream();
@@ -26,27 +30,41 @@
                 };
 
                 recorder.onstop = async () => {
+                    videoElement.removeEventListener('ended', onVideoEnded);
                     const blob = new Blob(chunks, { type: 'video/webm' });
                     const reader = new FileReader();
                     reader.onloadend = () => resolve({
                         base64: reader.result,
                         mimeType: 'video/webm',
-                        size: blob.size
+                        size: blob.size,
+                        duration: videoElement.duration
                     });
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 };
 
                 recorder.onerror = reject;
-                recorder.start();
 
-                // Record for a short duration (or until video ends)
-                const duration = Math.min(videoElement.duration * 1000 || maxDurationMs, maxDurationMs);
-                setTimeout(() => {
+                // Stop when video ends
+                const onVideoEnded = () => {
                     if (recorder.state === 'recording') {
+                        console.log('AdMachin: Video ended, stopping capture');
                         recorder.stop();
                     }
-                }, duration);
+                };
+                videoElement.addEventListener('ended', onVideoEnded);
+
+                recorder.start();
+                console.log(`AdMachin: Recording video (duration: ${videoElement.duration || 'unknown'}s)`);
+
+                // Safety timeout: max 2 minutes
+                const maxMs = Math.min((videoElement.duration || 120) * 1000 + 1000, 120000);
+                setTimeout(() => {
+                    if (recorder.state === 'recording') {
+                        console.log('AdMachin: Max duration reached, stopping capture');
+                        recorder.stop();
+                    }
+                }, maxMs);
 
             } catch (error) {
                 reject(error);
