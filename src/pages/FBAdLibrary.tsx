@@ -240,9 +240,23 @@ export function FBAdLibrary() {
                                         controls={false}
                                         muted
                                     />
+                                ) : v.poster ? (
+                                    // Show poster image if video URL not available
+                                    <img
+                                        src={v.poster}
+                                        alt="Video thumbnail"
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : v.original_url && v.original_url !== 'blob_video' ? (
+                                    <video
+                                        src={v.original_url}
+                                        className="w-full h-full object-cover"
+                                        controls={false}
+                                        muted
+                                    />
                                 ) : (
                                     <div className="flex items-center justify-center h-full text-gray-400">
-                                        <span className="text-xs">Video</span>
+                                        <span className="text-xs">Video not available</span>
                                     </div>
                                 )}
                                 <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">

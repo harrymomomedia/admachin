@@ -213,11 +213,44 @@
 
 
             // --- MEDIA EXTRACTION ---
+            // Videos - try multiple sources since FB often uses blob: URLs
             const videos = container.querySelectorAll('video');
             videos.forEach(video => {
-                let src = video.src || video.querySelector('source')?.src;
-                if (src) {
-                    data.media_urls.push({ type: 'video', url: src, poster: video.poster || null });
+                // Try multiple sources for video URL
+                let src = null;
+
+                // 1. Direct src (might be blob:)
+                if (video.src && !video.src.startsWith('blob:')) {
+                    src = video.src;
+                }
+
+                // 2. Source element
+                if (!src) {
+                    const sourceEl = video.querySelector('source');
+                    if (sourceEl?.src && !sourceEl.src.startsWith('blob:')) {
+                        src = sourceEl.src;
+                    }
+                }
+
+                // 3. Data attributes (FB sometimes uses these)
+                if (!src) {
+                    src = video.getAttribute('data-video-url') ||
+                        video.getAttribute('data-src') ||
+                        video.parentElement?.getAttribute('data-video-url');
+                }
+
+                // Get poster image (always useful as thumbnail)
+                const poster = video.poster ||
+                    video.getAttribute('data-poster') ||
+                    video.parentElement?.querySelector('img')?.src;
+
+                if (src || poster) {
+                    data.media_urls.push({
+                        type: 'video',
+                        url: src || 'blob_video', // Mark if no downloadable URL
+                        poster: poster || null,
+                        isBlob: !src // Flag to indicate we only have poster
+                    });
                 }
             });
 
