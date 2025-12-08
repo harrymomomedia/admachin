@@ -80,28 +80,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        // Helper to download and upload media
-        async function processMedia(mediaItems: any[], folder: 'images' | 'videos') {
-            return Promise.all(mediaItems.map(async (item) => {
+        // Helper to upload base64 media (already downloaded in browser)
+        async function uploadBase64Media(mediaItems: any[], folder: 'images' | 'videos') {
+            const results = [];
+
+            for (const item of mediaItems.slice(0, 5)) {
                 try {
-                    // Start download
-                    const response = await fetch(item.url);
-                    if (!response.ok) throw new Error('Failed to fetch media');
+                    // Check if this item has base64 data
+                    if (!item.base64) {
+                        // No base64 = download failed in browser, just store URL
+                        results.push({
+                            type: item.type,
+                            original_url: item.url,
+                            error: item.error || 'no_base64'
+                        });
+                        continue;
+                    }
 
-                    const blob = await response.blob();
-                    const buffer = await blob.arrayBuffer();
+                    // Parse base64 data URL: data:mime/type;base64,xxxxx
+                    const matches = item.base64.match(/^data:(.+);base64,(.+)$/);
+                    if (!matches) {
+                        results.push({ ...item, error: 'invalid_base64_format' });
+                        continue;
+                    }
 
-                    // Generate unique filename
-                    const ext = folder === 'videos' ? 'mp4' : 'jpg'; // simplified extension handling
+                    const mimeType = matches[1];
+                    const base64Data = matches[2];
+                    const buffer = Buffer.from(base64Data, 'base64');
+
+                    // Determine file extension from mime type
+                    const extMap: Record<string, string> = {
+                        'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+                        'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov'
+                    };
+                    const ext = extMap[mimeType] || (folder === 'videos' ? 'mp4' : 'jpg');
+
                     const filename = `${adData.ad_archive_id}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
                     const path = `fb-library/${folder}/${filename}`;
 
-                    // Upload to Supabase
+                    // Upload to Supabase Storage
                     const { error: uploadError } = await supabase.storage
                         .from('creatives')
-                        .upload(path, buffer, {
-                            contentType: response.headers.get('content-type') || (folder === 'videos' ? 'video/mp4' : 'image/jpeg')
-                        });
+                        .upload(path, buffer, { contentType: mimeType });
 
                     if (uploadError) throw uploadError;
 
@@ -110,33 +130,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         .from('creatives')
                         .getPublicUrl(path);
 
-                    return {
-                        ...item,
+                    results.push({
+                        type: item.type,
                         original_url: item.url,
                         storage_path: path,
-                        public_url: publicUrl
-                    };
+                        public_url: publicUrl,
+                        size: buffer.length
+                    });
+
+                    console.log(`Uploaded ${folder}: ${path}`);
 
                 } catch (error) {
-                    console.error(`Failed to process ${folder}:`, error);
-                    // Fallback to just saving the original URL
-                    return {
-                        ...item,
+                    console.error(`Failed to upload ${folder}:`, error);
+                    results.push({
+                        type: item.type,
                         original_url: item.url,
-                        error: 'Failed to download'
-                    };
+                        error: 'upload_failed'
+                    });
                 }
-            }));
+            }
+
+            return results;
         }
 
-        // Split and process media
-        // Limit to first 5 items to prevent timeout
-        const rawImages = adData.media_urls.filter(m => m.type === 'image').slice(0, 5);
-        const rawVideos = adData.media_urls.filter(m => m.type === 'video').slice(0, 5);
+        // Process media from browser download
+        const downloadedMedia = (req.body as any).downloaded_media || [];
+        const rawImages = downloadedMedia.filter((m: any) => m.type === 'image');
+        const rawVideos = downloadedMedia.filter((m: any) => m.type === 'video');
 
         const [processedImages, processedVideos] = await Promise.all([
-            processMedia(rawImages, 'images'),
-            processMedia(rawVideos, 'videos')
+            uploadBase64Media(rawImages, 'images'),
+            uploadBase64Media(rawVideos, 'videos')
         ]);
 
         // Prepare ad data for insertion

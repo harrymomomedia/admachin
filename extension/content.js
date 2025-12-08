@@ -7,6 +7,52 @@
     // Configuration - update this to your AdMachin app URL
     const ADMACHIN_API_URL = 'https://admachin.vercel.app/api/save-fb-ad';
 
+    // Helper: Download media using browser fetch (has cookies) and convert to base64
+    async function downloadMediaAsBase64(mediaItems, maxItems = 3) {
+        const results = [];
+
+        for (const item of mediaItems.slice(0, maxItems)) {
+            try {
+                // Skip blob: URLs - they can't be fetched even in browser
+                if (item.url.startsWith('blob:')) {
+                    console.log('AdMachin: Skipping blob URL:', item.url);
+                    results.push({ ...item, error: 'blob_url_not_supported' });
+                    continue;
+                }
+
+                const response = await fetch(item.url, {
+                    credentials: 'include',
+                    mode: 'cors'
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const blob = await response.blob();
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+
+                results.push({
+                    ...item,
+                    base64: base64, // data:mime;base64,xxx
+                    mimeType: blob.type,
+                    size: blob.size
+                });
+
+                console.log(`AdMachin: Downloaded ${item.type} (${Math.round(blob.size / 1024)}KB)`);
+
+            } catch (error) {
+                console.error('AdMachin: Failed to download media:', item.url, error);
+                results.push({ ...item, error: error.message });
+            }
+        }
+
+        return results;
+    }
+
     // Extract ad data from the current page OR a specific card
     function extractAdData(specificContainer = null) {
         const data = {
@@ -48,88 +94,88 @@
                 data.ad_archive_id = urlParams.get('id');
             }
 
-            // --- BLOCK-LEVEL TEXT EXTRACTION ---
-            // Instead of TreeWalker (which fragments text), use innerText on block elements
+            // --- ROBUST TEXT EXTRACTION ---
 
-            // 1. PAGE NAME - Usually bold/strong near top
-            const strongElements = container.querySelectorAll('strong, b, [style*="font-weight: 600"], [style*="font-weight: 700"]');
-            for (const el of strongElements) {
-                const text = el.innerText?.trim();
-                if (text && text.length > 2 && text.length < 50 &&
-                    !text.includes('Sponsored') && !text.includes('Library ID') && !text.includes('Active')) {
-                    data.page_name = text;
-                    break;
+            // Get the full text content for analysis
+            const fullText = container.innerText || '';
+            const lines = fullText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+            // Noise patterns to skip
+            const noisePatterns = [
+                /^Active$/i, /^Inactive$/i, /^Sponsored$/i, /^Library ID/i,
+                /^Started running/i, /^Platforms/i, /^Categories/i,
+                /^See ad details$/i, /^See details$/i, /^Ad Details$/i,
+                /^This ad has/i, /^Learn more$/i, /^Shop Now$/i, /^Sign Up$/i,
+                /^Get Quote$/i, /^Apply Now$/i, /^Download$/i, /^Contact Us$/i,
+                /^Book Now$/i, /^Subscribe$/i, /^Call now$/i, /^Send message$/i,
+                /^\d+ results?$/i, /^Total active time/i
+            ];
+
+            const isNoise = (text) => noisePatterns.some(p => p.test(text));
+            const isUrl = (text) => /^[A-Z0-9.-]+\.(COM|NET|ORG|IO|APP|CO)/i.test(text);
+
+            // 1. PAGE NAME - Look for the advertiser name
+            // Strategy: Find text that appears right after "Sponsored" or is a bold/link early in the card
+            const sponsoredIndex = lines.findIndex(l => l === 'Sponsored');
+            if (sponsoredIndex > 0) {
+                // Page name is usually right before "Sponsored"
+                const candidate = lines[sponsoredIndex - 1];
+                if (candidate && candidate.length > 2 && candidate.length < 60 && !isNoise(candidate)) {
+                    data.page_name = candidate;
                 }
             }
-            // Fallback: First link text
+
+            // Fallback: Look for first meaningful short text that's not noise
             if (!data.page_name) {
-                const firstLink = container.querySelector('a[role="link"]');
-                if (firstLink) {
-                    const linkText = firstLink.innerText?.trim();
-                    if (linkText && linkText.length < 50) data.page_name = linkText;
+                for (let i = 0; i < Math.min(lines.length, 15); i++) {
+                    const line = lines[i];
+                    if (line.length > 2 && line.length < 60 && !isNoise(line) && !isUrl(line) && !/^\d+$/.test(line)) {
+                        data.page_name = line;
+                        break;
+                    }
                 }
             }
 
-            // 2. AD BODY - Look for div[dir="auto"] with substantial text
-            // These are the main text containers Facebook uses
-            const textBlocks = container.querySelectorAll('div[dir="auto"], span[dir="auto"]');
-            const potentialBodies = [];
+            // 2. AD BODY - Find the longest text blocks (actual ad copy)
+            const paragraphs = lines.filter(l => l.length > 50 && !isNoise(l));
+            paragraphs.sort((a, b) => b.length - a.length);
 
-            textBlocks.forEach(el => {
-                const text = el.innerText?.trim();
-                if (!text || text.length < 20) return;
-
-                // Skip known UI elements
-                const isNoise = [
-                    'Sponsored', 'Active', 'Inactive', 'Library ID', 'Platforms',
-                    'Categories', 'See ad details', 'See details', 'Ad Details',
-                    'Learn more', 'Shop Now', 'Sign Up', 'Get Quote', 'Apply Now',
-                    'Started running', 'This ad has'
-                ].some(noise => text.startsWith(noise) || text === noise);
-
-                if (!isNoise) {
-                    potentialBodies.push({ text, length: text.length });
-                }
-            });
-
-            // Sort by length (longest first = main ad copy)
-            potentialBodies.sort((a, b) => b.length - a.length);
-
-            // Take unique bodies, avoiding substrings
-            potentialBodies.forEach(item => {
+            // Take up to 2 longest unique paragraphs
+            paragraphs.forEach(p => {
+                if (data.ad_creative_bodies.length >= 2) return;
                 const isDupe = data.ad_creative_bodies.some(existing =>
-                    existing.includes(item.text) || item.text.includes(existing)
+                    existing.includes(p) || p.includes(existing)
                 );
-                if (!isDupe && data.ad_creative_bodies.length < 3) {
-                    data.ad_creative_bodies.push(item.text);
+                if (!isDupe) {
+                    data.ad_creative_bodies.push(p);
                 }
             });
 
-            // 3. HEADLINE - Usually short text near bottom, above CTA
-            // Look for text that's NOT in the body, relatively short, often bold or in a link
-            const allTextElements = container.querySelectorAll('span, div');
-            const bottomElements = Array.from(allTextElements).slice(-30); // Focus on bottom
+            // 3. HEADLINE & DISPLAY URL - Usually near bottom of card
+            // Look for short text that's not in the body and not noise
+            const bottomLines = lines.slice(-20);
 
-            for (const el of bottomElements) {
-                const text = el.innerText?.trim();
-                if (!text || text.length < 10 || text.length > 100) continue;
+            for (const line of bottomLines) {
+                if (line.length < 5 || line.length > 120) continue;
+                if (isNoise(line)) continue;
 
-                // Skip if it's part of the body
-                const inBody = data.ad_creative_bodies.some(b => b.includes(text));
+                // Check if it's part of body text
+                const inBody = data.ad_creative_bodies.some(b => b.includes(line));
                 if (inBody) continue;
 
-                // Skip known CTA/UI text
-                const isCTA = ['Learn more', 'Shop Now', 'Sign Up', 'Get Quote', 'Apply Now',
-                    'Download', 'Contact Us', 'Book Now', 'Subscribe', 'Sponsored',
-                    'See ad details', 'Library ID'].some(cta => text.includes(cta));
-                if (isCTA) continue;
-
-                // Check if it looks like a headline (contains alphanumeric, not just symbols)
-                if (/[a-zA-Z]{3,}/.test(text)) {
-                    data.ad_creative_link_titles.push(text);
-                    if (data.ad_creative_link_titles.length >= 2) break;
+                // Separate URLs from headlines
+                if (isUrl(line)) {
+                    data.ad_creative_link_captions.push(line); // Display URL
+                } else if (!data.ad_creative_link_titles.includes(line) && line !== data.page_name) {
+                    // Only add if it looks like actual text, not just numbers/symbols
+                    if (/[a-zA-Z]{4,}/.test(line)) {
+                        data.ad_creative_link_titles.push(line);
+                    }
                 }
             }
+
+            // Keep only first 2 headlines max
+            data.ad_creative_link_titles = data.ad_creative_link_titles.slice(0, 2);
 
 
             // --- MEDIA EXTRACTION ---
@@ -161,8 +207,7 @@
                 }
             });
 
-            // --- PLATFORMS & DATES ---
-            const fullText = container.innerText || '';
+            // --- PLATFORMS & DATES (reuse fullText from above) ---
             if (fullText.includes('Facebook')) data.publisher_platforms.push('facebook');
             if (fullText.includes('Instagram')) data.publisher_platforms.push('instagram');
 
@@ -320,10 +365,9 @@
             e.preventDefault();
 
             btn.disabled = true;
-            btn.innerHTML = 'Saving...';
+            btn.innerHTML = 'Processing...';
             btn.style.background = '#9333ea';
 
-            // Use already extracted data
             if (!adData.ad_archive_id) {
                 btn.innerHTML = 'No ID!';
                 btn.style.background = '#ef4444';
@@ -335,9 +379,33 @@
                 return;
             }
 
+            // --- DOWNLOAD MEDIA IN BROWSER ---
+            preview.innerHTML = '<span style="color:#a5b4fc;">⏳ Downloading media...</span>';
+
+            let downloadedMedia = [];
+            if (adData.media_urls.length > 0) {
+                try {
+                    downloadedMedia = await downloadMediaAsBase64(adData.media_urls, 3);
+                    const successCount = downloadedMedia.filter(m => m.base64).length;
+                    preview.innerHTML = `<span style="color:#a5f3fc;">✓ Downloaded ${successCount}/${adData.media_urls.length} media</span>`;
+                } catch (error) {
+                    console.error('Media download error:', error);
+                    preview.innerHTML = '<span style="color:#fca5a5;">⚠ Media download failed</span>';
+                }
+            }
+
+            // Attach downloaded media to the data
+            const dataWithMedia = {
+                ...adData,
+                downloaded_media: downloadedMedia
+            };
+
+            btn.innerHTML = 'Uploading...';
+            preview.innerHTML = '<span style="color:#a5b4fc;">⏳ Saving to AdMachin...</span>';
+
             chrome.runtime.sendMessage({
                 action: 'saveAd',
-                data: adData
+                data: dataWithMedia
             }, (response) => {
                 if (response?.success) {
                     btn.innerHTML = '✓ Saved';
