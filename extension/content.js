@@ -7,13 +7,110 @@
     // Configuration - update this to your AdMachin app URL
     const ADMACHIN_API_URL = 'https://admachin.vercel.app/api/save-fb-ad';
 
+    // Helper: Capture video from a video element using MediaRecorder
+    async function captureVideoFromElement(videoElement, maxDurationMs = 5000) {
+        return new Promise((resolve, reject) => {
+            try {
+                // Ensure video is playing
+                if (videoElement.paused) {
+                    videoElement.muted = true;
+                    videoElement.play().catch(() => { }); // Ignore autoplay errors
+                }
+
+                const stream = videoElement.captureStream();
+                const chunks = [];
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+
+                recorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve({
+                        base64: reader.result,
+                        mimeType: 'video/webm',
+                        size: blob.size
+                    });
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                };
+
+                recorder.onerror = reject;
+                recorder.start();
+
+                // Record for a short duration (or until video ends)
+                const duration = Math.min(videoElement.duration * 1000 || maxDurationMs, maxDurationMs);
+                setTimeout(() => {
+                    if (recorder.state === 'recording') {
+                        recorder.stop();
+                    }
+                }, duration);
+
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
     // Helper: Download media using browser fetch (has cookies) and convert to base64
-    async function downloadMediaAsBase64(mediaItems, maxItems = 3) {
+    async function downloadMediaAsBase64(mediaItems, maxItems = 3, container = null) {
         const results = [];
 
         for (const item of mediaItems.slice(0, maxItems)) {
             try {
-                // Skip blob: URLs - they can't be fetched even in browser
+                // For blob: URLs on videos, try to capture from the video element
+                if (item.type === 'video' && (item.url.startsWith('blob:') || item.url === 'blob_video')) {
+                    console.log('AdMachin: Attempting to capture blob video...');
+
+                    // Find the video element in the container
+                    const videoEl = container?.querySelector('video');
+                    if (videoEl) {
+                        try {
+                            const captured = await captureVideoFromElement(videoEl, 5000);
+                            results.push({
+                                ...item,
+                                base64: captured.base64,
+                                mimeType: captured.mimeType,
+                                size: captured.size
+                            });
+                            console.log(`AdMachin: Captured video (${Math.round(captured.size / 1024)}KB)`);
+                            continue;
+                        } catch (captureError) {
+                            console.error('AdMachin: Video capture failed:', captureError);
+                            // Fall through to try poster
+                        }
+                    }
+
+                    // Fallback: Try to download the poster image instead
+                    if (item.poster && !item.poster.startsWith('blob:')) {
+                        const posterResponse = await fetch(item.poster, { credentials: 'include' });
+                        if (posterResponse.ok) {
+                            const blob = await posterResponse.blob();
+                            const base64 = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                            });
+                            results.push({
+                                ...item,
+                                base64: base64,
+                                mimeType: blob.type,
+                                size: blob.size,
+                                isPosterOnly: true
+                            });
+                            console.log(`AdMachin: Downloaded video poster (${Math.round(blob.size / 1024)}KB)`);
+                            continue;
+                        }
+                    }
+
+                    results.push({ ...item, error: 'blob_video_capture_failed' });
+                    continue;
+                }
+
+                // Regular URL download
                 if (item.url.startsWith('blob:')) {
                     console.log('AdMachin: Skipping blob URL:', item.url);
                     results.push({ ...item, error: 'blob_url_not_supported' });
@@ -452,7 +549,8 @@
             let downloadedMedia = [];
             if (adData.media_urls.length > 0) {
                 try {
-                    downloadedMedia = await downloadMediaAsBase64(adData.media_urls, 3);
+                    // Pass the card container so we can find video elements for capture
+                    downloadedMedia = await downloadMediaAsBase64(adData.media_urls, 3, card);
                     const successCount = downloadedMedia.filter(m => m.base64).length;
                     preview.innerHTML = `<span style="color:#a5f3fc;">✓ Downloaded ${successCount}/${adData.media_urls.length} media</span>`;
                 } catch (error) {
