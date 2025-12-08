@@ -234,7 +234,7 @@ function SortableRow({ plan, projects, users, creatives, handleUpdate }: {
                     value={plan.user_id || ''}
                     options={[
                         { label: '-', value: '' },
-                        ...users.map(u => ({ label: u.first_name, value: u.id }))
+                        ...users.map(u => ({ label: u.first_name || 'Unnamed', value: u.id }))
                     ]}
                     onChange={(val) => handleUpdate(plan.id, { user_id: val })}
                 />
