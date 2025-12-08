@@ -165,7 +165,7 @@
                 data.ad_creative_bodies.push(bodyText);
             }
 
-            // 3. HEADLINE - Look in the LAST section of the card (after any URL)
+            // 3. HEADLINE - Look ONLY at the last few lines after the display URL
             // Find the display URL first
             let displayUrlIndex = -1;
             for (let i = lines.length - 1; i >= 0; i--) {
@@ -176,26 +176,38 @@
                 }
             }
 
-            // Headline is usually right after/around the display URL
-            const headlineSearchStart = displayUrlIndex >= 0 ? displayUrlIndex : lines.length - 15;
-            const headlineSearchEnd = lines.length;
-
-            for (let i = headlineSearchStart; i < headlineSearchEnd; i++) {
+            // Track which lines are part of body (before we joined them)
+            const bodyLines = new Set();
+            for (let i = bodyStartIndex; i < lines.length && bodyLines.size < 10; i++) {
                 const line = lines[i];
-                if (!line || line.length < 10 || line.length > 100) continue;
-                if (isNoise(line) || isUrl(line)) continue;
+                if (isUrl(line)) break;
+                if (!isNoise(line) && line.length >= 15) {
+                    bodyLines.add(line);
+                }
+            }
 
-                // Skip if it's part of body
-                const inBody = data.ad_creative_bodies.some(b => b.includes(line));
-                if (inBody) continue;
+            // Headline is in the last 5 lines AFTER the display URL
+            if (displayUrlIndex >= 0) {
+                // Search from displayUrlIndex+1 to end, but only check a few lines
+                for (let i = displayUrlIndex + 1; i < Math.min(displayUrlIndex + 5, lines.length); i++) {
+                    const line = lines[i];
+                    if (!line || line.length < 15 || line.length > 100) continue;
+                    if (isNoise(line) || isUrl(line)) continue;
 
-                // Skip page name
-                if (line === data.page_name) continue;
+                    // Skip if it's one of our body lines
+                    if (bodyLines.has(line)) continue;
 
-                // Must have actual words
-                if (/[a-zA-Z]{4,}/.test(line) && !data.ad_creative_link_titles.includes(line)) {
-                    data.ad_creative_link_titles.push(line);
-                    if (data.ad_creative_link_titles.length >= 1) break; // Only need 1 headline
+                    // Skip page name
+                    if (line === data.page_name) continue;
+
+                    // Skip lines starting with emoji
+                    if (/^[\u{1F300}-\u{1F9FF}]/u.test(line)) continue;
+
+                    // Must have actual words (not just symbols/numbers)
+                    if (/[a-zA-Z]{5,}/.test(line)) {
+                        data.ad_creative_link_titles.push(line);
+                        break; // Only need 1 headline
+                    }
                 }
             }
 
