@@ -1,13 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
     Plus,
     Search,
-    Trash2,
-    Copy,
     X,
     Maximize2,
     Minimize2,
-    Check
 } from 'lucide-react';
 import {
     getAdCopies,
@@ -22,6 +19,7 @@ import {
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
+import { DataTable, type ColumnDef } from '../components/DataTable';
 
 export function AdCopyLibrary() {
     const [copies, setCopies] = useState<AdCopy[]>([]);
@@ -30,94 +28,24 @@ export function AdCopyLibrary() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-    // UI Logic State
     const [showFullText, setShowFullText] = useState(false);
-
-    // Inline Editing State - now tracks field being edited
-    const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
-    const [editingValue, setEditingValue] = useState<string>('');
-    const editInputRef = useRef<HTMLTextAreaElement | HTMLSelectElement>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     // Form State
     const [formData, setFormData] = useState({
         text: '',
-        type: 'primary_text', // primary_text, headline, description
+        type: 'primary_text',
         project_id: '',
-        project: '', // Legacy/Fallback text
+        project: '',
         platform: 'FB'
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-    const [copiedId, setCopiedId] = useState<string | null>(null);
-
-    // Column Resizing State (removed 'name' column)
-    const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
-        text: 400,
-        type: 100,
-        project: 140,
-        platform: 80,
-        date: 140,
-        creator: 120,
-        actions: 80,
-    });
-    const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
-
-    const handleResizeStart = useCallback((column: string, e: React.MouseEvent) => {
-        e.preventDefault();
-        resizingRef.current = {
-            column,
-            startX: e.clientX,
-            startWidth: columnWidths[column],
-        };
-        document.addEventListener('mousemove', handleResizeMove);
-        document.addEventListener('mouseup', handleResizeEnd);
-    }, [columnWidths]);
-
-    const handleResizeMove = useCallback((e: MouseEvent) => {
-        if (!resizingRef.current) return;
-        const { column, startX, startWidth } = resizingRef.current;
-        const delta = e.clientX - startX;
-        const newWidth = Math.max(50, startWidth + delta); // Min width 50px
-        setColumnWidths(prev => ({ ...prev, [column]: newWidth }));
-    }, []);
-
-    const handleResizeEnd = useCallback(() => {
-        resizingRef.current = null;
-        document.removeEventListener('mousemove', handleResizeMove);
-        document.removeEventListener('mouseup', handleResizeEnd);
-    }, [handleResizeMove]);
 
     // Load Data
     useEffect(() => {
         loadData();
         getCurrentUser().then(user => setCurrentUserId(user?.id || null));
     }, []);
-
-    const copyToClipboard = (text: string, id: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
-    };
-
-    // Focus edit input
-    useEffect(() => {
-        if (editingCell && editInputRef.current) {
-            const element = editInputRef.current;
-            element.focus();
-
-            // Auto-expand for textarea
-            if (element instanceof HTMLTextAreaElement) {
-                element.style.height = 'auto';
-                element.style.height = `${element.scrollHeight}px`;
-                element.setSelectionRange(
-                    element.value.length,
-                    element.value.length
-                );
-            }
-        }
-    }, [editingCell]);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -137,28 +65,7 @@ export function AdCopyLibrary() {
         }
     };
 
-    // Auto-resize handler for textarea
-    const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const textarea = e.target;
-        setEditingValue(textarea.value);
-        textarea.style.height = 'auto';
-        textarea.style.height = `${textarea.scrollHeight}px`;
-    };
-
-    // Format datetime for Created Time column
-    const formatDateTime = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
-    };
-
-    // Helper to get project name
+    // Helper functions
     const getProjectName = (copy: AdCopy) => {
         if (copy.project_id) {
             const proj = projects.find(p => p.id === copy.project_id);
@@ -167,13 +74,10 @@ export function AdCopyLibrary() {
         return copy.project || '-';
     };
 
-    // Helper to get creator name
     const getCreatorName = (copy: AdCopy) => {
         if (copy.user_id) {
             const user = users.find(u => u.id === copy.user_id);
-            if (user) return user.name || user.email; // Use name or fallback to email
-
-            // Fallback for current user if IDs match auth
+            if (user) return user.name || user.email;
             if (copy.user_id === currentUserId) return 'Me';
         }
         return 'Unknown';
@@ -192,127 +96,40 @@ export function AdCopyLibrary() {
         );
     });
 
-    // Inline Edit Handlers - now supports all editable fields
-    const handleEditStart = (copy: AdCopy, field: string) => {
-        let value = '';
-        switch (field) {
-            case 'text':
-                value = copy.text;
-                break;
-            case 'type':
-                value = copy.type;
-                break;
-            case 'project_id':
-                value = copy.project_id || '';
-                break;
-            case 'platform':
-                value = copy.platform || '';
-                break;
-            case 'user_id':
-                value = copy.user_id || '';
-                break;
-        }
-        setEditingCell({ id: copy.id, field });
-        setEditingValue(value);
-    };
-
-    const handleEditSave = async () => {
-        if (!editingCell) return;
-
-        const { id, field } = editingCell;
+    // Update Handler
+    const handleUpdate = async (id: string, field: string, value: unknown) => {
         const original = copies.find(c => c.id === id);
-        if (!original) {
-            setEditingCell(null);
-            return;
+        if (!original) return;
+
+        const updates: Partial<AdCopy> = {};
+
+        if (field === 'text') {
+            updates.text = String(value);
+        } else if (field === 'type') {
+            updates.type = String(value);
+        } else if (field === 'project_id') {
+            updates.project_id = value ? String(value) : null;
+            const proj = projects.find(p => p.id === value);
+            updates.project = proj?.name || null;
+        } else if (field === 'platform') {
+            updates.platform = value ? String(value) : null;
+        } else if (field === 'user_id') {
+            updates.user_id = value ? String(value) : null;
         }
 
-        // Check if value actually changed
-        const originalValue = field === 'text' ? original.text :
-            field === 'type' ? original.type :
-                field === 'project_id' ? (original.project_id || '') :
-                    field === 'platform' ? (original.platform || '') :
-                        field === 'user_id' ? (original.user_id || '') : '';
-
-        if (originalValue === editingValue) {
-            setEditingCell(null);
-            return;
-        }
+        // Optimistic update
+        setCopies(prev => prev.map(c =>
+            c.id === id ? { ...c, ...updates } : c
+        ));
 
         try {
-            // Build update object
-            const updates: Partial<AdCopy> = {};
-            if (field === 'text') {
-                updates.text = editingValue;
-            } else if (field === 'type') {
-                updates.type = editingValue;
-            } else if (field === 'project_id') {
-                updates.project_id = editingValue || null;
-                // Also update legacy project field
-                const proj = projects.find(p => p.id === editingValue);
-                updates.project = proj?.name || null;
-            } else if (field === 'platform') {
-                updates.platform = editingValue || null;
-            } else if (field === 'user_id') {
-                updates.user_id = editingValue || null;
-            }
-
-            // Optimistic update
-            setCopies(prev => prev.map(c =>
-                c.id === id ? { ...c, ...updates } : c
-            ));
-
             await updateAdCopy(id, updates);
         } catch (error) {
             console.error('Failed to update ad copy:', error);
-            // Revert on error
             setCopies(prev => prev.map(c =>
                 c.id === id ? original : c
             ));
             alert('Failed to save changes.');
-        } finally {
-            setEditingCell(null);
-        }
-    };
-
-    const handleEditCancel = () => {
-        setEditingCell(null);
-        setEditingValue('');
-    };
-
-    // Create Handler
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        setIsSubmitting(true);
-        try {
-            const currentUser = await getCurrentUser();
-
-            // Find the project name for the legacy field if needed
-            const selectedProject = projects.find(p => p.id === formData.project_id);
-            const legacyProjectName = selectedProject ? selectedProject.name : '';
-
-            await createAdCopy({
-                user_id: currentUser?.id,
-                text: formData.text,
-                type: formData.type,
-                project: legacyProjectName, // Populate legacy field
-                project_id: formData.project_id || null, // Populate new field
-                platform: formData.platform
-            });
-            await loadData();
-            setIsCreateModalOpen(false);
-            setFormData({
-                text: '',
-                type: 'primary_text',
-                project_id: '',
-                project: '',
-                platform: 'FB'
-            });
-        } catch (error) {
-            console.error('Failed to create ad copy:', error);
-            alert('Failed to save ad copy. Please try again.');
-        } finally {
-            setIsSubmitting(false);
         }
     };
 
@@ -326,6 +143,162 @@ export function AdCopyLibrary() {
             console.error('Failed to delete ad copy:', error);
         }
     };
+
+    // Copy Handler
+    const handleCopy = (copy: AdCopy) => {
+        navigator.clipboard.writeText(copy.text);
+    };
+
+    // Create Handler
+    const handleCreate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            const currentUser = await getCurrentUser();
+            const selectedProject = projects.find(p => p.id === formData.project_id);
+            const legacyProjectName = selectedProject ? selectedProject.name : '';
+
+            await createAdCopy({
+                user_id: currentUser?.id,
+                text: formData.text,
+                type: formData.type,
+                project: legacyProjectName,
+                project_id: formData.project_id || null,
+                platform: formData.platform
+            });
+            await loadData();
+            setIsCreateModalOpen(false);
+            setFormData({ text: '', type: 'primary_text', project_id: '', project: '', platform: 'FB' });
+        } catch (error) {
+            console.error('Failed to create ad copy:', error);
+            alert('Failed to save ad copy. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Column Definitions
+    const columns: ColumnDef<AdCopy>[] = [
+        {
+            key: 'text',
+            header: 'Ad Text',
+            width: 400,
+            minWidth: 150,
+            editable: true,
+            type: 'textarea',
+        },
+        {
+            key: 'type',
+            header: 'Type',
+            width: 100,
+            minWidth: 80,
+            editable: true,
+            type: 'badge',
+            options: [
+                { label: 'Primary', value: 'primary_text' },
+                { label: 'Headline', value: 'headline' },
+                { label: 'Desc', value: 'description' },
+            ],
+            colorMap: {
+                'primary_text': 'bg-blue-50 text-blue-700 border-blue-200',
+                'headline': 'bg-purple-50 text-purple-700 border-purple-200',
+                'description': 'bg-gray-50 text-gray-700 border-gray-200',
+            },
+        },
+        {
+            key: 'project_id',
+            header: 'Project',
+            width: 140,
+            minWidth: 100,
+            editable: true,
+            type: 'badge',
+            options: [
+                { label: 'No Project', value: '' },
+                ...projects.map(p => ({ label: p.name, value: p.id })),
+            ],
+            colorMap: {},
+            getValue: (copy) => copy.project_id || '',
+            render: (_value, copy) => {
+                const name = getProjectName(copy);
+                const hasProject = copy.project_id || copy.project;
+                return (
+                    <span className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
+                        hasProject ? "bg-pink-50 text-pink-700 border border-pink-200" : "text-gray-400"
+                    )}>
+                        {name}
+                    </span>
+                );
+            },
+        },
+        {
+            key: 'platform',
+            header: 'Traffic',
+            width: 80,
+            minWidth: 60,
+            editable: true,
+            type: 'badge',
+            options: [
+                { label: 'None', value: '' },
+                { label: 'FB', value: 'FB' },
+                { label: 'IG', value: 'IG' },
+                { label: 'All', value: 'All' },
+            ],
+            colorMap: {
+                'FB': 'bg-green-50 text-green-700 border-green-200',
+                'IG': 'bg-green-50 text-green-700 border-green-200',
+                'All': 'bg-green-50 text-green-700 border-green-200',
+            },
+        },
+        {
+            key: 'created_at',
+            header: 'Created Time',
+            width: 140,
+            minWidth: 100,
+            editable: false,
+            type: 'date',
+            render: (value) => {
+                if (!value) return '-';
+                const date = new Date(String(value));
+                return (
+                    <span className="text-[10px] text-gray-500">
+                        {date.toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        })}
+                    </span>
+                );
+            },
+        },
+        {
+            key: 'user_id',
+            header: 'Creator',
+            width: 120,
+            minWidth: 80,
+            editable: true,
+            type: 'badge',
+            options: [
+                { label: 'Unknown', value: '' },
+                ...users.map(u => ({ label: u.name || u.email, value: u.id })),
+            ],
+            render: (_value, copy) => {
+                const name = getCreatorName(copy);
+                const isMe = copy.user_id === currentUserId;
+                return (
+                    <span className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
+                        isMe ? "bg-indigo-50 text-indigo-700 border border-indigo-100" : "bg-gray-100 text-gray-600 border border-gray-200"
+                    )}>
+                        {name}
+                    </span>
+                );
+            },
+        },
+    ];
 
     return (
         <div className="space-y-6">
@@ -383,287 +356,19 @@ export function AdCopyLibrary() {
                 </div>
             </div>
 
-            {/* Content Table */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="data-grid-table" style={{ width: Object.values(columnWidths).reduce((a, b) => a + b, 0), tableLayout: 'fixed' }}>
-                        <thead>
-                            <tr>
-                                <th style={{ width: columnWidths.text }} className="data-grid-th relative">
-                                    Ad Text
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('text', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.type }} className="data-grid-th relative">
-                                    Type
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('type', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.project }} className="data-grid-th relative">
-                                    Project
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('project', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.platform }} className="data-grid-th relative">
-                                    Traffic
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('platform', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.date }} className="data-grid-th relative">
-                                    Created Time
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('date', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.creator }} className="data-grid-th relative">
-                                    Creator
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('creator', e)}
-                                    />
-                                </th>
-                                <th style={{ width: columnWidths.actions }} className="data-grid-th">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-14 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-10 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-24 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-12 mx-2"></div></td>
-                                    </tr>
-                                ))
-                            ) : filteredCopies.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs">
-                                        No ad copies found. Create one for your next campaign!
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredCopies.map((copy) => (
-                                    <tr key={copy.id} className="group">
-                                        {/* Ad Text - Editable */}
-                                        <td className="data-grid-td px-2">
-                                            <div className="w-full">
-                                                {editingCell?.id === copy.id && editingCell?.field === 'text' ? (
-                                                    <textarea
-                                                        ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
-                                                        value={editingValue}
-                                                        onChange={handleTextareaInput}
-                                                        onBlur={handleEditSave}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                                e.preventDefault();
-                                                                handleEditSave();
-                                                            } else if (e.key === 'Escape') {
-                                                                handleEditCancel();
-                                                            }
-                                                        }}
-                                                        className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden resize-none"
-                                                        rows={1}
-                                                        style={{ minHeight: '24px' }}
-                                                    />
-                                                ) : (
-                                                    <p
-                                                        className={cn(
-                                                            "text-xs text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
-                                                            !showFullText && "line-clamp-1",
-                                                            showFullText && "whitespace-pre-wrap"
-                                                        )}
-                                                        title="Click to edit"
-                                                        onClick={() => handleEditStart(copy, 'text')}
-                                                    >
-                                                        {copy.text}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </td>
-                                        {/* Type - Editable */}
-                                        <td className="data-grid-td px-2">
-                                            {editingCell?.id === copy.id && editingCell?.field === 'type' ? (
-                                                <select
-                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
-                                                    value={editingValue}
-                                                    onChange={(e) => {
-                                                        setEditingValue(e.target.value);
-                                                        setTimeout(handleEditSave, 0);
-                                                    }}
-                                                    onBlur={handleEditSave}
-                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                                >
-                                                    <option value="primary_text">Primary</option>
-                                                    <option value="headline">Headline</option>
-                                                    <option value="description">Desc</option>
-                                                </select>
-                                            ) : (
-                                                <span
-                                                    className={cn(
-                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300",
-                                                        copy.type === 'primary_text' ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                                            copy.type === 'headline' ? "bg-purple-50 text-purple-700 border-purple-200" :
-                                                                "bg-gray-50 text-gray-700 border-gray-200"
-                                                    )}
-                                                    title="Click to edit"
-                                                    onClick={() => handleEditStart(copy, 'type')}
-                                                >
-                                                    {copy.type === 'primary_text' ? 'Primary' :
-                                                        copy.type === 'headline' ? 'Headline' : 'Desc'}
-                                                </span>
-                                            )}
-                                        </td>
-                                        {/* Project - Editable */}
-                                        <td className="data-grid-td px-2">
-                                            {editingCell?.id === copy.id && editingCell?.field === 'project_id' ? (
-                                                <select
-                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
-                                                    value={editingValue}
-                                                    onChange={(e) => {
-                                                        setEditingValue(e.target.value);
-                                                        setTimeout(handleEditSave, 0);
-                                                    }}
-                                                    onBlur={handleEditSave}
-                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                                >
-                                                    <option value="">No Project</option>
-                                                    {projects.map(p => (
-                                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <span
-                                                    className={cn(
-                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
-                                                        copy.project_id || copy.project
-                                                            ? "bg-pink-50 text-pink-700 border border-pink-200"
-                                                            : "text-gray-400"
-                                                    )}
-                                                    title="Click to edit"
-                                                    onClick={() => handleEditStart(copy, 'project_id')}
-                                                >
-                                                    {getProjectName(copy)}
-                                                </span>
-                                            )}
-                                        </td>
-                                        {/* Platform/Traffic - Editable */}
-                                        <td className="data-grid-td px-2">
-                                            {editingCell?.id === copy.id && editingCell?.field === 'platform' ? (
-                                                <select
-                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
-                                                    value={editingValue}
-                                                    onChange={(e) => {
-                                                        setEditingValue(e.target.value);
-                                                        setTimeout(handleEditSave, 0);
-                                                    }}
-                                                    onBlur={handleEditSave}
-                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                                >
-                                                    <option value="">None</option>
-                                                    <option value="FB">FB</option>
-                                                    <option value="IG">IG</option>
-                                                    <option value="All">All</option>
-                                                </select>
-                                            ) : (
-                                                <span
-                                                    className={cn(
-                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
-                                                        copy.platform
-                                                            ? "bg-green-50 text-green-700 border border-green-200"
-                                                            : "text-gray-400"
-                                                    )}
-                                                    title="Click to edit"
-                                                    onClick={() => handleEditStart(copy, 'platform')}
-                                                >
-                                                    {copy.platform || '-'}
-                                                </span>
-                                            )}
-                                        </td>
-                                        {/* Created Time - NOT Editable */}
-                                        <td className="data-grid-td px-2 text-[10px] text-gray-500">
-                                            {formatDateTime(copy.created_at)}
-                                        </td>
-                                        {/* Creator - Editable */}
-                                        <td className="data-grid-td px-2">
-                                            {editingCell?.id === copy.id && editingCell?.field === 'user_id' ? (
-                                                <select
-                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
-                                                    value={editingValue}
-                                                    onChange={(e) => {
-                                                        setEditingValue(e.target.value);
-                                                        setTimeout(handleEditSave, 0);
-                                                    }}
-                                                    onBlur={handleEditSave}
-                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                                >
-                                                    <option value="">Unknown</option>
-                                                    {users.map(u => (
-                                                        <option key={u.id} value={u.id}>{u.name || u.email}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <span
-                                                    className={cn(
-                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
-                                                        copy.user_id === currentUserId
-                                                            ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
-                                                            : "bg-gray-100 text-gray-600 border border-gray-200"
-                                                    )}
-                                                    title="Click to edit"
-                                                    onClick={() => handleEditStart(copy, 'user_id')}
-                                                >
-                                                    {getCreatorName(copy)}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="data-grid-td px-2">
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => copyToClipboard(copy.text, copy.id)}
-                                                    className={cn(
-                                                        "p-1 rounded transition-colors",
-                                                        copiedId === copy.id
-                                                            ? "text-green-600 bg-green-50"
-                                                            : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
-                                                    )}
-                                                    title="Copy Text"
-                                                >
-                                                    {copiedId === copy.id ? (
-                                                        <Check className="w-3 h-3" />
-                                                    ) : (
-                                                        <Copy className="w-3 h-3" />
-                                                    )}
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(copy.id)}
-                                                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {/* Data Table */}
+            <DataTable
+                columns={columns}
+                data={filteredCopies}
+                isLoading={isLoading}
+                emptyMessage="No ad copies found. Create one for your next campaign!"
+                getRowId={(copy) => copy.id}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onCopy={handleCopy}
+                resizable={true}
+                expandText={showFullText}
+            />
 
             {/* Create Modal */}
             {isCreateModalOpen && (
