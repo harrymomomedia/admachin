@@ -183,6 +183,11 @@ export function FBAdLibrary() {
         const images = savedAd?.images as Array<{ public_url?: string; original_url?: string }> | null;
         const videos = savedAd?.videos as Array<{ public_url?: string; original_url?: string; poster?: string }> | null;
 
+        // Debug logging
+        if (savedAd && (images?.length || videos?.length)) {
+            console.log('AdCard media:', { id: adId, images, videos });
+        }
+
         return (
             <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
                 {/* Header */}
@@ -237,8 +242,11 @@ export function FBAdLibrary() {
                                         src={v.public_url}
                                         poster={v.poster}
                                         className="w-full h-full object-cover"
-                                        controls={false}
+                                        controls
                                         muted
+                                        autoPlay
+                                        loop
+                                        playsInline
                                     />
                                 ) : v.poster ? (
                                     // Show poster image if video URL not available
