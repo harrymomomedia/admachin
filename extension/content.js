@@ -39,98 +39,97 @@
 
             // DETERMINE AD ID
             if (specificContainer) {
-                // If we are scraping a card, we must find the ID in the text
-                // Look for "Library ID: 123456789"
                 const idMatch = container.innerText.match(/Library ID:?\s*(\d+)/);
                 if (idMatch) {
                     data.ad_archive_id = idMatch[1];
                 }
             } else {
-                // Fallback to URL for single view
                 const urlParams = new URLSearchParams(window.location.search);
                 data.ad_archive_id = urlParams.get('id');
             }
 
+            // --- BLOCK-LEVEL TEXT EXTRACTION ---
+            // Instead of TreeWalker (which fragments text), use innerText on block elements
 
-            // --- BRUTE FORCE TEXT EXTRACTION ---
-            const walker = document.createTreeWalker(
-                container,
-                NodeFilter.SHOW_TEXT,
-                {
-                    acceptNode: function (node) {
-                        const tag = node.parentElement.tagName;
-                        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'BUTTON') return NodeFilter.FILTER_REJECT;
-                        if (node.textContent.trim().length < 2) return NodeFilter.FILTER_SKIP;
-                        return NodeFilter.FILTER_ACCEPT;
-                    }
-                }
-            );
-
-            let node;
-            const textCandidates = [];
-            while (node = walker.nextNode()) {
-                const text = node.textContent.trim();
-                const parent = node.parentElement;
-
-                const isNoise = [
-                    'Ad Library', 'Sponsored', 'Filter', 'Sort', 'Search', 'Active', 'Inactive',
-                    'See details', 'About', 'Library ID', 'Platforms', 'Categories', 'Get Quote',
-                    'Learn more', 'Sign Up', 'Apply Now', 'Download', 'Contact Us', 'Shop Now',
-                    'Save to AdMachin', 'Saved!', 'Error'
-                ].some(noise => text === noise || text.startsWith(noise + ':'));
-
-                if (!isNoise) {
-                    textCandidates.push({
-                        text,
-                        length: text.length,
-                        tag: parent.tagName,
-                        weight: window.getComputedStyle(parent).fontWeight
-                    });
-                }
-            }
-
-            // --- PROCESS TEXT CANDIDATES ---
-
-            // 1. Page Name
-            const nameCandidates = textCandidates.filter(c => c.length > 2 && c.length < 50);
-            for (const c of nameCandidates) {
-                const isBold = c.weight === '600' || c.weight === '700' || c.weight === 'bold' || c.tag === 'STRONG' || c.tag === 'B';
-                if (isBold && !data.page_name) {
-                    data.page_name = c.text;
+            // 1. PAGE NAME - Usually bold/strong near top
+            const strongElements = container.querySelectorAll('strong, b, [style*="font-weight: 600"], [style*="font-weight: 700"]');
+            for (const el of strongElements) {
+                const text = el.innerText?.trim();
+                if (text && text.length > 2 && text.length < 50 &&
+                    !text.includes('Sponsored') && !text.includes('Library ID') && !text.includes('Active')) {
+                    data.page_name = text;
                     break;
                 }
             }
-            if (!data.page_name && nameCandidates.length > 0) {
-                const firstClean = nameCandidates.find(c => !c.text.includes(':') && !c.text.match(/^\d+$/));
-                if (firstClean) data.page_name = firstClean.text;
+            // Fallback: First link text
+            if (!data.page_name) {
+                const firstLink = container.querySelector('a[role="link"]');
+                if (firstLink) {
+                    const linkText = firstLink.innerText?.trim();
+                    if (linkText && linkText.length < 50) data.page_name = linkText;
+                }
             }
 
-            // 2. Ad Bodies
-            const potentialBodies = textCandidates.filter(c => c.length > 30);
+            // 2. AD BODY - Look for div[dir="auto"] with substantial text
+            // These are the main text containers Facebook uses
+            const textBlocks = container.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+            const potentialBodies = [];
+
+            textBlocks.forEach(el => {
+                const text = el.innerText?.trim();
+                if (!text || text.length < 20) return;
+
+                // Skip known UI elements
+                const isNoise = [
+                    'Sponsored', 'Active', 'Inactive', 'Library ID', 'Platforms',
+                    'Categories', 'See ad details', 'See details', 'Ad Details',
+                    'Learn more', 'Shop Now', 'Sign Up', 'Get Quote', 'Apply Now',
+                    'Started running', 'This ad has'
+                ].some(noise => text.startsWith(noise) || text === noise);
+
+                if (!isNoise) {
+                    potentialBodies.push({ text, length: text.length });
+                }
+            });
+
+            // Sort by length (longest first = main ad copy)
             potentialBodies.sort((a, b) => b.length - a.length);
 
-            potentialBodies.forEach(c => {
-                if (!data.ad_creative_bodies.includes(c.text)) {
-                    const isSubstring = data.ad_creative_bodies.some(body => body.includes(c.text));
-                    if (!isSubstring) {
-                        data.ad_creative_bodies.push(c.text);
-                    }
+            // Take unique bodies, avoiding substrings
+            potentialBodies.forEach(item => {
+                const isDupe = data.ad_creative_bodies.some(existing =>
+                    existing.includes(item.text) || item.text.includes(existing)
+                );
+                if (!isDupe && data.ad_creative_bodies.length < 3) {
+                    data.ad_creative_bodies.push(item.text);
                 }
             });
 
-            // 3. Headlines
-            const potentialHeadlines = textCandidates.filter(c => c.length > 5 && c.length < 100);
-            potentialHeadlines.forEach(c => {
-                const inBody = data.ad_creative_bodies.some(b => b.includes(c.text));
-                const isPageName = c.text === data.page_name;
+            // 3. HEADLINE - Usually short text near bottom, above CTA
+            // Look for text that's NOT in the body, relatively short, often bold or in a link
+            const allTextElements = container.querySelectorAll('span, div');
+            const bottomElements = Array.from(allTextElements).slice(-30); // Focus on bottom
 
-                if (!inBody && !isPageName && !data.ad_creative_link_titles.includes(c.text)) {
-                    const isBold = c.weight === '600' || c.weight === '700' || c.weight === 'bold' || c.tag === 'STRONG' || c.tag === 'H3';
-                    if (isBold) {
-                        data.ad_creative_link_titles.push(c.text);
-                    }
+            for (const el of bottomElements) {
+                const text = el.innerText?.trim();
+                if (!text || text.length < 10 || text.length > 100) continue;
+
+                // Skip if it's part of the body
+                const inBody = data.ad_creative_bodies.some(b => b.includes(text));
+                if (inBody) continue;
+
+                // Skip known CTA/UI text
+                const isCTA = ['Learn more', 'Shop Now', 'Sign Up', 'Get Quote', 'Apply Now',
+                    'Download', 'Contact Us', 'Book Now', 'Subscribe', 'Sponsored',
+                    'See ad details', 'Library ID'].some(cta => text.includes(cta));
+                if (isCTA) continue;
+
+                // Check if it looks like a headline (contains alphanumeric, not just symbols)
+                if (/[a-zA-Z]{3,}/.test(text)) {
+                    data.ad_creative_link_titles.push(text);
+                    if (data.ad_creative_link_titles.length >= 2) break;
                 }
-            });
+            }
 
 
             // --- MEDIA EXTRACTION ---
