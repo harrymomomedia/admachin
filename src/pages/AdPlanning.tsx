@@ -76,15 +76,28 @@ export function AdPlanning() {
         const original = plans.find(p => p.id === id);
         if (!original) return;
 
-        const updates: Partial<AdPlan> = { [field]: value };
+        // Convert value based on field type
+        let convertedValue: unknown = value;
+        if (field === 'priority' || field === 'hj_rating') {
+            convertedValue = value ? Number(value) : null;
+        } else if (field === 'project_id' || field === 'user_id' || field === 'creative_id') {
+            // Empty string should be null for foreign keys
+            convertedValue = value === '' ? null : value;
+        }
+
+        const updates: Partial<AdPlan> = { [field]: convertedValue };
+
+        console.log('Updating ad plan:', { id, field, value: convertedValue, updates });
 
         // Optimistic update
         setPlans(plans.map(p => p.id === id ? { ...p, ...updates } : p));
 
         try {
-            await updateAdPlan(id, updates);
+            const result = await updateAdPlan(id, updates);
+            console.log('Update result:', result);
         } catch (error) {
             console.error('Failed to update plan:', error);
+            // Revert on error
             loadData();
         }
     };
