@@ -173,26 +173,29 @@ function SortableRow<T>({
                 return (
                     <td
                         key={col.key}
-                        className="data-grid-td px-2"
+                        className="data-grid-td px-2 relative"
                         style={{ width, maxWidth: width }}
                     >
                         {/* Check for editing FIRST - takes priority over custom render */}
                         {isEditing && col.editable ? (
                             col.type === 'select' || col.type === 'badge' ? (
-                                <select
-                                    ref={inputRef as React.RefObject<HTMLSelectElement>}
-                                    value={editingValue}
-                                    onChange={(e) => {
-                                        onEditChange(e.target.value);
-                                        setTimeout(onEditSave, 0);
-                                    }}
-                                    onBlur={onEditSave}
-                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                >
+                                <div className="absolute z-50 bg-white border border-blue-300 rounded shadow-lg py-1 min-w-[120px] max-h-[200px] overflow-y-auto">
                                     {col.options?.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        <div
+                                            key={opt.value}
+                                            onClick={() => {
+                                                onEditChange(opt.value);
+                                                setTimeout(onEditSave, 0);
+                                            }}
+                                            className={cn(
+                                                "px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 transition-colors",
+                                                opt.value === editingValue ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
+                                            )}
+                                        >
+                                            {opt.label}
+                                        </div>
                                     ))}
-                                </select>
+                                </div>
                             ) : col.type === 'textarea' || col.type === 'text' ? (
                                 <textarea
                                     ref={inputRef as React.RefObject<HTMLTextAreaElement>}
