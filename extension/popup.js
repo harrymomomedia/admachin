@@ -193,120 +193,163 @@ function extractAdDataFromPage() {
     };
 
     try {
-        // Extract ad ID from URL
         const urlParams = new URLSearchParams(window.location.search);
         data.ad_archive_id = urlParams.get('id');
 
-        // Look for all text content in specific ad card areas
-        // Facebook uses various class patterns, so we search broadly
-        const mainContent = document.querySelector('div[role="main"]');
-        if (!mainContent) return data;
+        // IDENTIFY CONTAINER
+        // First try dialog, then main, then body
+        let container = document.querySelector('div[role="dialog"]');
+        if (!container) container = document.querySelector('div[role="main"]');
+        if (!container) container = document.body;
 
-        // Find page name - often in a strong or heading element
-        const pageNameCandidates = mainContent.querySelectorAll('strong, h2 span, a[role="link"] span');
-        for (const el of pageNameCandidates) {
-            const text = el.textContent?.trim();
-            if (text && text.length > 2 && text.length < 100 && !text.includes('Ad Library')) {
-                // Check if this looks like a page name (usually first substantial text)
-                if (!data.page_name && el.closest('a')) {
-                    data.page_name = text;
-                    break;
+        if (!container) return data;
+
+        // --- BRUTE FORCE TEXT EXTRACTION ---
+        // Instead of specific selectors, we find ALL distinct text blocks
+        // and filter them based on heuristics (length, content).
+        const walker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function (node) {
+                    // Skip hidden/script/style
+                    const tag = node.parentElement.tagName;
+                    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT;
+                    if (node.textContent.trim().length < 2) return NodeFilter.FILTER_SKIP;
+                    return NodeFilter.FILTER_ACCEPT;
                 }
+            }
+        );
+
+        let node;
+        const textCandidates = [];
+        while (node = walker.nextNode()) {
+            const text = node.textContent.trim();
+            const parent = node.parentElement;
+
+            // Check visibility rough guess (non-zero width/height)
+            // This isn't perfect in an extension background script but usually works
+            // Note: getBoundingClientRect might not work if tab is backgrounded, but usually user is on tab.
+
+            // Filter out known UI noise strings
+            const isNoise = [
+                'Ad Library', 'Sponsored', 'Filter', 'Sort', 'Search', 'Active', 'Inactive',
+                'See details', 'About', 'Library ID', 'Platforms', 'Categories', 'Get Quote',
+                'Learn more', 'Sign Up', 'Apply Now', 'Download', 'Contact Us', 'Shop Now'
+            ].some(noise => text === noise || text.startsWith(noise + ':'));
+
+            if (!isNoise) {
+                textCandidates.push({
+                    text,
+                    length: text.length,
+                    tag: parent.tagName,
+                    weight: window.getComputedStyle(parent).fontWeight
+                });
             }
         }
 
-        // Extract all substantial text blocks
-        const textBlocks = mainContent.querySelectorAll('div[dir="auto"], span[dir="auto"]');
-        textBlocks.forEach(el => {
-            const text = el.textContent?.trim();
-            // Look for ad copy (substantial text that's not navigation)
-            if (text && text.length > 30 && text.length < 5000) {
-                const isNavigation = ['Filter', 'Search', 'Ad Library', 'Categories', 'Regions'].some(nav =>
-                    text.startsWith(nav)
-                );
-                if (!isNavigation && !data.ad_creative_bodies.includes(text)) {
-                    // Check if this text isn't already contained in another entry
-                    const isDuplicate = data.ad_creative_bodies.some(existing =>
-                        existing.includes(text) || text.includes(existing)
-                    );
-                    if (!isDuplicate) {
-                        data.ad_creative_bodies.push(text);
-                    }
-                }
-            }
-        });
+        // --- PROCESS TEXT CANDIDATES ---
 
-        // Extract headlines - usually shorter, prominent text
-        const headlineCandidates = mainContent.querySelectorAll('span[class*="x1lliihq"], div[class*="xzsf02u"]');
-        headlineCandidates.forEach(el => {
-            const text = el.textContent?.trim();
-            if (text && text.length > 5 && text.length < 150) {
-                // Headlines are typically standalone, punchy text
-                if (!data.ad_creative_link_titles.includes(text) &&
-                    !data.ad_creative_bodies.includes(text)) {
-                    data.ad_creative_link_titles.push(text);
-                }
-            }
-        });
-
-        // Extract videos
-        const videos = document.querySelectorAll('video');
-        videos.forEach(video => {
-            let src = video.src;
-            if (!src) {
-                const source = video.querySelector('source');
-                src = source?.src;
-            }
-            if (src && src.startsWith('http')) {
-                data.media_urls.push({
-                    type: 'video',
-                    url: src,
-                    poster: video.poster || null
-                });
-            }
-        });
-
-        // Extract images (filter out small icons)
-        const images = mainContent.querySelectorAll('img[src*="scontent"], img[src*="fbcdn"]');
-        images.forEach(img => {
-            // Use natural dimensions or computed dimensions
-            const width = img.naturalWidth || img.width || parseInt(img.style.width) || 0;
-            const height = img.naturalHeight || img.height || parseInt(img.style.height) || 0;
-
-            // Filter out small images (icons, avatars)
-            if ((width > 100 || height > 100) && img.src) {
-                const isDuplicate = data.media_urls.some(m => m.url === img.src);
-                if (!isDuplicate) {
-                    data.media_urls.push({
-                        type: 'image',
-                        url: img.src,
-                        alt: img.alt || null
-                    });
-                }
-            }
-        });
-
-        // Try to find profile picture
-        const profilePics = mainContent.querySelectorAll('img[alt*="profile"], svg image');
-        for (const pic of profilePics) {
-            const src = pic.src || pic.getAttribute('xlink:href');
-            if (src) {
-                data.page_profile_picture_url = src;
+        // 1. Page Name: usually short, bold/strong, or H2/H3
+        // We look for the first "likely" page name candidate
+        const nameCandidates = textCandidates.filter(c => c.length > 2 && c.length < 50);
+        for (const c of nameCandidates) {
+            // Priority to bold text or headers
+            const isBold = c.weight === '600' || c.weight === '700' || c.weight === 'bold' || c.tag === 'STRONG' || c.tag === 'B';
+            if (isBold && !data.page_name) {
+                // Heuristic: Page name often appears before "Sponsored"
+                data.page_name = c.text;
                 break;
             }
         }
-
-        // Detect platforms
-        const pageText = mainContent.textContent || '';
-        if (pageText.includes('Facebook')) data.publisher_platforms.push('facebook');
-        if (pageText.includes('Instagram')) data.publisher_platforms.push('instagram');
-        if (pageText.includes('Messenger')) data.publisher_platforms.push('messenger');
-
-        // Try to find date
-        const dateMatch = pageText.match(/Started running on ([A-Za-z]+ \d+, \d{4})/);
-        if (dateMatch) {
-            data.ad_delivery_start_time = dateMatch[1];
+        // Fallback for page name if not found: just take first generic candidate that isn't ID
+        if (!data.page_name && nameCandidates.length > 0) {
+            const firstClean = nameCandidates.find(c => !c.text.includes(':') && !c.text.match(/^\d+$/));
+            if (firstClean) data.page_name = firstClean.text;
         }
+
+
+        // 2. Ad Bodies: The detected text blocks that are substantial
+        const potentialBodies = textCandidates.filter(c => c.length > 30);
+        // Sort by length desc
+        potentialBodies.sort((a, b) => b.length - a.length);
+
+        potentialBodies.forEach(c => {
+            if (!data.ad_creative_bodies.includes(c.text)) {
+                // Check if contained in another longer body (dedupe)
+                const isSubstring = data.ad_creative_bodies.some(body => body.includes(c.text));
+                if (!isSubstring) {
+                    data.ad_creative_bodies.push(c.text);
+                }
+            }
+        });
+
+        // 3. Headlines: Short, punchy text that didn't make it into bodies
+        // Often between 5-100 chars
+        const potentialHeadlines = textCandidates.filter(c => c.length > 5 && c.length < 100);
+        potentialHeadlines.forEach(c => {
+            const inBody = data.ad_creative_bodies.some(b => b.includes(c.text));
+            const isPageName = c.text === data.page_name;
+
+            if (!inBody && !isPageName && !data.ad_creative_link_titles.includes(c.text)) {
+                // Favor bold text for headlines
+                const isBold = c.weight === '600' || c.weight === '700' || c.weight === 'bold' || c.tag === 'STRONG' || c.tag === 'H3';
+                // Or if it's just a clean standalone string
+                if (isBold) {
+                    data.ad_creative_link_titles.push(c.text);
+                }
+            }
+        });
+
+
+        // --- MEDIA EXTRACTION ---
+        // Grab ALL videos
+        const videos = container.querySelectorAll('video');
+        videos.forEach(video => {
+            let src = video.src || video.querySelector('source')?.src;
+            if (src) {
+                data.media_urls.push({ type: 'video', url: src, poster: video.poster || null });
+            }
+        });
+
+        // Grab ALL images > specific size
+        const images = container.querySelectorAll('img');
+        images.forEach(img => {
+            // Must have src
+            if (!img.src) return;
+
+            // Skip tiny tracking pixels or icons
+            // If natural dimensions are 0 (not loaded), we check defined dimensions
+            const width = img.naturalWidth || img.width || 0;
+            const height = img.naturalHeight || img.height || 0;
+
+            // Ad images are generally substantial
+            // Square (1080x1080) or Landscape (1200x628) or Portrait
+            // Let's say min 200px
+            if (width > 150 || height > 150) {
+                // Avoid profile pics if we can identify them (usually < 200, but some overlap)
+                // Profile pics often in circular containers or have 'profile' in alt
+                const isProfile = (img.alt && img.alt.toLowerCase().includes('profile'));
+
+                if (!isProfile) {
+                    if (!data.media_urls.some(m => m.url === img.src)) {
+                        data.media_urls.push({ type: 'image', url: img.src, alt: img.alt });
+                    }
+                } else {
+                    // Save as profile pic
+                    data.page_profile_picture_url = img.src;
+                }
+            }
+        });
+
+        // --- PLATFORMS & DATES ---
+        const fullText = container.innerText || '';
+        if (fullText.includes('Facebook')) data.publisher_platforms.push('facebook');
+        if (fullText.includes('Instagram')) data.publisher_platforms.push('instagram');
+
+        const dateMatch = fullText.match(/Started running on ([A-Za-z]+ \d+, \d{4})/);
+        if (dateMatch) data.ad_delivery_start_time = dateMatch[1];
+
 
     } catch (error) {
         console.error('AdMachin extraction error:', error);

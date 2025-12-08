@@ -158,15 +158,8 @@ export function AdCopyLibrary() {
     // Helper to get creator name
     const getCreatorName = (copy: AdCopy) => {
         if (copy.user_id) {
-            const user = users.find(u => u.id === copy.user_id); // This matches if user_id is the public user id
-            // However, copy.user_id comes from auth.users. 
-            // The 'users' array from getUsers() is from public.users table.
-            // If they are not synced, we might miss it.
-            // If the schema uses the SAME ID for auth and public users (recommended), this works.
-            // If not, we might need to fallback.
-
-            // Let's try to find by ID first.
-            if (user) return `${user.first_name} ${user.last_name}`; // Found in public users
+            const user = users.find(u => u.id === copy.user_id);
+            if (user) return user.name || user.email; // Use name or fallback to email
 
             // Fallback for current user if IDs match auth
             if (copy.user_id === currentUserId) return 'Me';

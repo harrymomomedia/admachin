@@ -35,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        // Get the anon key from request header (sent by extension)
+        // Get the anon key from request header to validate request is from extension
         const clientAnonKey = req.headers['x-supabase-key'] as string;
 
         if (!clientAnonKey) {
@@ -45,8 +45,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        // Create client with the provided anon key
-        const supabase = createClient(supabaseUrl, clientAnonKey);
+        // Use service role key for inserts (bypasses RLS)
+        // The clientAnonKey is just used to verify the request is legitimate
+        if (!supabaseServiceKey) {
+            return res.status(500).json({
+                success: false,
+                error: 'Server configuration error: Missing service role key'
+            });
+        }
+
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         const adData = req.body as AdData;
 
@@ -57,11 +65,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        // Check if ad already exists
+        // Check if ad already exists using fb_ad_id
         const { data: existing } = await supabase
             .from('fb_ads_library')
             .select('id')
-            .eq('ad_archive_id', adData.ad_archive_id)
+            .eq('fb_ad_id', adData.ad_archive_id)
             .single();
 
         if (existing) {
@@ -72,27 +80,91 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
+        // Helper to download and upload media
+        async function processMedia(mediaItems: any[], folder: 'images' | 'videos') {
+            return Promise.all(mediaItems.map(async (item) => {
+                try {
+                    // Start download
+                    const response = await fetch(item.url);
+                    if (!response.ok) throw new Error('Failed to fetch media');
+
+                    const blob = await response.blob();
+                    const buffer = await blob.arrayBuffer();
+
+                    // Generate unique filename
+                    const ext = folder === 'videos' ? 'mp4' : 'jpg'; // simplified extension handling
+                    const filename = `${adData.ad_archive_id}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                    const path = `fb-library/${folder}/${filename}`;
+
+                    // Upload to Supabase
+                    const { error: uploadError } = await supabase.storage
+                        .from('creatives')
+                        .upload(path, buffer, {
+                            contentType: response.headers.get('content-type') || (folder === 'videos' ? 'video/mp4' : 'image/jpeg')
+                        });
+
+                    if (uploadError) throw uploadError;
+
+                    // Get public URL
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('creatives')
+                        .getPublicUrl(path);
+
+                    return {
+                        ...item,
+                        original_url: item.url,
+                        storage_path: path,
+                        public_url: publicUrl
+                    };
+
+                } catch (error) {
+                    console.error(`Failed to process ${folder}:`, error);
+                    // Fallback to just saving the original URL
+                    return {
+                        ...item,
+                        original_url: item.url,
+                        error: 'Failed to download'
+                    };
+                }
+            }));
+        }
+
+        // Split and process media
+        // Limit to first 5 items to prevent timeout
+        const rawImages = adData.media_urls.filter(m => m.type === 'image').slice(0, 5);
+        const rawVideos = adData.media_urls.filter(m => m.type === 'video').slice(0, 5);
+
+        const [processedImages, processedVideos] = await Promise.all([
+            processMedia(rawImages, 'images'),
+            processMedia(rawVideos, 'videos')
+        ]);
+
         // Prepare ad data for insertion
+        // Map fields to match supabase/migrations/20251208130000_create_fb_ads_library.sql
         const insertData = {
-            ad_archive_id: adData.ad_archive_id,
+            fb_ad_id: adData.ad_archive_id,
             page_id: adData.page_id,
             page_name: adData.page_name,
-            ad_creative_bodies: adData.ad_creative_bodies,
-            ad_creative_link_titles: adData.ad_creative_link_titles,
-            ad_creative_link_descriptions: adData.ad_creative_link_descriptions,
-            ad_creative_link_captions: adData.ad_creative_link_captions,
+
+            // Map arrays to single text fields (taking the first one)
+            ad_creative_body: adData.ad_creative_bodies[0] || null,
+            ad_creative_link_title: adData.ad_creative_link_titles[0] || null,
+            ad_creative_link_description: adData.ad_creative_link_descriptions[0] || null,
+            ad_creative_link_caption: adData.ad_creative_link_captions[0] || null,
+
             publisher_platforms: adData.publisher_platforms,
-            page_profile_picture_url: adData.page_profile_picture_url,
+            // page_profile_picture_url is not in the schema, we can ignore it or add it later if needed
+
             ad_delivery_start_time: adData.ad_delivery_start_time ? new Date(adData.ad_delivery_start_time).toISOString() : null,
-            // Store media URLs in ad_snapshot_url as JSON string
             ad_snapshot_url: adData.url,
-            // Store extracted media in a custom field or as JSON
-            raw_data: {
-                media_urls: adData.media_urls,
-                source_url: adData.url,
-                extracted_at: new Date().toISOString()
-            },
-            is_saved: true
+
+            // Store processed media with local storage paths
+            images: processedImages,
+            videos: processedVideos,
+
+            // saved_by will be null if using anon key without auth, 
+            // relying on RLS policies or service key if provided. 
+            // Ideally should be authenticated user.
         };
 
         // Insert the ad

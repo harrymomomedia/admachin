@@ -82,8 +82,18 @@ export function TeamSettings() {
 
     const openEditUser = (user: User) => {
         setEditingUser(user);
-        setEditUserFirstName(user.first_name);
-        setEditUserLastName(user.last_name);
+
+        let first = user.first_name || '';
+        let last = user.last_name || '';
+
+        if (!first && !last && user.name) {
+            const parts = user.name.split(' ');
+            first = parts[0];
+            last = parts.slice(1).join(' ');
+        }
+
+        setEditUserFirstName(first);
+        setEditUserLastName(last);
         setEditUserEmail(user.email);
         setEditUserPassword('');
         setEditUserRole(user.role as 'admin' | 'member');
@@ -183,7 +193,7 @@ export function TeamSettings() {
     };
 
     const getUserDisplayName = (user: User) => {
-        return `${user.first_name} ${user.last_name}`;
+        return user.name || user.email;
     };
 
     return (
@@ -201,8 +211,8 @@ export function TeamSettings() {
                     <button
                         onClick={() => setActiveTab('users')}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'users'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         <Users className="w-4 h-4" />
@@ -211,8 +221,8 @@ export function TeamSettings() {
                     <button
                         onClick={() => setActiveTab('projects')}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'projects'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         <FolderKanban className="w-4 h-4" />
@@ -268,8 +278,8 @@ export function TeamSettings() {
                                             <td className="px-6 py-4 text-gray-600">{user.email}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
-                                                        ? 'bg-purple-100 text-purple-700'
-                                                        : 'bg-gray-100 text-gray-700'
+                                                    ? 'bg-purple-100 text-purple-700'
+                                                    : 'bg-gray-100 text-gray-700'
                                                     }`}>
                                                     {user.role}
                                                 </span>
