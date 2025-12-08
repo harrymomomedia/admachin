@@ -164,11 +164,9 @@ function SortableRow<T>({
                         className="data-grid-td px-2"
                         style={{ width, maxWidth: width }}
                     >
-                        {col.render ? (
-                            col.render(value, row, isEditing)
-                        ) : isEditing && col.editable ? (
-                            // Editing mode
-                            col.type === 'select' ? (
+                        {/* Check for editing FIRST - takes priority over custom render */}
+                        {isEditing && col.editable ? (
+                            col.type === 'select' || col.type === 'badge' ? (
                                 <select
                                     ref={inputRef as React.RefObject<HTMLSelectElement>}
                                     value={editingValue}
@@ -208,9 +206,12 @@ function SortableRow<T>({
                                     className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
                                 />
                             )
+                        ) : col.render ? (
+                            // Custom render for display mode only
+                            col.render(value, row, isEditing)
                         ) : (
-                            // Display mode
-                            col.type === 'badge' ? (
+                            // Default display mode
+                            col.type === 'badge' || col.type === 'select' ? (
                                 <span
                                     className={cn(
                                         "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300",

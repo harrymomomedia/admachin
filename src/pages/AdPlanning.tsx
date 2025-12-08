@@ -66,16 +66,6 @@ export function AdPlanning() {
     };
 
     // Get helpers
-    const getProjectName = (plan: AdPlan) => {
-        const project = projects.find(p => p.id === plan.project_id);
-        return project?.name || '-';
-    };
-
-    const getUserName = (plan: AdPlan) => {
-        const user = users.find(u => u.id === plan.user_id);
-        return user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : '-';
-    };
-
     const getCreativePreview = (plan: AdPlan) => {
         const creative = creatives.find(c => c.id === plan.creative_id);
         return creative?.storage_path || null;
@@ -140,15 +130,6 @@ export function AdPlanning() {
         }
     };
 
-    // Status color helper
-    const getStatusColor = (status: string | null) => {
-        switch (status) {
-            case 'completed': return 'bg-green-100 text-green-800 border-green-200';
-            case 'up next': return 'bg-orange-100 text-orange-800 border-orange-200';
-            case 'first ver started': return 'bg-blue-100 text-blue-800 border-blue-200';
-            default: return 'bg-gray-100 text-gray-700 border-gray-200';
-        }
-    };
 
     // Column Definitions
     const columns: ColumnDef<AdPlan>[] = [
@@ -173,9 +154,6 @@ export function AdPlanning() {
                 { label: '-', value: '' },
                 ...projects.map(p => ({ label: p.name, value: p.id })),
             ],
-            render: (_, plan) => (
-                <span className="text-xs font-medium text-gray-900">{getProjectName(plan)}</span>
-            ),
         },
         {
             key: 'subproject',
@@ -255,9 +233,6 @@ export function AdPlanning() {
                 { label: '-', value: '' },
                 ...users.map(u => ({ label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email, value: u.id })),
             ],
-            render: (_, plan) => (
-                <span className="text-xs text-gray-700">{getUserName(plan)}</span>
-            ),
         },
         {
             key: 'status',
@@ -265,23 +240,18 @@ export function AdPlanning() {
             width: 120,
             minWidth: 90,
             editable: true,
-            type: 'badge',
+            type: 'select',
             options: [
                 { label: 'Not Started', value: 'not started' },
                 { label: 'Up Next', value: 'up next' },
                 { label: 'First Ver Started', value: 'first ver started' },
                 { label: 'Completed', value: 'completed' },
             ],
-            render: (value, _, isEditing) => {
-                if (isEditing) return null; // Let default render handle it
-                return (
-                    <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer",
-                        getStatusColor(String(value))
-                    )}>
-                        {value === 'first ver started' ? '1st Ver' : String(value || 'Not Started')}
-                    </span>
-                );
+            colorMap: {
+                'not started': 'bg-gray-100 text-gray-700 border-gray-200',
+                'up next': 'bg-orange-100 text-orange-800 border-orange-200',
+                'first ver started': 'bg-blue-100 text-blue-800 border-blue-200',
+                'completed': 'bg-green-100 text-green-800 border-green-200',
             },
         },
         {
