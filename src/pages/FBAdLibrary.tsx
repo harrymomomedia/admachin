@@ -166,7 +166,8 @@ export function FBAdLibrary() {
     };
 
     const AdCard = ({ ad, isSaved }: { ad: FBAdLibraryAd | FBAdLibrarySaved; isSaved: boolean }) => {
-        const isLibraryAd = 'page_name' in ad && 'ad_creation_time' in ad;
+        // FBAdLibraryAd has 'id', FBAdLibrarySaved has 'fb_ad_id'
+        const isLibraryAd = 'id' in ad && !('fb_ad_id' in ad);
         const libraryAd = isLibraryAd ? ad as FBAdLibraryAd : null;
         const savedAd = !isLibraryAd ? ad as FBAdLibrarySaved : null;
 
