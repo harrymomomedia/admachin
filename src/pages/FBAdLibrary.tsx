@@ -173,8 +173,14 @@ export function FBAdLibrary() {
         const adId = libraryAd ? libraryAd.id : savedAd?.fb_ad_id || '';
         const pageName = libraryAd ? libraryAd.page_name : savedAd?.page_name || 'Unknown';
         const body = libraryAd ? libraryAd.ad_creative_bodies?.[0] : savedAd?.ad_creative_body;
+        const headline = libraryAd ? libraryAd.ad_creative_link_titles?.[0] : savedAd?.ad_creative_link_title;
+        const displayUrl = libraryAd ? libraryAd.ad_creative_link_captions?.[0] : savedAd?.ad_creative_link_caption;
         const platforms = libraryAd ? libraryAd.publisher_platforms : savedAd?.publisher_platforms;
         const startDate = libraryAd ? libraryAd.ad_delivery_start_time : savedAd?.ad_delivery_start_time;
+
+        // Parse media from saved ad
+        const images = savedAd?.images as Array<{ public_url?: string; original_url?: string }> | null;
+        const videos = savedAd?.videos as Array<{ public_url?: string; original_url?: string; poster?: string }> | null;
 
         return (
             <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
@@ -215,9 +221,72 @@ export function FBAdLibrary() {
 
                 {/* Ad Body */}
                 {body && (
-                    <p className="text-sm text-gray-700 mb-3 line-clamp-3">
+                    <p className="text-sm text-gray-700 mb-3 line-clamp-4">
                         {body}
                     </p>
+                )}
+
+                {/* Media Preview */}
+                {(images?.length || videos?.length) ? (
+                    <div className="mb-3 grid grid-cols-2 gap-2 max-h-48 overflow-hidden rounded-lg">
+                        {videos?.slice(0, 1).map((v, i) => (
+                            <div key={`v-${i}`} className="relative col-span-2 aspect-video bg-gray-100 rounded overflow-hidden">
+                                {v.public_url ? (
+                                    <video
+                                        src={v.public_url}
+                                        poster={v.poster}
+                                        className="w-full h-full object-cover"
+                                        controls={false}
+                                        muted
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-400">
+                                        <span className="text-xs">Video</span>
+                                    </div>
+                                )}
+                                <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                                    Video
+                                </div>
+                            </div>
+                        ))}
+                        {images?.slice(0, videos?.length ? 2 : 4).map((img, i) => (
+                            <div key={`img-${i}`} className="aspect-square bg-gray-100 rounded overflow-hidden">
+                                {img.public_url ? (
+                                    <img
+                                        src={img.public_url}
+                                        alt={`Ad creative ${i + 1}`}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : img.original_url ? (
+                                    <img
+                                        src={img.original_url}
+                                        alt={`Ad creative ${i + 1}`}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-400">
+                                        <span className="text-xs">Image</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
+
+                {/* Display URL & Headline */}
+                {(displayUrl || headline) && (
+                    <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+                        {displayUrl && (
+                            <div className="text-xs text-gray-500 uppercase tracking-wide">
+                                {displayUrl}
+                            </div>
+                        )}
+                        {headline && (
+                            <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {headline}
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Footer */}

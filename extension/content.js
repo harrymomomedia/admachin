@@ -100,7 +100,7 @@
             const fullText = container.innerText || '';
             const lines = fullText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-            // Noise patterns to skip
+            // Noise patterns to skip (UI elements, CTAs, metadata)
             const noisePatterns = [
                 /^Active$/i, /^Inactive$/i, /^Sponsored$/i, /^Library ID/i,
                 /^Started running/i, /^Platforms/i, /^Categories/i,
@@ -108,24 +108,24 @@
                 /^This ad has/i, /^Learn more$/i, /^Shop Now$/i, /^Sign Up$/i,
                 /^Get Quote$/i, /^Apply Now$/i, /^Download$/i, /^Contact Us$/i,
                 /^Book Now$/i, /^Subscribe$/i, /^Call now$/i, /^Send message$/i,
-                /^\d+ results?$/i, /^Total active time/i
+                /^\d+ results?$/i, /^Total active time/i,
+                /^Open Dropdown$/i, /^Dropdown$/i, /^Menu$/i, /^Close$/i,
+                /^More$/i, /^Share$/i, /^Save$/i, /^Report$/i
             ];
 
             const isNoise = (text) => noisePatterns.some(p => p.test(text));
             const isUrl = (text) => /^[A-Z0-9.-]+\.(COM|NET|ORG|IO|APP|CO)/i.test(text);
 
-            // 1. PAGE NAME - Look for the advertiser name
-            // Strategy: Find text that appears right after "Sponsored" or is a bold/link early in the card
+            // 1. PAGE NAME - Text right before "Sponsored"
             const sponsoredIndex = lines.findIndex(l => l === 'Sponsored');
             if (sponsoredIndex > 0) {
-                // Page name is usually right before "Sponsored"
                 const candidate = lines[sponsoredIndex - 1];
                 if (candidate && candidate.length > 2 && candidate.length < 60 && !isNoise(candidate)) {
                     data.page_name = candidate;
                 }
             }
 
-            // Fallback: Look for first meaningful short text that's not noise
+            // Fallback: First meaningful short text
             if (!data.page_name) {
                 for (let i = 0; i < Math.min(lines.length, 15); i++) {
                     const line = lines[i];
@@ -136,46 +136,68 @@
                 }
             }
 
-            // 2. AD BODY - Find the longest text blocks (actual ad copy)
-            const paragraphs = lines.filter(l => l.length > 50 && !isNoise(l));
-            paragraphs.sort((a, b) => b.length - a.length);
+            // 2. AD BODY - Find text AFTER "Sponsored" (position-based, not length-based)
+            // The ad body comes right after "Sponsored" in the DOM
+            const bodyStartIndex = sponsoredIndex >= 0 ? sponsoredIndex + 1 : 0;
 
-            // Take up to 2 longest unique paragraphs
-            paragraphs.forEach(p => {
-                if (data.ad_creative_bodies.length >= 2) return;
-                const isDupe = data.ad_creative_bodies.some(existing =>
-                    existing.includes(p) || p.includes(existing)
-                );
-                if (!isDupe) {
-                    data.ad_creative_bodies.push(p);
-                }
-            });
+            // Collect consecutive long text lines starting from after Sponsored
+            let bodyText = '';
+            for (let i = bodyStartIndex; i < lines.length; i++) {
+                const line = lines[i];
 
-            // 3. HEADLINE & DISPLAY URL - Usually near bottom of card
-            // Look for short text that's not in the body and not noise
-            const bottomLines = lines.slice(-20);
+                // Stop if we hit a URL (indicates we've passed the ad body into the CTA area)
+                if (isUrl(line)) break;
 
-            for (const line of bottomLines) {
-                if (line.length < 5 || line.length > 120) continue;
-                if (isNoise(line)) continue;
+                // Skip short noise
+                if (isNoise(line) || line.length < 15) continue;
 
-                // Check if it's part of body text
-                const inBody = data.ad_creative_bodies.some(b => b.includes(line));
-                if (inBody) continue;
+                // Skip if it looks like the page name
+                if (line === data.page_name) continue;
 
-                // Separate URLs from headlines
-                if (isUrl(line)) {
-                    data.ad_creative_link_captions.push(line); // Display URL
-                } else if (!data.ad_creative_link_titles.includes(line) && line !== data.page_name) {
-                    // Only add if it looks like actual text, not just numbers/symbols
-                    if (/[a-zA-Z]{4,}/.test(line)) {
-                        data.ad_creative_link_titles.push(line);
-                    }
+                // Accumulate text
+                bodyText += (bodyText ? ' ' : '') + line;
+
+                // Stop after we have a reasonable amount
+                if (bodyText.length > 200) break;
+            }
+
+            if (bodyText.length > 30) {
+                data.ad_creative_bodies.push(bodyText);
+            }
+
+            // 3. HEADLINE - Look in the LAST section of the card (after any URL)
+            // Find the display URL first
+            let displayUrlIndex = -1;
+            for (let i = lines.length - 1; i >= 0; i--) {
+                if (isUrl(lines[i])) {
+                    data.ad_creative_link_captions.push(lines[i]);
+                    displayUrlIndex = i;
+                    break;
                 }
             }
 
-            // Keep only first 2 headlines max
-            data.ad_creative_link_titles = data.ad_creative_link_titles.slice(0, 2);
+            // Headline is usually right after/around the display URL
+            const headlineSearchStart = displayUrlIndex >= 0 ? displayUrlIndex : lines.length - 15;
+            const headlineSearchEnd = lines.length;
+
+            for (let i = headlineSearchStart; i < headlineSearchEnd; i++) {
+                const line = lines[i];
+                if (!line || line.length < 10 || line.length > 100) continue;
+                if (isNoise(line) || isUrl(line)) continue;
+
+                // Skip if it's part of body
+                const inBody = data.ad_creative_bodies.some(b => b.includes(line));
+                if (inBody) continue;
+
+                // Skip page name
+                if (line === data.page_name) continue;
+
+                // Must have actual words
+                if (/[a-zA-Z]{4,}/.test(line) && !data.ad_creative_link_titles.includes(line)) {
+                    data.ad_creative_link_titles.push(line);
+                    if (data.ad_creative_link_titles.length >= 1) break; // Only need 1 headline
+                }
+            }
 
 
             // --- MEDIA EXTRACTION ---
