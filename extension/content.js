@@ -231,30 +231,59 @@
                 }
             }
 
-            // Headline is in the last 5 lines AFTER the display URL
+            // Additional noise for headlines specifically
+            const headlineNoise = (text) => {
+                return isNoise(text) ||
+                    /^\d+\s*hrs?$/i.test(text) ||      // "3 hrs"
+                    /^\d+\s*days?$/i.test(text) ||    // "5 days"
+                    /^Total active/i.test(text) ||
+                    /^See all$/i.test(text) ||
+                    /^View more$/i.test(text) ||
+                    /^Show less$/i.test(text) ||
+                    /^Platforms?:/i.test(text) ||
+                    text.includes('●') ||              // Bullet points
+                    /^This ad has multiple/i.test(text);
+            };
+
+            // Try to find headline after display URL
+            let headlineFound = false;
             if (displayUrlIndex >= 0) {
-                // Search from displayUrlIndex+1 to end, but only check a few lines
                 for (let i = displayUrlIndex + 1; i < Math.min(displayUrlIndex + 5, lines.length); i++) {
                     const line = lines[i];
                     if (!line || line.length < 15 || line.length > 100) continue;
-                    if (isNoise(line) || isUrl(line)) continue;
-
-                    // Skip if it's one of our body lines
+                    if (headlineNoise(line) || isUrl(line)) continue;
                     if (bodyLines.has(line)) continue;
-
-                    // Skip page name
                     if (line === data.page_name) continue;
-
-                    // Skip lines starting with emoji
                     if (/^[\u{1F300}-\u{1F9FF}]/u.test(line)) continue;
 
-                    // Must have actual words (not just symbols/numbers)
                     if (/[a-zA-Z]{5,}/.test(line)) {
                         data.ad_creative_link_titles.push(line);
-                        break; // Only need 1 headline
+                        headlineFound = true;
+                        break;
                     }
                 }
             }
+
+            // Fallback: Look for headline near CTA buttons (Learn more, Shop Now, etc.)
+            if (!headlineFound) {
+                const ctaIndex = lines.findIndex(l => /^(Learn more|Shop Now|Sign Up|Get Quote|Apply Now|Call now)$/i.test(l));
+                if (ctaIndex > 0) {
+                    // Check 1-2 lines before CTA for headline
+                    for (let i = ctaIndex - 1; i >= Math.max(0, ctaIndex - 3); i--) {
+                        const line = lines[i];
+                        if (!line || line.length < 15 || line.length > 100) continue;
+                        if (headlineNoise(line) || isUrl(line)) continue;
+                        if (bodyLines.has(line)) continue;
+                        if (line === data.page_name) continue;
+
+                        if (/[a-zA-Z]{5,}/.test(line)) {
+                            data.ad_creative_link_titles.push(line);
+                            break;
+                        }
+                    }
+                }
+            }
+
 
 
             // --- MEDIA EXTRACTION ---
