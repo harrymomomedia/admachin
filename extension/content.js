@@ -223,12 +223,69 @@
         // Check if button already exists
         if (card.querySelector('.admachin-inline-btn')) return;
 
-        // Ensure card is relative so we can position if needed, 
-        // though appending to bottom is safer
+        // Ensure card is relative so we can position if needed
         if (window.getComputedStyle(card).position === 'static') {
             card.style.position = 'relative';
         }
 
+        // --- CREATE CONTAINER FOR BUTTON + PREVIEW ---
+        const container = document.createElement('div');
+        container.className = 'admachin-container';
+        container.style.cssText = `
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        `;
+
+        // --- CREATE PREVIEW PANEL ---
+        const preview = document.createElement('div');
+        preview.className = 'admachin-preview';
+        preview.style.cssText = `
+            background: rgba(0, 0, 0, 0.85);
+            color: #e5e7eb;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-family: ui-monospace, monospace;
+            max-width: 220px;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: block;
+        `;
+        preview.innerHTML = '<span style="color:#9ca3af;">Extracting...</span>';
+
+        // --- RUN EXTRACTION IMMEDIATELY TO POPULATE PREVIEW ---
+        const adData = extractAdData(card);
+        const truncate = (str, len) => str && str.length > len ? str.substring(0, len) + '...' : (str || '—');
+
+        const hasText = adData.ad_creative_bodies.length > 0;
+        const hasHeadline = adData.ad_creative_link_titles.length > 0;
+        const mediaCount = adData.media_urls.length;
+
+        preview.innerHTML = `
+            <div style="margin-bottom:4px;color:${adData.ad_archive_id ? '#10b981' : '#ef4444'};">
+                <strong>ID:</strong> ${adData.ad_archive_id || '❌ NOT FOUND'}
+            </div>
+            <div style="margin-bottom:3px;">
+                <strong>Page:</strong> ${truncate(adData.page_name, 25)}
+            </div>
+            <div style="margin-bottom:3px;color:${hasText ? '#a5f3fc' : '#fca5a5'};">
+                <strong>Text:</strong> ${hasText ? truncate(adData.ad_creative_bodies[0], 40) : '❌ None'}
+            </div>
+            <div style="margin-bottom:3px;color:${hasHeadline ? '#a5f3fc' : '#fca5a5'};">
+                <strong>Headline:</strong> ${hasHeadline ? truncate(adData.ad_creative_link_titles[0], 30) : '❌ None'}
+            </div>
+            <div style="color:${mediaCount > 0 ? '#a5f3fc' : '#fca5a5'};">
+                <strong>Media:</strong> ${mediaCount > 0 ? `${mediaCount} item(s)` : '❌ None'}
+            </div>
+        `;
+
+        // --- CREATE SAVE BUTTON ---
         const btn = document.createElement('button');
         btn.className = 'admachin-inline-btn';
         btn.innerHTML = `
@@ -240,12 +297,7 @@
             Save
         `;
 
-        // Styling
         btn.style.cssText = `
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            z-index: 1000;
             padding: 6px 12px;
             background: #2563eb;
             color: white;
@@ -265,17 +317,16 @@
         btn.onmouseout = () => btn.style.background = '#2563eb';
 
         btn.onclick = async (e) => {
-            e.stopPropagation(); // Prevent opening the ad detail
+            e.stopPropagation();
             e.preventDefault();
 
             btn.disabled = true;
-            btn.innerHTML = 'Converting...';
-            btn.style.background = '#9333ea'; // Purple for working
+            btn.innerHTML = 'Saving...';
+            btn.style.background = '#9333ea';
 
-            const adData = extractAdData(card);
-
+            // Use already extracted data
             if (!adData.ad_archive_id) {
-                btn.innerHTML = 'No ID Found';
+                btn.innerHTML = 'No ID!';
                 btn.style.background = '#ef4444';
                 setTimeout(() => {
                     btn.innerHTML = 'Save';
@@ -285,26 +336,23 @@
                 return;
             }
 
-            btn.innerHTML = 'Saving...';
-
             chrome.runtime.sendMessage({
                 action: 'saveAd',
                 data: adData
             }, (response) => {
                 if (response?.success) {
                     btn.innerHTML = '✓ Saved';
-                    btn.style.background = '#10b981'; // Green
+                    btn.style.background = '#10b981';
+                    preview.innerHTML = '<span style="color:#10b981;">✓ Saved to AdMachin!</span>';
                 } else {
                     btn.innerHTML = 'Error';
-                    btn.style.background = '#ef4444'; // Red
+                    btn.style.background = '#ef4444';
+                    preview.innerHTML = `<span style="color:#ef4444;">Error: ${response?.error || 'Unknown'}</span>`;
                     console.error('Save failed:', response);
                 }
 
                 setTimeout(() => {
-                    if (btn.innerText === '✓ Saved') {
-                        btn.innerHTML = 'Saved';
-                        // keep green
-                    } else {
+                    if (btn.innerText !== '✓ Saved') {
                         btn.innerHTML = `
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -316,11 +364,13 @@
                         btn.style.background = '#2563eb';
                         btn.disabled = false;
                     }
-                }, 2000);
+                }, 3000);
             });
         };
 
-        card.appendChild(btn);
+        container.appendChild(preview);
+        container.appendChild(btn);
+        card.appendChild(container);
     }
 
 
