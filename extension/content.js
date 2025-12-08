@@ -60,9 +60,9 @@
 
         for (const item of mediaItems.slice(0, maxItems)) {
             try {
-                // For blob: URLs on videos, try to capture from the video element
-                if (item.type === 'video' && (item.url.startsWith('blob:') || item.url === 'blob_video')) {
-                    console.log('AdMachin: Attempting to capture blob video...');
+                // ALL VIDEOS: Use captureStream because FB CDN blocks CORS for video URLs
+                if (item.type === 'video') {
+                    console.log('AdMachin: Capturing video using captureStream...');
 
                     // Find the video element in the container
                     const videoEl = container?.querySelector('video');
