@@ -34,10 +34,10 @@ export function AdCopyLibrary() {
     // UI Logic State
     const [showFullText, setShowFullText] = useState(false);
 
-    // Inline Editing State
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editingText, setEditingText] = useState('');
-    const editInputRef = useRef<HTMLTextAreaElement>(null);
+    // Inline Editing State - now tracks field being edited
+    const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
+    const [editingValue, setEditingValue] = useState<string>('');
+    const editInputRef = useRef<HTMLTextAreaElement | HTMLSelectElement>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -45,22 +45,20 @@ export function AdCopyLibrary() {
         type: 'primary_text', // primary_text, headline, description
         project_id: '',
         project: '', // Legacy/Fallback text
-        platform: 'FB',
-        name: ''
+        platform: 'FB'
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
-    // Column Resizing State
+    // Column Resizing State (removed 'name' column)
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
         text: 400,
         type: 100,
-        project: 120,
+        project: 140,
         platform: 80,
-        name: 120,
-        date: 90,
+        date: 140,
         creator: 120,
         actions: 80,
     });
@@ -103,22 +101,23 @@ export function AdCopyLibrary() {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
-    // Focus & Auto-expand edit input
+    // Focus edit input
     useEffect(() => {
-        if (editingId && editInputRef.current) {
-            const textarea = editInputRef.current;
-            textarea.focus();
-            // Reset height to auto to get correct scrollHeight
-            textarea.style.height = 'auto';
-            textarea.style.height = `${textarea.scrollHeight}px`;
+        if (editingCell && editInputRef.current) {
+            const element = editInputRef.current;
+            element.focus();
 
-            // Move cursor to end
-            textarea.setSelectionRange(
-                textarea.value.length,
-                textarea.value.length
-            );
+            // Auto-expand for textarea
+            if (element instanceof HTMLTextAreaElement) {
+                element.style.height = 'auto';
+                element.style.height = `${element.scrollHeight}px`;
+                element.setSelectionRange(
+                    element.value.length,
+                    element.value.length
+                );
+            }
         }
-    }, [editingId]);
+    }, [editingCell]);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -141,9 +140,22 @@ export function AdCopyLibrary() {
     // Auto-resize handler for textarea
     const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const textarea = e.target;
-        setEditingText(textarea.value);
+        setEditingValue(textarea.value);
         textarea.style.height = 'auto';
         textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+
+    // Format datetime for Created Time column
+    const formatDateTime = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
     };
 
     // Helper to get project name
@@ -176,50 +188,95 @@ export function AdCopyLibrary() {
         return (
             copy.text.toLowerCase().includes(searchLower) ||
             projectName.includes(searchLower) ||
-            creatorName.includes(searchLower) ||
-            (copy.name || '').toLowerCase().includes(searchLower)
+            creatorName.includes(searchLower)
         );
     });
 
-    // Inline Edit Handlers
-    const handleEditStart = (copy: AdCopy) => {
-        setEditingId(copy.id);
-        setEditingText(copy.text);
+    // Inline Edit Handlers - now supports all editable fields
+    const handleEditStart = (copy: AdCopy, field: string) => {
+        let value = '';
+        switch (field) {
+            case 'text':
+                value = copy.text;
+                break;
+            case 'type':
+                value = copy.type;
+                break;
+            case 'project_id':
+                value = copy.project_id || '';
+                break;
+            case 'platform':
+                value = copy.platform || '';
+                break;
+            case 'user_id':
+                value = copy.user_id || '';
+                break;
+        }
+        setEditingCell({ id: copy.id, field });
+        setEditingValue(value);
     };
 
     const handleEditSave = async () => {
-        if (!editingId) return;
+        if (!editingCell) return;
 
-        const original = copies.find(c => c.id === editingId);
-        if (original && original.text === editingText) {
-            setEditingId(null);
+        const { id, field } = editingCell;
+        const original = copies.find(c => c.id === id);
+        if (!original) {
+            setEditingCell(null);
+            return;
+        }
+
+        // Check if value actually changed
+        const originalValue = field === 'text' ? original.text :
+            field === 'type' ? original.type :
+                field === 'project_id' ? (original.project_id || '') :
+                    field === 'platform' ? (original.platform || '') :
+                        field === 'user_id' ? (original.user_id || '') : '';
+
+        if (originalValue === editingValue) {
+            setEditingCell(null);
             return;
         }
 
         try {
+            // Build update object
+            const updates: Partial<AdCopy> = {};
+            if (field === 'text') {
+                updates.text = editingValue;
+            } else if (field === 'type') {
+                updates.type = editingValue;
+            } else if (field === 'project_id') {
+                updates.project_id = editingValue || null;
+                // Also update legacy project field
+                const proj = projects.find(p => p.id === editingValue);
+                updates.project = proj?.name || null;
+            } else if (field === 'platform') {
+                updates.platform = editingValue || null;
+            } else if (field === 'user_id') {
+                updates.user_id = editingValue || null;
+            }
+
             // Optimistic update
             setCopies(prev => prev.map(c =>
-                c.id === editingId ? { ...c, text: editingText } : c
+                c.id === id ? { ...c, ...updates } : c
             ));
 
-            await updateAdCopy(editingId, { text: editingText });
+            await updateAdCopy(id, updates);
         } catch (error) {
             console.error('Failed to update ad copy:', error);
             // Revert on error
-            if (original) {
-                setCopies(prev => prev.map(c =>
-                    c.id === editingId ? original : c
-                ));
-            }
+            setCopies(prev => prev.map(c =>
+                c.id === id ? original : c
+            ));
             alert('Failed to save changes.');
         } finally {
-            setEditingId(null);
+            setEditingCell(null);
         }
     };
 
     const handleEditCancel = () => {
-        setEditingId(null);
-        setEditingText('');
+        setEditingCell(null);
+        setEditingValue('');
     };
 
     // Create Handler
@@ -240,8 +297,7 @@ export function AdCopyLibrary() {
                 type: formData.type,
                 project: legacyProjectName, // Populate legacy field
                 project_id: formData.project_id || null, // Populate new field
-                platform: formData.platform,
-                name: formData.name
+                platform: formData.platform
             });
             await loadData();
             setIsCreateModalOpen(false);
@@ -250,8 +306,7 @@ export function AdCopyLibrary() {
                 type: 'primary_text',
                 project_id: '',
                 project: '',
-                platform: 'FB',
-                name: ''
+                platform: 'FB'
             });
         } catch (error) {
             console.error('Failed to create ad copy:', error);
@@ -362,15 +417,8 @@ export function AdCopyLibrary() {
                                         onMouseDown={(e) => handleResizeStart('platform', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.name }} className="data-grid-th relative">
-                                    Name
-                                    <div
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                        onMouseDown={(e) => handleResizeStart('name', e)}
-                                    />
-                                </th>
                                 <th style={{ width: columnWidths.date }} className="data-grid-th relative">
-                                    Date
+                                    Created Time
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('date', e)}
@@ -396,27 +444,27 @@ export function AdCopyLibrary() {
                                         <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
                                         <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-14 mx-2"></div></td>
                                         <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-10 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-20 mx-2"></div></td>
-                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-16 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-24 mx-2"></div></td>
                                         <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
                                         <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-12 mx-2"></div></td>
                                     </tr>
                                 ))
                             ) : filteredCopies.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs">
+                                    <td colSpan={7} className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs">
                                         No ad copies found. Create one for your next campaign!
                                     </td>
                                 </tr>
                             ) : (
                                 filteredCopies.map((copy) => (
                                     <tr key={copy.id} className="group">
+                                        {/* Ad Text - Editable */}
                                         <td className="data-grid-td px-2">
                                             <div className="w-full">
-                                                {editingId === copy.id ? (
+                                                {editingCell?.id === copy.id && editingCell?.field === 'text' ? (
                                                     <textarea
-                                                        ref={editInputRef}
-                                                        value={editingText}
+                                                        ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
+                                                        value={editingValue}
                                                         onChange={handleTextareaInput}
                                                         onBlur={handleEditSave}
                                                         onKeyDown={(e) => {
@@ -439,57 +487,148 @@ export function AdCopyLibrary() {
                                                             showFullText && "whitespace-pre-wrap"
                                                         )}
                                                         title="Click to edit"
-                                                        onClick={() => handleEditStart(copy)}
+                                                        onClick={() => handleEditStart(copy, 'text')}
                                                     >
                                                         {copy.text}
                                                     </p>
                                                 )}
                                             </div>
                                         </td>
+                                        {/* Type - Editable */}
                                         <td className="data-grid-td px-2">
-                                            <span className={cn(
-                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
-                                                copy.type === 'primary_text' ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                                    copy.type === 'headline' ? "bg-purple-50 text-purple-700 border-purple-200" :
-                                                        "bg-gray-50 text-gray-700 border-gray-200"
-                                            )}>
-                                                {copy.type === 'primary_text' ? 'Primary' :
-                                                    copy.type === 'headline' ? 'Headline' : 'Desc'}
-                                            </span>
+                                            {editingCell?.id === copy.id && editingCell?.field === 'type' ? (
+                                                <select
+                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
+                                                    value={editingValue}
+                                                    onChange={(e) => {
+                                                        setEditingValue(e.target.value);
+                                                        setTimeout(handleEditSave, 0);
+                                                    }}
+                                                    onBlur={handleEditSave}
+                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                                >
+                                                    <option value="primary_text">Primary</option>
+                                                    <option value="headline">Headline</option>
+                                                    <option value="description">Desc</option>
+                                                </select>
+                                            ) : (
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300",
+                                                        copy.type === 'primary_text' ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                                            copy.type === 'headline' ? "bg-purple-50 text-purple-700 border-purple-200" :
+                                                                "bg-gray-50 text-gray-700 border-gray-200"
+                                                    )}
+                                                    title="Click to edit"
+                                                    onClick={() => handleEditStart(copy, 'type')}
+                                                >
+                                                    {copy.type === 'primary_text' ? 'Primary' :
+                                                        copy.type === 'headline' ? 'Headline' : 'Desc'}
+                                                </span>
+                                            )}
                                         </td>
+                                        {/* Project - Editable */}
                                         <td className="data-grid-td px-2">
-                                            {copy.project_id || copy.project ? (
-                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-50 text-pink-700 border border-pink-200">
+                                            {editingCell?.id === copy.id && editingCell?.field === 'project_id' ? (
+                                                <select
+                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
+                                                    value={editingValue}
+                                                    onChange={(e) => {
+                                                        setEditingValue(e.target.value);
+                                                        setTimeout(handleEditSave, 0);
+                                                    }}
+                                                    onBlur={handleEditSave}
+                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                                >
+                                                    <option value="">No Project</option>
+                                                    {projects.map(p => (
+                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
+                                                        copy.project_id || copy.project
+                                                            ? "bg-pink-50 text-pink-700 border border-pink-200"
+                                                            : "text-gray-400"
+                                                    )}
+                                                    title="Click to edit"
+                                                    onClick={() => handleEditStart(copy, 'project_id')}
+                                                >
                                                     {getProjectName(copy)}
                                                 </span>
-                                            ) : (
-                                                <span className="text-gray-400 text-xs">-</span>
                                             )}
                                         </td>
+                                        {/* Platform/Traffic - Editable */}
                                         <td className="data-grid-td px-2">
-                                            {copy.platform ? (
-                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
-                                                    {copy.platform}
+                                            {editingCell?.id === copy.id && editingCell?.field === 'platform' ? (
+                                                <select
+                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
+                                                    value={editingValue}
+                                                    onChange={(e) => {
+                                                        setEditingValue(e.target.value);
+                                                        setTimeout(handleEditSave, 0);
+                                                    }}
+                                                    onBlur={handleEditSave}
+                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                                >
+                                                    <option value="">None</option>
+                                                    <option value="FB">FB</option>
+                                                    <option value="IG">IG</option>
+                                                    <option value="All">All</option>
+                                                </select>
+                                            ) : (
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
+                                                        copy.platform
+                                                            ? "bg-green-50 text-green-700 border border-green-200"
+                                                            : "text-gray-400"
+                                                    )}
+                                                    title="Click to edit"
+                                                    onClick={() => handleEditStart(copy, 'platform')}
+                                                >
+                                                    {copy.platform || '-'}
                                                 </span>
-                                            ) : (
-                                                <span className="text-gray-400 text-xs">-</span>
                                             )}
                                         </td>
-                                        <td className="data-grid-td px-2 text-xs text-gray-600">
-                                            {copy.name || '-'}
-                                        </td>
+                                        {/* Created Time - NOT Editable */}
                                         <td className="data-grid-td px-2 text-[10px] text-gray-500">
-                                            {new Date(copy.created_at).toLocaleDateString()}
+                                            {formatDateTime(copy.created_at)}
                                         </td>
+                                        {/* Creator - Editable */}
                                         <td className="data-grid-td px-2">
-                                            <span className={cn(
-                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium",
-                                                copy.user_id === currentUserId
-                                                    ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
-                                                    : "bg-gray-100 text-gray-600 border border-gray-200"
-                                            )}>
-                                                {getCreatorName(copy)}
-                                            </span>
+                                            {editingCell?.id === copy.id && editingCell?.field === 'user_id' ? (
+                                                <select
+                                                    ref={editInputRef as React.RefObject<HTMLSelectElement>}
+                                                    value={editingValue}
+                                                    onChange={(e) => {
+                                                        setEditingValue(e.target.value);
+                                                        setTimeout(handleEditSave, 0);
+                                                    }}
+                                                    onBlur={handleEditSave}
+                                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                                >
+                                                    <option value="">Unknown</option>
+                                                    {users.map(u => (
+                                                        <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
+                                                        copy.user_id === currentUserId
+                                                            ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                                                            : "bg-gray-100 text-gray-600 border border-gray-200"
+                                                    )}
+                                                    title="Click to edit"
+                                                    onClick={() => handleEditStart(copy, 'user_id')}
+                                                >
+                                                    {getCreatorName(copy)}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="data-grid-td px-2">
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -579,32 +718,20 @@ export function AdCopyLibrary() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-                                    <select
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.project_id}
-                                        onChange={e => setFormData({ ...formData, project_id: e.target.value })}
-                                    >
-                                        <option value="">Select Project</option>
-                                        {projects.map(project => (
-                                            <option key={project.id} value={project.id}>
-                                                {project.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Internal Name</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="Optional label"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                                <select
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={formData.project_id}
+                                    onChange={e => setFormData({ ...formData, project_id: e.target.value })}
+                                >
+                                    <option value="">Select Project</option>
+                                    {projects.map(project => (
+                                        <option key={project.id} value={project.id}>
+                                            {project.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="pt-4 flex justify-end gap-3">

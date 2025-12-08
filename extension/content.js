@@ -72,100 +72,30 @@
         });
     }
 
-    // Helper: Download media using browser fetch (has cookies) and convert to base64
-    async function downloadMediaAsBase64(mediaItems, maxItems = 3, container = null) {
-        const results = [];
+    // Helper: Download media via background script (bypasses CORS)
+    async function downloadMediaAsBase64(mediaItems, maxItems = 3) {
+        return new Promise((resolve) => {
+            console.log(`AdMachin: Requesting background to download ${mediaItems.length} media items...`);
 
-        for (const item of mediaItems.slice(0, maxItems)) {
-            try {
-                // ALL VIDEOS: Use captureStream because FB CDN blocks CORS for video URLs
-                if (item.type === 'video') {
-                    console.log('AdMachin: Capturing video using captureStream...');
-
-                    // Find the video element in the container
-                    const videoEl = container?.querySelector('video');
-                    if (videoEl) {
-                        try {
-                            const captured = await captureVideoFromElement(videoEl, 5000);
-                            results.push({
-                                ...item,
-                                base64: captured.base64,
-                                mimeType: captured.mimeType,
-                                size: captured.size
-                            });
-                            console.log(`AdMachin: Captured video (${Math.round(captured.size / 1024)}KB)`);
-                            continue;
-                        } catch (captureError) {
-                            console.error('AdMachin: Video capture failed:', captureError);
-                            // Fall through to try poster
-                        }
+            chrome.runtime.sendMessage(
+                { action: 'downloadMedia', mediaItems: mediaItems.slice(0, maxItems) },
+                (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('AdMachin: Background message error:', chrome.runtime.lastError);
+                        resolve([]);
+                        return;
                     }
 
-                    // Fallback: Try to download the poster image instead
-                    if (item.poster && !item.poster.startsWith('blob:')) {
-                        const posterResponse = await fetch(item.poster, { credentials: 'include' });
-                        if (posterResponse.ok) {
-                            const blob = await posterResponse.blob();
-                            const base64 = await new Promise((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve(reader.result);
-                                reader.onerror = reject;
-                                reader.readAsDataURL(blob);
-                            });
-                            results.push({
-                                ...item,
-                                base64: base64,
-                                mimeType: blob.type,
-                                size: blob.size,
-                                isPosterOnly: true
-                            });
-                            console.log(`AdMachin: Downloaded video poster (${Math.round(blob.size / 1024)}KB)`);
-                            continue;
-                        }
+                    if (response?.success && response.media) {
+                        console.log(`AdMachin: Background downloaded ${response.media.filter(m => m.base64).length}/${response.media.length} items`);
+                        resolve(response.media);
+                    } else {
+                        console.error('AdMachin: Background download failed:', response);
+                        resolve([]);
                     }
-
-                    results.push({ ...item, error: 'blob_video_capture_failed' });
-                    continue;
                 }
-
-                // Regular URL download
-                if (item.url.startsWith('blob:')) {
-                    console.log('AdMachin: Skipping blob URL:', item.url);
-                    results.push({ ...item, error: 'blob_url_not_supported' });
-                    continue;
-                }
-
-                const response = await fetch(item.url, {
-                    credentials: 'include',
-                    mode: 'cors'
-                });
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const blob = await response.blob();
-                const base64 = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-
-                results.push({
-                    ...item,
-                    base64: base64, // data:mime;base64,xxx
-                    mimeType: blob.type,
-                    size: blob.size
-                });
-
-                console.log(`AdMachin: Downloaded ${item.type} (${Math.round(blob.size / 1024)}KB)`);
-
-            } catch (error) {
-                console.error('AdMachin: Failed to download media:', item.url, error);
-                results.push({ ...item, error: error.message });
-            }
-        }
-
-        return results;
+            );
+        });
     }
 
     // Extract ad data from the current page OR a specific card
@@ -568,7 +498,7 @@
             if (adData.media_urls.length > 0) {
                 try {
                     // Pass the card container so we can find video elements for capture
-                    downloadedMedia = await downloadMediaAsBase64(adData.media_urls, 3, card);
+                    downloadedMedia = await downloadMediaAsBase64(adData.media_urls, 3);
                     const successCount = downloadedMedia.filter(m => m.base64).length;
                     preview.innerHTML = `<span style="color:#a5f3fc;">✓ Downloaded ${successCount}/${adData.media_urls.length} media</span>`;
                 } catch (error) {
