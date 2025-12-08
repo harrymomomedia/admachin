@@ -15,6 +15,7 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
 export type Creative = Database['public']['Tables']['creatives']['Row'];
 export type AdCopy = Database['public']['Tables']['ad_copies']['Row'];
+export type Subproject = Database['public']['Tables']['subprojects']['Row'];
 
 // ============================================
 // PROFILES
@@ -664,6 +665,7 @@ export interface AdPlan {
     creative_id: string | null;
     reference_creative_id: string | null;
     subproject: string | null;
+    subproject_id: string | null;
     plan_type: string | null;
     creative_type: string | null;
     priority: number | null;
@@ -782,6 +784,72 @@ export async function deleteAdPlan(id: string): Promise<void> {
 
     if (error) {
         console.error('[Supabase] Error deleting ad plan:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// SUBPROJECTS
+// ============================================
+
+/**
+ * Get all subprojects, optionally filtered by project_id
+ */
+export async function getSubprojects(projectId?: string): Promise<Subproject[]> {
+    let query = (supabase as any)
+        .from('subprojects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (projectId) {
+        query = query.eq('project_id', projectId);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: subprojects, error } = await query as any;
+
+    if (error) {
+        console.warn('[Supabase] Warning fetching subprojects (table might not exist yet):', error);
+        return [];
+    }
+
+    return subprojects || [];
+}
+
+/**
+ * Create a new subproject
+ */
+export async function createSubproject(projectId: string, name: string): Promise<Subproject> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
+        .from('subprojects')
+        .insert({
+            project_id: projectId,
+            name,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating subproject:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete a subproject
+ */
+export async function deleteSubproject(id: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+        .from('subprojects')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting subproject:', error);
         throw error;
     }
 }

@@ -6,11 +6,11 @@ import {
     updateAdPlan,
     getProjects,
     getUsers,
-    getCreatives,
+    getSubprojects,
     type AdPlan,
     type Project,
     type User,
-    type Creative
+    type Subproject,
 } from '../lib/supabase-service';
 import { cn } from '../utils/cn';
 import { DataTable, type ColumnDef } from '../components/DataTable';
@@ -18,8 +18,9 @@ import { DataTable, type ColumnDef } from '../components/DataTable';
 export function AdPlanning() {
     const [plans, setPlans] = useState<AdPlan[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
+    const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [users, setUsers] = useState<User[]>([]);
-    const [creatives, setCreatives] = useState<Creative[]>([]);
+
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,16 +49,16 @@ export function AdPlanning() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [plansData, projectsData, usersData, creativesData] = await Promise.all([
+            const [plansData, projectsData, usersData, subprojectsData] = await Promise.all([
                 getAdPlans(),
                 getProjects(),
                 getUsers(),
-                getCreatives()
+                getSubprojects(),
             ]);
             setPlans(plansData);
             setProjects(projectsData);
             setUsers(usersData);
-            setCreatives(creativesData);
+            setSubprojects(subprojectsData);
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
@@ -65,11 +66,7 @@ export function AdPlanning() {
         }
     };
 
-    // Get helpers
-    const getCreativePreview = (plan: AdPlan) => {
-        const creative = creatives.find(c => c.id === plan.creative_id);
-        return creative?.storage_path || null;
-    };
+
 
     // Update Handler
     const handleUpdate = async (id: string, field: string, value: unknown) => {
@@ -77,15 +74,33 @@ export function AdPlanning() {
         if (!original) return;
 
         // Convert value based on field type
+        // Convert value based on field type
         let convertedValue: unknown = value;
+        const extraUpdates: Partial<AdPlan> = {};
+
         if (field === 'priority' || field === 'hj_rating') {
             convertedValue = value ? Number(value) : null;
+        } else if (field === 'subproject_id') {
+            convertedValue = value ? String(value) : null;
+            // Also update text field for compatibility
+            const sub = subprojects.find(s => s.id === value);
+            if (sub) {
+                extraUpdates.subproject = sub.name;
+            } else if (value === '' || value === null) {
+                extraUpdates.subproject = null;
+            }
         } else if (field === 'project_id' || field === 'user_id' || field === 'creative_id') {
             // Empty string should be null for foreign keys
             convertedValue = value === '' ? null : value;
+        } else if (field === 'spy_url' && typeof value === 'string' && value.trim()) {
+            // Auto-prepend https:// if no protocol is present
+            const trimmed = value.trim();
+            if (!/^https?:\/\//i.test(trimmed)) {
+                convertedValue = `https://${trimmed}`;
+            }
         }
 
-        const updates: Partial<AdPlan> = { [field]: convertedValue };
+        const updates: Partial<AdPlan> = { [field]: convertedValue, ...extraUpdates };
 
         console.log('Updating ad plan:', { id, field, value: convertedValue, updates });
 
@@ -163,18 +178,59 @@ export function AdPlanning() {
             minWidth: 80,
             editable: true,
             type: 'select',
-            options: [
-                { label: '-', value: '' },
-                ...projects.map(p => ({ label: p.name, value: p.id })),
-            ],
+            options: projects.map(p => ({ label: p.name, value: p.id })),
+            render: (_value, row, isEditing) => {
+                if (isEditing) return null; // Use default select in edit mode
+                const project = projects.find(p => p.id === row.project_id);
+                // @ts-ignore - access legacy field if needed, though AdPlan type doesn't have it explicitly typed as string usually, but row might
+                const legacyName = (row as any).project;
+
+                const content = (!project && !row.project_id && legacyName)
+                    ? <span className="text-gray-500 italic">{legacyName}</span>
+                    : project?.name || '-';
+
+                return (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
+                        {content}
+                    </span>
+                );
+            }
         },
         {
-            key: 'subproject',
+            key: 'subproject_id',
             header: 'Subproject',
-            width: 100,
-            minWidth: 60,
+            width: 140,
+            minWidth: 100,
             editable: true,
-            type: 'text',
+            type: 'select',
+            options: (row) => {
+                if (!row.project_id) return [];
+                return subprojects
+                    .filter(s => s.project_id === row.project_id)
+                    .map(s => ({
+                        label: s.name,
+                        value: s.id
+                    }));
+            },
+            render: (_value, row, isEditing) => {
+                if (isEditing) return null;
+                const subId = row.subproject_id;
+                let content;
+
+                if (subId) {
+                    const sub = subprojects.find(s => s.id === subId);
+                    content = sub ? sub.name : '-';
+                } else {
+                    // Fallback to legacy text
+                    content = row.subproject ? <span className="text-gray-500 italic">{row.subproject}</span> : '-';
+                }
+
+                return (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
+                        {content}
+                    </span>
+                );
+            },
         },
         {
             key: 'plan_type',
@@ -195,20 +251,19 @@ export function AdPlanning() {
             },
         },
         {
-            key: 'creative_id',
+            key: 'creative_type',
             header: 'Creative',
-            width: 80,
-            minWidth: 60,
-            editable: false,
-            render: (_, plan) => {
-                const preview = getCreativePreview(plan);
-                return preview ? (
-                    <img src={preview} alt="" className="w-10 h-10 rounded object-cover" />
-                ) : (
-                    <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center">
-                        <span className="text-[8px] text-gray-400">None</span>
-                    </div>
-                );
+            width: 90,
+            minWidth: 70,
+            editable: true,
+            type: 'select',
+            options: [
+                { label: 'Video', value: 'Video' },
+                { label: 'Image', value: 'Image' },
+            ],
+            colorMap: {
+                'Video': 'bg-rose-50 text-rose-700 border-rose-200',
+                'Image': 'bg-teal-50 text-teal-700 border-teal-200',
             },
         },
         {
@@ -242,10 +297,7 @@ export function AdPlanning() {
             minWidth: 80,
             editable: true,
             type: 'select',
-            options: [
-                { label: '-', value: '' },
-                ...users.map(u => ({ label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email, value: u.id })),
-            ],
+            options: users.map(u => ({ label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email, value: u.id })),
         },
         {
             key: 'status',
@@ -270,24 +322,36 @@ export function AdPlanning() {
         {
             key: 'spy_url',
             header: 'Spy URL',
-            width: 120,
-            minWidth: 80,
+            width: 180,
+            minWidth: 120,
             editable: true,
             type: 'text',
-            render: (value) => value ? (
-                <a
-                    href={String(value)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-xs"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <LinkIcon className="w-3 h-3" />
-                    Link
-                </a>
-            ) : (
-                <span className="text-gray-400 text-xs">-</span>
-            ),
+            render: (value, _, isEditing) => {
+                if (isEditing) return null; // Let DataTable handle editing
+                const urlStr = String(value || '');
+                return value ? (
+                    <div className="flex items-center gap-1.5 w-full">
+                        <span
+                            className="text-xs text-gray-700 truncate flex-1 cursor-pointer hover:text-blue-600"
+                            title={urlStr}
+                        >
+                            {urlStr.replace(/^https?:\/\//, '').slice(0, 25)}{urlStr.length > 35 ? '...' : ''}
+                        </span>
+                        <a
+                            href={urlStr}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:text-blue-700 flex-shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open URL"
+                        >
+                            <LinkIcon className="w-3.5 h-3.5" />
+                        </a>
+                    </div>
+                ) : (
+                    <span className="text-gray-400 text-xs">-</span>
+                );
+            },
         },
         {
             key: 'description',
@@ -299,9 +363,9 @@ export function AdPlanning() {
         },
         {
             key: 'created_at',
-            header: 'Created',
-            width: 100,
-            minWidth: 80,
+            header: 'Created Time',
+            width: 130,
+            minWidth: 100,
             editable: false,
             type: 'date',
         },

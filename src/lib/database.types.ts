@@ -197,6 +197,35 @@ export interface Database {
                     }
                 ]
             }
+            subprojects: {
+                Row: {
+                    id: string
+                    project_id: string
+                    name: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    project_id: string
+                    name: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    project_id?: string
+                    name?: string
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "subprojects_project_id_fkey"
+                        columns: ["project_id"]
+                        isOneToOne: false
+                        referencedRelation: "projects"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never
@@ -217,3 +246,4 @@ export interface Database {
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
 export type Creative = Database['public']['Tables']['creatives']['Row'];
+export type Subproject = Database['public']['Tables']['subprojects']['Row'];

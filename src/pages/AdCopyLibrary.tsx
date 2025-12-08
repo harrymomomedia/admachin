@@ -117,6 +117,14 @@ export function AdCopyLibrary() {
             updates.user_id = value ? String(value) : null;
         }
 
+        console.log('AdCopyLibrary updating:', { id, field, value, updates });
+
+        // Check if we have any updates
+        if (Object.keys(updates).length === 0) {
+            console.warn('No updates to apply for field:', field);
+            return;
+        }
+
         // Optimistic update
         setCopies(prev => prev.map(c =>
             c.id === id ? { ...c, ...updates } : c
@@ -124,12 +132,15 @@ export function AdCopyLibrary() {
 
         try {
             await updateAdCopy(id, updates);
+            console.log('Update successful');
         } catch (error) {
             console.error('Failed to update ad copy:', error);
             setCopies(prev => prev.map(c =>
                 c.id === id ? original : c
             ));
-            alert('Failed to save changes.');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const errorMessage = (error as any)?.message || 'Unknown error';
+            alert(`Failed to save changes: ${errorMessage}`);
         }
     };
 
@@ -276,27 +287,16 @@ export function AdCopyLibrary() {
         },
         {
             key: 'user_id',
-            header: 'Creator',
+            header: 'Owner',
             width: 120,
             minWidth: 80,
             editable: true,
-            type: 'badge',
-            options: [
-                { label: 'Unknown', value: '' },
-                ...users.map(u => ({ label: u.name || u.email, value: u.id })),
-            ],
-            render: (_value, copy) => {
-                const name = getCreatorName(copy);
-                const isMe = copy.user_id === currentUserId;
-                return (
-                    <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
-                        isMe ? "bg-indigo-50 text-indigo-700 border border-indigo-100" : "bg-gray-100 text-gray-600 border border-gray-200"
-                    )}>
-                        {name}
-                    </span>
-                );
-            },
+            type: 'select',
+            options: users.map(u => ({
+                label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.name || u.email),
+                value: u.id
+            })),
+            getValue: (copy) => copy.user_id || '',
         },
     ];
 

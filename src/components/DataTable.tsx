@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { GripVertical, Trash2, Copy, Check } from 'lucide-react';
 import {
     DndContext,
@@ -28,10 +29,10 @@ export interface ColumnDef<T> {
     minWidth?: number;
     editable?: boolean;
     type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'custom';
-    options?: { label: string; value: string }[];
+    options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     colorMap?: Record<string, string>;
-    render?: (value: unknown, row: T, isEditing: boolean) => React.ReactNode;
-    getValue?: (row: T) => unknown;
+    render?: (value: any, row: T, isEditing: boolean) => React.ReactNode;
+    getValue?: (row: T) => any;
 }
 
 export interface DataTableProps<T> {
@@ -62,6 +63,40 @@ export interface DataTableProps<T> {
     expandText?: boolean;
 }
 
+// ============ Dropdown Menu (Portal-based) ============
+
+interface DropdownMenuProps {
+    options: { label: string; value: string }[];
+    value: string;
+    onSelect: (value: string) => void;
+    position: { top: number; left: number };
+}
+
+function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps) {
+    return (
+        <div
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[140px] max-h-[250px] overflow-y-auto"
+            style={{ top: position.top, left: position.left }}
+        >
+            {options.map((opt) => (
+                <div
+                    key={opt.value}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(opt.value);
+                    }}
+                    className={cn(
+                        "px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap",
+                        opt.value === value ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
+                    )}
+                >
+                    {opt.label}
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ============ Sortable Row ============
 
 interface SortableRowProps<T> {
@@ -74,9 +109,10 @@ interface SortableRowProps<T> {
     editingCell: { id: string; field: string } | null;
     editingValue: string;
     expandText: boolean;
-    onEditStart: (row: T, field: string) => void;
+    dropdownPosition: { top: number; left: number };
+    onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
-    onEditSave: () => void;
+    onEditSave: (value?: string) => void;
     onEditCancel: () => void;
     onDelete?: (id: string) => void;
     onCopy?: (row: T) => void;
@@ -93,6 +129,7 @@ function SortableRow<T>({
     editingCell,
     editingValue,
     expandText,
+    dropdownPosition,
     onEditStart,
     onEditChange,
     onEditSave,
@@ -170,6 +207,9 @@ function SortableRow<T>({
                 const isEditing = editingCell?.id === rowId && editingCell?.field === col.key;
                 const width = columnWidths[col.key] || col.width || 100;
 
+                // Resolve options if they are a function
+                const options = typeof col.options === 'function' ? col.options(row) : col.options;
+
                 return (
                     <td
                         key={col.key}
@@ -179,23 +219,28 @@ function SortableRow<T>({
                         {/* Check for editing FIRST - takes priority over custom render */}
                         {isEditing && col.editable ? (
                             col.type === 'select' || col.type === 'badge' ? (
-                                <div className="absolute z-50 bg-white border border-blue-300 rounded shadow-lg py-1 min-w-[120px] max-h-[200px] overflow-y-auto">
-                                    {col.options?.map((opt) => (
+                                createPortal(
+                                    <>
+                                        {/* Backdrop to close on click outside */}
                                         <div
-                                            key={opt.value}
-                                            onClick={() => {
-                                                onEditChange(opt.value);
-                                                setTimeout(onEditSave, 0);
+                                            className="fixed inset-0 z-[9998]"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onEditCancel();
                                             }}
-                                            className={cn(
-                                                "px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 transition-colors",
-                                                opt.value === editingValue ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
-                                            )}
-                                        >
-                                            {opt.label}
-                                        </div>
-                                    ))}
-                                </div>
+                                        />
+                                        {/* Dropdown menu */}
+                                        <DropdownMenu
+                                            options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
+                                            value={editingValue}
+                                            onSelect={(val: string) => {
+                                                onEditSave(val);
+                                            }}
+                                            position={dropdownPosition}
+                                        />
+                                    </>,
+                                    document.body
+                                )
                             ) : col.type === 'textarea' || col.type === 'text' ? (
                                 <textarea
                                     ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -205,7 +250,7 @@ function SortableRow<T>({
                                         e.target.style.height = 'auto';
                                         e.target.style.height = `${e.target.scrollHeight}px`;
                                     }}
-                                    onBlur={onEditSave}
+                                    onBlur={() => onEditSave()}
                                     onKeyDown={handleKeyDown}
                                     className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
                                     rows={1}
@@ -216,29 +261,40 @@ function SortableRow<T>({
                                     type="text"
                                     value={editingValue}
                                     onChange={(e) => onEditChange(e.target.value)}
-                                    onBlur={onEditSave}
+                                    onBlur={() => onEditSave()}
                                     onKeyDown={handleKeyDown}
                                     className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
                                 />
                             )
                         ) : col.render ? (
-                            // Custom render for display mode only
-                            col.render(value, row, isEditing)
+                            // Custom render for display mode only - wrap in clickable div if editable
+                            <div
+                                className={col.editable ? "cursor-pointer" : ""}
+                                onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                            >
+                                {col.render(value, row, isEditing)}
+                            </div>
                         ) : (
                             // Default display mode
                             col.type === 'badge' || col.type === 'select' ? (
                                 <span
                                     className={cn(
-                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300",
+                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap",
                                         col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
                                     )}
-                                    onClick={() => col.editable && onEditStart(row, col.key)}
+                                    onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                 >
-                                    {col.options?.find(o => o.value === value)?.label || String(value || '-')}
+                                    {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
                                 </span>
                             ) : col.type === 'date' ? (
                                 <span className="text-[10px] text-gray-500">
-                                    {value ? new Date(String(value)).toLocaleDateString() : '-'}
+                                    {value ? new Date(String(value)).toLocaleString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                    }) : '-'}
                                 </span>
                             ) : (
                                 <p
@@ -247,7 +303,7 @@ function SortableRow<T>({
                                         !expandText && "line-clamp-1",
                                         expandText && "whitespace-pre-wrap"
                                     )}
-                                    onClick={() => col.editable && onEditStart(row, col.key)}
+                                    onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                 >
                                     {String(value || '-')}
                                 </p>
@@ -323,6 +379,7 @@ export function DataTable<T>({
     // Editing state
     const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState<string>('');
+    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -362,23 +419,34 @@ export function DataTable<T>({
     }, [handleResizeMove]);
 
     // Edit handlers
-    const handleEditStart = useCallback((row: T, field: string) => {
+    const handleEditStart = useCallback((row: T, field: string, event: React.MouseEvent) => {
         const col = columns.find(c => c.key === field);
         if (!col?.editable) return;
+
+        // Calculate position from the clicked element
+        const target = event.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        setDropdownPosition({
+            top: rect.bottom + 4,
+            left: rect.left,
+        });
 
         const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[field];
         setEditingCell({ id: getRowId(row), field });
         setEditingValue(String(value || ''));
     }, [columns, getRowId]);
 
-    const handleEditSave = useCallback(async () => {
+    const handleEditSave = useCallback(async (newValue?: string) => {
         if (!editingCell || !onUpdate) {
             setEditingCell(null);
             return;
         }
 
+        const valueToSave = newValue !== undefined ? newValue : editingValue;
+        console.log('DataTable saving:', { id: editingCell.id, field: editingCell.field, value: valueToSave });
+
         try {
-            await onUpdate(editingCell.id, editingCell.field, editingValue);
+            await onUpdate(editingCell.id, editingCell.field, valueToSave);
         } catch (error) {
             console.error('Failed to update:', error);
         }
@@ -421,7 +489,7 @@ export function DataTable<T>({
     const rowIds = data.map(getRowId);
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <div className="overflow-x-auto">
                 <table
                     className="data-grid-table"
@@ -453,6 +521,7 @@ export function DataTable<T>({
                         sensors={sensors}
                         collisionDetection={closestCenter}
                         onDragEnd={handleDragEnd}
+                        autoScroll={false}
                     >
                         <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
                             <tbody>
@@ -490,6 +559,7 @@ export function DataTable<T>({
                                             editingCell={editingCell}
                                             editingValue={editingValue}
                                             expandText={expandText}
+                                            dropdownPosition={dropdownPosition}
                                             onEditStart={handleEditStart}
                                             onEditChange={setEditingValue}
                                             onEditSave={handleEditSave}

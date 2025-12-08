@@ -337,6 +337,23 @@ export function FacebookProvider({ children }: { children: ReactNode }) {
                 await initFacebookSDK();
                 setIsInitialized(true);
 
+                // Initialize Supabase Auth (Anonymous)
+                // This ensures we have a session for RLS policies
+                import('../lib/supabase').then(async ({ supabase }) => {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                        console.log('[Auth] No Supabase session, signing in anonymously...');
+                        const { error: signInError } = await supabase.auth.signInAnonymously();
+                        if (signInError) {
+                            console.error('[Auth] Failed to sign in to Supabase:', signInError);
+                        } else {
+                            console.log('[Auth] Signed in to Supabase anonymously');
+                        }
+                    } else {
+                        console.log('[Auth] Existing Supabase session found');
+                    }
+                });
+
             } catch (err) {
                 console.error('[FB] Init error:', err);
                 setError(err instanceof Error ? err.message : 'Failed to initialize');

@@ -4,15 +4,17 @@ import {
     getProjects, createProject, deleteProject,
     getUsers, createUser, deleteUser, updateUser,
     assignUserToProject, removeUserFromProject,
-    type Project, type User
+    getSubprojects, createSubproject, deleteSubproject,
+    type Project, type User, type Subproject
 } from '../lib/supabase-service';
 
 export function TeamSettings() {
-    const [activeTab, setActiveTab] = useState<'users' | 'projects'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'subprojects'>('users');
 
     // Data state
     const [users, setUsers] = useState<User[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
+    const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [projectAssignments, setProjectAssignments] = useState<Record<string, string[]>>({}); // projectId -> userIds[]
     const [isLoading, setIsLoading] = useState(true);
 
@@ -23,6 +25,10 @@ export function TeamSettings() {
     const [newUserEmail, setNewUserEmail] = useState('');
     const [newUserPassword, setNewUserPassword] = useState('');
     const [newUserRole, setNewUserRole] = useState<'admin' | 'member'>('member');
+
+    // Subprojects state
+    const [selectedProjectForSub, setSelectedProjectForSub] = useState<string>('');
+    const [newSubprojectName, setNewSubprojectName] = useState('');
 
     // Edit User modal state
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -49,12 +55,14 @@ export function TeamSettings() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [usersData, projectsData] = await Promise.all([
+            const [usersData, projectsData, subprojectsData] = await Promise.all([
                 getUsers(),
-                getProjects()
+                getProjects(),
+                getSubprojects()
             ]);
             setUsers(usersData);
             setProjects(projectsData);
+            setSubprojects(subprojectsData);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -187,6 +195,33 @@ export function TeamSettings() {
         }
     };
 
+    const handleAddSubproject = async () => {
+        if (!selectedProjectForSub || !newSubprojectName.trim()) return;
+
+        try {
+            const sub = await createSubproject(selectedProjectForSub, newSubprojectName);
+            setSubprojects([sub, ...subprojects]);
+            setNewSubprojectName('');
+        } catch (error) {
+            console.error('Error creating subproject:', error);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const msg = (error as any)?.message || 'Unknown error';
+            alert(`Error creating subproject: ${msg}`);
+        }
+    };
+
+    const handleDeleteSubproject = async (subId: string) => {
+        if (!confirm('Are you sure you want to delete this subproject?')) return;
+
+        try {
+            await deleteSubproject(subId);
+            setSubprojects(subprojects.filter(s => s.id !== subId));
+        } catch (error) {
+            console.error('Error deleting subproject:', error);
+            alert('Error deleting subproject.');
+        }
+    };
+
     const getAssignedUsers = (projectId: string) => {
         const userIds = projectAssignments[projectId] || [];
         return users.filter(u => userIds.includes(u.id));
@@ -227,6 +262,16 @@ export function TeamSettings() {
                     >
                         <FolderKanban className="w-4 h-4" />
                         Projects
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('subprojects')}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'subprojects'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        <FolderKanban className="w-4 h-4" />
+                        Subprojects
                     </button>
                 </nav>
             </div>
@@ -398,6 +443,83 @@ export function TeamSettings() {
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Subprojects Tab */}
+            {activeTab === 'subprojects' && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden p-6">
+                    <div className="max-w-3xl mx-auto space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Project</label>
+                            <select
+                                value={selectedProjectForSub}
+                                onChange={(e) => setSelectedProjectForSub(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select a project...</option>
+                                {projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedProjectForSub ? (
+                            <div className="space-y-6">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newSubprojectName}
+                                        onChange={(e) => setNewSubprojectName(e.target.value)}
+                                        placeholder="New Subproject Name"
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                    <button
+                                        onClick={handleAddSubproject}
+                                        disabled={!newSubprojectName.trim()}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 whitespace-nowrap"
+                                    >
+                                        Add Subproject
+                                    </button>
+                                </div>
+
+                                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-100/50">
+                                        <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Existing Subprojects</h3>
+                                    </div>
+                                    <div className="divide-y divide-gray-200">
+                                        {subprojects
+                                            .filter(s => s.project_id === selectedProjectForSub)
+                                            .length === 0 ? (
+                                            <div className="p-4 text-center text-gray-500 text-sm">
+                                                No subprojects found for this project.
+                                            </div>
+                                        ) : (
+                                            subprojects
+                                                .filter(s => s.project_id === selectedProjectForSub)
+                                                .map(sub => (
+                                                    <div key={sub.id} className="p-3 flex items-center justify-between hover:bg-white transition-colors">
+                                                        <span className="text-sm font-medium text-gray-900">{sub.name}</span>
+                                                        <button
+                                                            onClick={() => handleDeleteSubproject(sub.id)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                            title="Delete subproject"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                <FolderKanban className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">Please select a project to manage subprojects.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
