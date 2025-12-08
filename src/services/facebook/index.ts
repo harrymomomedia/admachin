@@ -46,4 +46,13 @@ export {
 
 // Re-export types
 export type * from '../../types/facebook';
+
+// Export Ad Library
+export {
+    searchAdLibrary,
+    getAdSnapshotUrl,
+    extractAdMedia,
+    debugTokenPermissions,
+} from './ad-library';
+export type { FBAdLibrarySearchParams, FBAdLibraryAd, FBAdLibraryResponse } from './ad-library';
 export type { RateLimitInfo } from './api';

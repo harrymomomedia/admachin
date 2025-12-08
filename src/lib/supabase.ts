@@ -7,7 +7,7 @@ import type { Database } from './database.types';
 
 // Environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
     console.warn('[Supabase] Missing environment variables. Some features may not work.');

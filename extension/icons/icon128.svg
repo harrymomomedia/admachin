@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="20" fill="#3b82f6"/>
+  <path d="M88 108H40a8 8 0 0 1-8-8V28a8 8 0 0 1 8-8h32l24 24v56a8 8 0 0 1-8 8z" stroke="white" stroke-width="6" fill="none"/>
+  <polyline points="72 20 72 44 96 44" stroke="white" stroke-width="6" fill="none"/>
+  <path d="M52 72h24M64 60v24" stroke="white" stroke-width="6" stroke-linecap="round"/>
+</svg>

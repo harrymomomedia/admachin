@@ -20,22 +20,10 @@ interface FacebookSessionResponse {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function handler(_request: Request) {
     // 1. Check for "Team Store" token (The persistent Source of Truth)
-    let storedSession = await TokenStorage.get();
+    const storedSession = await TokenStorage.get();
 
-    // 2. Fallback to Env Vars (System Admin Override) - optional but good for dev
-    if (!storedSession && (process.env.FB_ACCESS_TOKEN || process.env.VITE_DEFAULT_FB_TOKEN)) {
-        const token = process.env.FB_ACCESS_TOKEN || process.env.VITE_DEFAULT_FB_TOKEN;
-        const userName = process.env.FB_USER_NAME || process.env.VITE_DEFAULT_FB_USER_NAME || 'System User';
-        if (token) {
-            storedSession = {
-                accessToken: token,
-                tokenExpiry: Date.now() + (365 * 24 * 60 * 60 * 1000), // Far future
-                userName: userName,
-                userId: 'system_env_user',
-                connectedAt: Date.now()
-            };
-        }
-    }
+    // 2. Fallback to Env Vars - REMOVED for security/production parity
+    // if (!storedSession && ...) { ... }
 
     if (!storedSession) {
         return new Response(JSON.stringify({

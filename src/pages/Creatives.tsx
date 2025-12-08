@@ -140,7 +140,7 @@ async function loadMediaFromDb(): Promise<MediaItem[]> {
 
 export function Creatives() {
     const [media, setMedia] = useState<MediaItem[]>([]);
-    const [, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [filterType, setFilterType] = useState<"all" | "image" | "video">("all");
     const [searchQuery, setSearchQuery] = useState("");
@@ -412,7 +412,13 @@ export function Creatives() {
             </div>
 
             {/* Media Grid/List */}
-            {filteredMedia.length === 0 ? (
+            {isLoading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                        <div key={i} className="aspect-square bg-muted/30 rounded-xl border border-border animate-pulse" />
+                    ))}
+                </div>
+            ) : filteredMedia.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                     <div className="p-4 bg-muted/50 rounded-full mb-4">
                         <Upload className="h-8 w-8 text-muted-foreground" />

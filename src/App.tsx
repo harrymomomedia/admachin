@@ -6,9 +6,11 @@ import { LaunchAd } from "./pages/LaunchAd";
 import { Creatives } from "./pages/Creatives";
 import { FBProfiles } from "./pages/FBProfiles";
 import { FBAdAccounts } from "./pages/FBAdAccounts";
+import { FBAdLibrary } from './pages/FBAdLibrary';
 import { TeamSettings } from "./pages/TeamSettings";
 import { AccessGate } from "./components/AccessGate";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
+import { AdPlanning } from "./pages/AdPlanning";
 
 function App() {
   return (
@@ -20,12 +22,14 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="launch" element={<LaunchAd />} />
               <Route path="creatives" element={<Creatives />} />
-              <Route path="campaigns" element={<div className="p-4">Campaigns Page (Coming Soon)</div>} />
+
               <Route path="facebook/profiles" element={<FBProfiles />} />
               <Route path="facebook/ad-accounts" element={<FBAdAccounts />} />
+              <Route path="fb-ad-library" element={<FBAdLibrary />} />
               {/* Redirect old ad-accounts path */}
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
               <Route path="ad-copies" element={<AdCopyLibrary />} />
+              <Route path="ad-planning" element={<AdPlanning />} />
               <Route path="admin" element={<TeamSettings />} />
             </Route>
           </Routes>

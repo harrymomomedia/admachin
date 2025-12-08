@@ -478,9 +478,10 @@ export function LaunchAd() {
                     message: message
                 }
             });
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Launch failed:", err);
-            addLog(`❌ ERROR: ${err.message || "Unknown error"}`);
+            const errorMessage = err instanceof Error ? err.message : "Unknown error";
+            addLog(`❌ ERROR: ${errorMessage}`);
             // Don't auto-close on error so user can read logs
         }
     };

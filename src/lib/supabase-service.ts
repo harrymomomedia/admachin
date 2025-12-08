@@ -8,7 +8,7 @@ import type { Database } from './database.types';
 // Untyped client for new tables not yet in database.types.ts
 const supabaseUntyped = createClient(
     import.meta.env.VITE_SUPABASE_URL || '',
-    import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''
 );
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -627,6 +627,140 @@ export async function removeUserFromProject(projectId: string, userId: string): 
 
     if (error) {
         console.error('[Supabase] Error removing user from project:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// AD PLANS
+// ============================================
+
+export interface AdPlan {
+    id: string;
+    ad_number: number;
+    project_id: string | null;
+    user_id: string | null;
+    creative_id: string | null;
+    reference_creative_id: string | null;
+    subproject: string | null;
+    plan_type: string | null;
+    creative_type: string | null;
+    priority: number | null;
+    hj_rating: number | null;
+    spy_url: string | null;
+    description: string | null;
+    status: string | null;
+    created_at: string;
+    project?: Project;
+    user?: User;
+    creative?: Creative; // Final Creative
+    reference_creative?: Creative; // Reference Media
+}
+
+export interface AdPlanWithDetails extends AdPlan {
+    project: Project;
+    user: User;
+    creative: Creative; // Final Creative
+    reference_creative: Creative; // Reference Media
+}
+
+/**
+ * Get all Ad Plans
+ */
+export async function getAdPlans(): Promise<AdPlan[]> {
+    const { data: plans, error } = await supabaseUntyped
+        .from('ad_plans')
+        .select(`
+            *,
+            project:projects (*),
+            user:users (*),
+            creative:creatives!ad_plans_creative_id_fkey (*),
+            reference_creative:creatives!ad_plans_reference_creative_id_fkey (*)
+        `)
+        .order('ad_number', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching ad plans:', error);
+        throw error;
+    }
+
+    return plans || [];
+}
+
+/**
+ * Create a new Ad Plan
+ */
+export async function createAdPlan(plan: {
+    project_id: string;
+    user_id: string;
+    subproject?: string;
+    plan_type?: string;
+    creative_type?: string;
+    priority?: number;
+    hj_rating?: number;
+    spy_url?: string;
+    description?: string;
+    status?: string;
+    creative_id?: string;
+    reference_creative_id?: string;
+}): Promise<AdPlan> {
+    const { data, error } = await supabaseUntyped
+        .from('ad_plans')
+        .insert({
+            project_id: plan.project_id,
+            user_id: plan.user_id,
+            subproject: plan.subproject || null,
+            plan_type: plan.plan_type || null,
+            creative_type: plan.creative_type || null,
+            priority: plan.priority || null,
+            hj_rating: plan.hj_rating || null,
+            spy_url: plan.spy_url || null,
+            description: plan.description || null,
+            status: plan.status || 'not started',
+            creative_id: plan.creative_id || null,
+            reference_creative_id: plan.reference_creative_id || null
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating ad plan:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Update an Ad Plan
+ */
+export async function updateAdPlan(id: string, updates: Partial<AdPlan>): Promise<AdPlan> {
+    const { data, error } = await supabaseUntyped
+        .from('ad_plans')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating ad plan:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete an Ad Plan
+ */
+export async function deleteAdPlan(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('ad_plans')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting ad plan:', error);
         throw error;
     }
 }

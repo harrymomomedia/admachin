@@ -44,26 +44,31 @@ const data = [
 ];
 
 export function Dashboard() {
-    const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-    // Check for success message from LaunchAd
-    useEffect(() => {
+    const [successMessage, setSuccessMessage] = useState<string | null>(() => {
         const stored = sessionStorage.getItem('launch_success');
         if (stored) {
             try {
                 const data = JSON.parse(stored);
                 // Only show if message is recent (within 10 seconds)
                 if (Date.now() - data.timestamp < 10000) {
-                    setSuccessMessage(data.message);
-                    // Auto-dismiss after 8 seconds
-                    setTimeout(() => setSuccessMessage(null), 8000);
+                    sessionStorage.removeItem('launch_success');
+                    return data.message;
                 }
             } catch {
                 // Ignore parse errors
             }
             sessionStorage.removeItem('launch_success');
         }
-    }, []);
+        return null;
+    });
+
+    // Auto-dismiss success message
+    useEffect(() => {
+        if (successMessage) {
+            const timer = setTimeout(() => setSuccessMessage(null), 8000);
+            return () => clearTimeout(timer);
+        }
+    }, [successMessage]);
 
     return (
         <div className="space-y-6">

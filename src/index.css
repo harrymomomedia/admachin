@@ -41,10 +41,59 @@
   }
 
   html {
-    font-size: 90%;
+    /* font-size: 90%; Removed to fix small/unnatural look */
   }
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+
+  /* Data Grid Utilities */
+  .data-grid-table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .data-grid-th {
+    @apply border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap sticky top-0 z-10;
+  }
+
+  .data-grid-td {
+    @apply border border-gray-200 px-0 py-0 h-9 bg-white relative hover:bg-gray-50 transition-colors align-middle;
+  }
+
+  .data-grid-input {
+    @apply w-full h-full px-2 py-1 bg-transparent border-none outline-none text-xs text-gray-700 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:inset-0 focus:z-10 placeholder-transparent transition-all;
+  }
+
+  .data-grid-select {
+    @apply w-full h-full px-1 py-1 bg-transparent border-none outline-none text-xs text-gray-700 focus:bg-white focus:ring-1 focus:ring-blue-500 cursor-pointer appearance-none;
+  }
+
+  /* Status Badge Styles */
+  .status-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap;
+  }
+
+  .status-badge-green {
+    @apply bg-green-50 text-green-700 border-green-200;
+  }
+
+  .status-badge-blue {
+    @apply bg-blue-50 text-blue-700 border-blue-200;
+  }
+
+  .status-badge-orange {
+    @apply bg-orange-50 text-orange-700 border-orange-200;
+  }
+
+  .status-badge-gray {
+    @apply bg-gray-50 text-gray-600 border-gray-200;
+  }
+
+  .status-badge-pink {
+    @apply bg-pink-50 text-pink-700 border-pink-200;
   }
 }

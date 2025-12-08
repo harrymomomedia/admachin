@@ -338,81 +338,88 @@ export function AdCopyLibrary() {
             {/* Content Table */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="text-left text-sm" style={{ width: Object.values(columnWidths).reduce((a, b) => a + b, 0), tableLayout: 'fixed' }}>
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                    <table className="data-grid-table" style={{ width: Object.values(columnWidths).reduce((a, b) => a + b, 0), tableLayout: 'fixed' }}>
+                        <thead>
                             <tr>
-                                <th style={{ width: columnWidths.text }} className="px-6 py-3 font-medium text-gray-500 relative">
+                                <th style={{ width: columnWidths.text }} className="data-grid-th relative">
                                     Ad Text
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('text', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.type }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.type }} className="data-grid-th relative">
                                     Type
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('type', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.project }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.project }} className="data-grid-th relative">
                                     Project
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('project', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.platform }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.platform }} className="data-grid-th relative">
                                     Traffic
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('platform', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.name }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.name }} className="data-grid-th relative">
                                     Name
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('name', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.date }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.date }} className="data-grid-th relative">
                                     Date
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('date', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.creator }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap relative">
+                                <th style={{ width: columnWidths.creator }} className="data-grid-th relative">
                                     Creator
                                     <div
                                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                                         onMouseDown={(e) => handleResizeStart('creator', e)}
                                     />
                                 </th>
-                                <th style={{ width: columnWidths.actions }} className="px-6 py-3 font-medium text-gray-500 whitespace-nowrap">
+                                <th style={{ width: columnWidths.actions }} className="data-grid-th">
                                     Actions
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody>
                             {isLoading ? (
-                                <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
-                                        Loading data...
-                                    </td>
-                                </tr>
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-14 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-10 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-20 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-16 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-16 mx-2"></div></td>
+                                        <td className="data-grid-td"><div className="h-5 bg-gray-200 rounded w-12 mx-2"></div></td>
+                                    </tr>
+                                ))
                             ) : filteredCopies.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
-                                        No ad copies found. create one specifically for your next campaign!
+                                    <td colSpan={8} className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs">
+                                        No ad copies found. Create one for your next campaign!
                                     </td>
                                 </tr>
                             ) : (
                                 filteredCopies.map((copy) => (
-                                    <tr key={copy.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-200 last:border-0">
-                                        <td className="px-6 py-4 min-w-[300px]">
-                                            <div className="max-w-xl">
+                                    <tr key={copy.id} className="group">
+                                        <td className="data-grid-td px-2">
+                                            <div className="w-full">
                                                 {editingId === copy.id ? (
                                                     <textarea
                                                         ref={editInputRef}
@@ -427,15 +434,15 @@ export function AdCopyLibrary() {
                                                                 handleEditCancel();
                                                             }
                                                         }}
-                                                        className="w-full p-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm overflow-hidden resize-none"
+                                                        className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden resize-none"
                                                         rows={1}
-                                                        style={{ minHeight: '38px' }}
+                                                        style={{ minHeight: '24px' }}
                                                     />
                                                 ) : (
                                                     <p
                                                         className={cn(
-                                                            "text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
-                                                            !showFullText && "line-clamp-2",
+                                                            "text-xs text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
+                                                            !showFullText && "line-clamp-1",
                                                             showFullText && "whitespace-pre-wrap"
                                                         )}
                                                         title="Click to edit"
@@ -446,44 +453,44 @@ export function AdCopyLibrary() {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="data-grid-td px-2">
                                             <span className={cn(
-                                                "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border",
+                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
                                                 copy.type === 'primary_text' ? "bg-blue-50 text-blue-700 border-blue-200" :
                                                     copy.type === 'headline' ? "bg-purple-50 text-purple-700 border-purple-200" :
                                                         "bg-gray-50 text-gray-700 border-gray-200"
                                             )}>
-                                                {copy.type === 'primary_text' ? 'Primary Text' :
-                                                    copy.type === 'headline' ? 'Headline' : 'Description'}
+                                                {copy.type === 'primary_text' ? 'Primary' :
+                                                    copy.type === 'headline' ? 'Headline' : 'Desc'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="data-grid-td px-2">
                                             {copy.project_id || copy.project ? (
-                                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-pink-50 text-pink-700 border border-pink-200">
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-50 text-pink-700 border border-pink-200">
                                                     {getProjectName(copy)}
                                                 </span>
                                             ) : (
-                                                <span className="text-gray-400">-</span>
+                                                <span className="text-gray-400 text-xs">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="data-grid-td px-2">
                                             {copy.platform ? (
-                                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
                                                     {copy.platform}
                                                 </span>
                                             ) : (
-                                                <span className="text-gray-400">-</span>
+                                                <span className="text-gray-400 text-xs">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+                                        <td className="data-grid-td px-2 text-xs text-gray-600">
                                             {copy.name || '-'}
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap text-xs">
+                                        <td className="data-grid-td px-2 text-[10px] text-gray-500">
                                             {new Date(copy.created_at).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="data-grid-td px-2">
                                             <span className={cn(
-                                                "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium",
+                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium",
                                                 copy.user_id === currentUserId
                                                     ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
                                                     : "bg-gray-100 text-gray-600 border border-gray-200"
@@ -491,12 +498,12 @@ export function AdCopyLibrary() {
                                                 {getCreatorName(copy)}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <td className="data-grid-td px-2">
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button
                                                     onClick={() => copyToClipboard(copy.text, copy.id)}
                                                     className={cn(
-                                                        "p-1.5 rounded-lg transition-colors",
+                                                        "p-1 rounded transition-colors",
                                                         copiedId === copy.id
                                                             ? "text-green-600 bg-green-50"
                                                             : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
@@ -504,17 +511,17 @@ export function AdCopyLibrary() {
                                                     title="Copy Text"
                                                 >
                                                     {copiedId === copy.id ? (
-                                                        <Check className="w-4 h-4" />
+                                                        <Check className="w-3 h-3" />
                                                     ) : (
-                                                        <Copy className="w-4 h-4" />
+                                                        <Copy className="w-3 h-3" />
                                                     )}
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(copy.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                                                     title="Delete"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3 h-3" />
                                                 </button>
                                             </div>
                                         </td>

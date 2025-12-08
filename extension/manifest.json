@@ -1,0 +1,45 @@
+{
+    "manifest_version": 3,
+    "name": "AdMachin - FB Ad Library Saver",
+    "version": "1.0.0",
+    "description": "Save ads from Facebook Ad Library to your AdMachin account",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage"
+    ],
+    "host_permissions": [
+        "https://www.facebook.com/ads/library/*",
+        "https://admachin.vercel.app/*",
+        "https://*.vercel.app/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.svg",
+            "48": "icons/icon48.svg",
+            "128": "icons/icon128.svg"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.svg",
+        "48": "icons/icon48.svg",
+        "128": "icons/icon128.svg"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.facebook.com/ads/library/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "css": [
+                "content.css"
+            ]
+        }
+    ]
+}
