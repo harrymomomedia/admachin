@@ -24,6 +24,7 @@ export function AdPlanning() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [groupByColumn, setGroupByColumn] = useState<string | null>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -89,7 +90,26 @@ export function AdPlanning() {
             } else if (value === '' || value === null) {
                 extraUpdates.subproject = null;
             }
-        } else if (field === 'project_id' || field === 'user_id' || field === 'creative_id') {
+        } else if (field === 'project_id') {
+            // When project changes, check if current subproject is still valid
+            convertedValue = value === '' ? null : value;
+            const currentSubprojectId = original.subproject_id;
+            if (currentSubprojectId && value) {
+                // Check if the current subproject belongs to the new project
+                const subBelongsToNewProject = subprojects.some(
+                    s => s.id === currentSubprojectId && s.project_id === value
+                );
+                if (!subBelongsToNewProject) {
+                    // Clear subproject if it doesn't belong to new project
+                    extraUpdates.subproject_id = null;
+                    extraUpdates.subproject = null;
+                }
+            } else if (!value) {
+                // If project is cleared, also clear subproject
+                extraUpdates.subproject_id = null;
+                extraUpdates.subproject = null;
+            }
+        } else if (field === 'user_id' || field === 'creative_id') {
             // Empty string should be null for foreign keys
             convertedValue = value === '' ? null : value;
         } else if (field === 'spy_url' && typeof value === 'string' && value.trim()) {
@@ -372,9 +392,9 @@ export function AdPlanning() {
     ];
 
     return (
-        <div className="h-full flex flex-col gap-4 p-4">
+        <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-shrink-0">
                 <div>
                     <h1 className="text-xl font-bold text-gray-900">Ad Planning</h1>
                     <p className="text-xs text-gray-500">Drag rows to reorder. Click cells to edit.</p>
@@ -400,6 +420,10 @@ export function AdPlanning() {
                 onReorder={handleReorder}
                 resizable={true}
                 showRowActions={false}
+                fullscreen={true}
+                groupByColumn={groupByColumn ?? undefined}
+                onGroupByChange={setGroupByColumn}
+                groupableColumns={['status', 'project_id', 'plan_type', 'creative_type', 'user_id']}
             />
 
             {/* Create Modal */}

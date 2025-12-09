@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import {
     DndContext,
     closestCenter,
@@ -61,6 +61,14 @@ export interface DataTableProps<T> {
 
     // Expand text
     expandText?: boolean;
+
+    // Fullscreen spreadsheet mode - fills viewport with grid lines
+    fullscreen?: boolean;
+
+    // Grouping
+    groupByColumn?: string;
+    onGroupByChange?: (column: string | null) => void;
+    groupableColumns?: string[];
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -78,22 +86,68 @@ function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps)
             className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[140px] max-h-[250px] overflow-y-auto"
             style={{ top: position.top, left: position.left }}
         >
-            {options.map((opt) => (
-                <div
-                    key={opt.value}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSelect(opt.value);
-                    }}
-                    className={cn(
-                        "px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap",
-                        opt.value === value ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
-                    )}
-                >
-                    {opt.label}
+            {options.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-400 italic whitespace-nowrap">
+                    No options available
                 </div>
-            ))}
+            ) : (
+                options.map((opt) => (
+                    <div
+                        key={opt.value}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onSelect(opt.value);
+                        }}
+                        className={cn(
+                            "px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap",
+                            opt.value === value ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
+                        )}
+                    >
+                        {opt.label}
+                    </div>
+                ))
+            )}
         </div>
+    );
+}
+
+// ============ Group Header Component ============
+
+interface GroupHeaderProps {
+    groupValue: string;
+    count: number;
+    isCollapsed: boolean;
+    onToggle: () => void;
+    colSpan: number;
+    colorClass?: string;
+}
+
+function GroupHeader({ groupValue, count, isCollapsed, onToggle, colSpan, colorClass }: GroupHeaderProps) {
+    return (
+        <tr className="bg-gray-50 border-b border-gray-200">
+            <td colSpan={colSpan} className="px-2 py-1.5">
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    className="flex items-center gap-2 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors w-full"
+                >
+                    {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-gray-400" />
+                    ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                    )}
+                    <span className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                        colorClass || "bg-gray-100 text-gray-700 border-gray-200"
+                    )}>
+                        {groupValue}
+                    </span>
+                    <span className="text-gray-400 text-[10px]">
+                        {count} {count === 1 ? 'item' : 'items'}
+                    </span>
+                </button>
+            </td>
+        </tr>
     );
 }
 
@@ -363,6 +417,10 @@ export function DataTable<T>({
     onReorder,
     resizable = true,
     expandText = false,
+    fullscreen = false,
+    groupByColumn,
+    onGroupByChange,
+    groupableColumns = [],
 }: DataTableProps<T>) {
     // Column widths state
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -384,11 +442,72 @@ export function DataTable<T>({
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
+    // Collapsed groups state
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
     // DnD sensors
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
+
+    // Group column definition (for getting options/colorMap)
+    const groupColumn = groupByColumn ? columns.find(c => c.key === groupByColumn) : null;
+
+    // Compute grouped data
+    const groupedData = useMemo(() => {
+        if (!groupByColumn) {
+            return null; // No grouping
+        }
+
+        const groups = new Map<string, T[]>();
+
+        data.forEach(row => {
+            const value = groupColumn?.getValue
+                ? groupColumn.getValue(row)
+                : (row as Record<string, unknown>)[groupByColumn];
+            const groupKey = value === null || value === undefined || value === '' ? '(Empty)' : String(value);
+
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, []);
+            }
+            groups.get(groupKey)!.push(row);
+        });
+
+        return groups;
+    }, [data, groupByColumn, groupColumn]);
+
+    // Get display label for a group value
+    const getGroupLabel = useCallback((groupValue: string) => {
+        if (groupValue === '(Empty)') return '(Empty)';
+        if (!groupColumn) return groupValue;
+
+        // If column has options, find the label
+        const options = typeof groupColumn.options === 'function'
+            ? [] // Can't use function options for grouping display
+            : groupColumn.options;
+        const opt = options?.find(o => String(o.value) === groupValue);
+        return opt?.label || groupValue;
+    }, [groupColumn]);
+
+    // Get color class for a group value
+    const getGroupColorClass = useCallback((groupValue: string) => {
+        if (!groupColumn?.colorMap || groupValue === '(Empty)') return undefined;
+        return groupColumn.colorMap[groupValue];
+    }, [groupColumn]);
+
+    // Toggle group collapse
+    const toggleGroupCollapse = useCallback((groupKey: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupKey)) {
+                next.delete(groupKey);
+            } else {
+                next.add(groupKey);
+            }
+            return next;
+        });
+    }, []);
 
     // Resize handlers
     const handleResizeStart = useCallback((column: string, e: React.MouseEvent) => {
@@ -489,8 +608,59 @@ export function DataTable<T>({
     const rowIds = data.map(getRowId);
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="overflow-x-auto">
+        <div className={cn(
+            "bg-white border border-gray-200 shadow-sm",
+            fullscreen ? "flex-1 flex flex-col h-full overflow-hidden" : "rounded-xl"
+        )}>
+            {/* Group By Toolbar */}
+            {groupableColumns.length > 0 && (
+                <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-3 flex-shrink-0 bg-gray-50">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">Group by:</span>
+                        <select
+                            value={groupByColumn || ''}
+                            onChange={(e) => onGroupByChange?.(e.target.value || null)}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                            <option value="">None</option>
+                            {groupableColumns.map(colKey => {
+                                const col = columns.find(c => c.key === colKey);
+                                return (
+                                    <option key={colKey} value={colKey}>
+                                        {col?.header || colKey}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+                    {groupByColumn && (
+                        <div className="flex items-center gap-2 ml-auto">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (groupedData) {
+                                        setCollapsedGroups(new Set(groupedData.keys()));
+                                    }
+                                }}
+                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                            >
+                                Collapse all
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCollapsedGroups(new Set())}
+                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                            >
+                                Expand all
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+            <div className={cn(
+                "overflow-x-auto",
+                fullscreen && "flex-1 overflow-y-auto"
+            )}>
                 <table
                     className="data-grid-table"
                     style={{ width: totalWidth, tableLayout: 'fixed' }}
@@ -546,7 +716,49 @@ export function DataTable<T>({
                                             {emptyMessage}
                                         </td>
                                     </tr>
+                                ) : groupedData ? (
+                                    // Grouped rendering
+                                    Array.from(groupedData.entries()).map(([groupKey, rows]) => {
+                                        const isCollapsed = collapsedGroups.has(groupKey);
+                                        const colSpan = columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0);
+
+                                        return (
+                                            <React.Fragment key={groupKey}>
+                                                <GroupHeader
+                                                    groupValue={getGroupLabel(groupKey)}
+                                                    count={rows.length}
+                                                    isCollapsed={isCollapsed}
+                                                    onToggle={() => toggleGroupCollapse(groupKey)}
+                                                    colSpan={colSpan}
+                                                    colorClass={getGroupColorClass(groupKey)}
+                                                />
+                                                {!isCollapsed && rows.map((row) => (
+                                                    <SortableRow
+                                                        key={getRowId(row)}
+                                                        row={row}
+                                                        rowId={getRowId(row)}
+                                                        columns={columns}
+                                                        columnWidths={columnWidths}
+                                                        sortable={sortable}
+                                                        showRowActions={showRowActions}
+                                                        editingCell={editingCell}
+                                                        editingValue={editingValue}
+                                                        expandText={expandText}
+                                                        dropdownPosition={dropdownPosition}
+                                                        onEditStart={handleEditStart}
+                                                        onEditChange={setEditingValue}
+                                                        onEditSave={handleEditSave}
+                                                        onEditCancel={handleEditCancel}
+                                                        onDelete={onDelete}
+                                                        onCopy={handleCopy}
+                                                        copiedId={copiedId}
+                                                    />
+                                                ))}
+                                            </React.Fragment>
+                                        );
+                                    })
                                 ) : (
+                                    // Ungrouped rendering (original)
                                     data.map((row) => (
                                         <SortableRow
                                             key={getRowId(row)}

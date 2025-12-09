@@ -25,8 +25,11 @@ export function TeamSettings() {
     const [newUserEmail, setNewUserEmail] = useState('');
     const [newUserPassword, setNewUserPassword] = useState('');
     const [newUserRole, setNewUserRole] = useState<'admin' | 'member'>('member');
+    const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+    const [addUserError, setAddUserError] = useState<string | null>(null);
 
-    // Subprojects state
+    // Subprojects modal state
+    const [showAddSubproject, setShowAddSubproject] = useState(false);
     const [selectedProjectForSub, setSelectedProjectForSub] = useState<string>('');
     const [newSubprojectName, setNewSubprojectName] = useState('');
 
@@ -72,6 +75,10 @@ export function TeamSettings() {
 
     const handleAddUser = async () => {
         if (!newUserFirstName.trim() || !newUserLastName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) return;
+        if (isSubmittingUser) return; // Prevent double-clicks
+
+        setIsSubmittingUser(true);
+        setAddUserError(null);
 
         try {
             const user = await createUser(newUserFirstName, newUserLastName, newUserEmail, newUserPassword, newUserRole);
@@ -82,9 +89,18 @@ export function TeamSettings() {
             setNewUserEmail('');
             setNewUserPassword('');
             setNewUserRole('member');
-        } catch (error) {
+            setAddUserError(null);
+        } catch (error: unknown) {
             console.error('Error creating user:', error);
-            alert('Error creating user. Email might already exist.');
+            // Check for duplicate email error
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            if (errorMessage.includes('duplicate') || errorMessage.includes('unique') || errorMessage.includes('already exists')) {
+                setAddUserError('A user with this email already exists.');
+            } else {
+                setAddUserError(`Error creating user: ${errorMessage}`);
+            }
+        } finally {
+            setIsSubmittingUser(false);
         }
     };
 
@@ -202,6 +218,8 @@ export function TeamSettings() {
             const sub = await createSubproject(selectedProjectForSub, newSubprojectName);
             setSubprojects([sub, ...subprojects]);
             setNewSubprojectName('');
+            setSelectedProjectForSub('');
+            setShowAddSubproject(false);
         } catch (error) {
             console.error('Error creating subproject:', error);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -449,77 +467,70 @@ export function TeamSettings() {
 
             {/* Subprojects Tab */}
             {activeTab === 'subprojects' && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden p-6">
-                    <div className="max-w-3xl mx-auto space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Project</label>
-                            <select
-                                value={selectedProjectForSub}
-                                onChange={(e) => setSelectedProjectForSub(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Select a project...</option>
-                                {projects.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-900">Subprojects</h2>
+                        <button
+                            onClick={() => setShowAddSubproject(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Subproject
+                        </button>
+                    </div>
 
-                        {selectedProjectForSub ? (
-                            <div className="space-y-6">
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={newSubprojectName}
-                                        onChange={(e) => setNewSubprojectName(e.target.value)}
-                                        placeholder="New Subproject Name"
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                    <button
-                                        onClick={handleAddSubproject}
-                                        disabled={!newSubprojectName.trim()}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 whitespace-nowrap"
-                                    >
-                                        Add Subproject
-                                    </button>
-                                </div>
-
-                                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-100/50">
-                                        <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Existing Subprojects</h3>
-                                    </div>
-                                    <div className="divide-y divide-gray-200">
-                                        {subprojects
-                                            .filter(s => s.project_id === selectedProjectForSub)
-                                            .length === 0 ? (
-                                            <div className="p-4 text-center text-gray-500 text-sm">
-                                                No subprojects found for this project.
-                                            </div>
-                                        ) : (
-                                            subprojects
-                                                .filter(s => s.project_id === selectedProjectForSub)
-                                                .map(sub => (
-                                                    <div key={sub.id} className="p-3 flex items-center justify-between hover:bg-white transition-colors">
-                                                        <span className="text-sm font-medium text-gray-900">{sub.name}</span>
-                                                        <button
-                                                            onClick={() => handleDeleteSubproject(sub.id)}
-                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                                            title="Delete subproject"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                <FolderKanban className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500">Please select a project to manage subprojects.</p>
-                            </div>
-                        )}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Subproject Name</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Project</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Created</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                                            Loading subprojects...
+                                        </td>
+                                    </tr>
+                                ) : subprojects.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                                            No subprojects yet. Add your first subproject.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    subprojects.map(sub => {
+                                        const project = projects.find(p => p.id === sub.project_id);
+                                        return (
+                                            <tr key={sub.id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4 font-medium text-gray-900">{sub.name}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                                        {project?.name || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-gray-500">
+                                                    {new Date(sub.created_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <button
+                                                        onClick={() => handleDeleteSubproject(sub.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                        title="Delete subproject"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}
@@ -530,10 +541,17 @@ export function TeamSettings() {
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-semibold">Add New User</h3>
-                            <button onClick={() => setShowAddUser(false)} className="p-1 hover:bg-gray-100 rounded">
+                            <button type="button" onClick={() => { setShowAddUser(false); setAddUserError(null); }} className="p-1 hover:bg-gray-100 rounded">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
+
+                        {/* Error Message */}
+                        {addUserError && (
+                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                                {addUserError}
+                            </div>
+                        )}
 
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -545,6 +563,7 @@ export function TeamSettings() {
                                         onChange={(e) => setNewUserFirstName(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="John"
+                                        disabled={isSubmittingUser}
                                     />
                                 </div>
                                 <div>
@@ -555,6 +574,7 @@ export function TeamSettings() {
                                         onChange={(e) => setNewUserLastName(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="Doe"
+                                        disabled={isSubmittingUser}
                                     />
                                 </div>
                             </div>
@@ -566,6 +586,7 @@ export function TeamSettings() {
                                     onChange={(e) => setNewUserEmail(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="john@example.com"
+                                    disabled={isSubmittingUser}
                                 />
                             </div>
                             <div>
@@ -576,6 +597,7 @@ export function TeamSettings() {
                                     onChange={(e) => setNewUserPassword(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="••••••••"
+                                    disabled={isSubmittingUser}
                                 />
                             </div>
                             <div>
@@ -584,6 +606,7 @@ export function TeamSettings() {
                                     value={newUserRole}
                                     onChange={(e) => setNewUserRole(e.target.value as 'admin' | 'member')}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    disabled={isSubmittingUser}
                                 >
                                     <option value="member">Member</option>
                                     <option value="admin">Admin</option>
@@ -593,18 +616,30 @@ export function TeamSettings() {
 
                         <div className="flex justify-end gap-3 mt-6">
                             <button
-                                onClick={() => setShowAddUser(false)}
+                                type="button"
+                                onClick={() => { setShowAddUser(false); setAddUserError(null); }}
                                 className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                disabled={isSubmittingUser}
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleAddUser}
-                                disabled={!newUserFirstName.trim() || !newUserLastName.trim() || !newUserEmail.trim() || !newUserPassword.trim()}
+                                disabled={isSubmittingUser || !newUserFirstName.trim() || !newUserLastName.trim() || !newUserEmail.trim() || !newUserPassword.trim()}
                                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <Check className="w-4 h-4" />
-                                Add User
+                                {isSubmittingUser ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Adding...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check className="w-4 h-4" />
+                                        Add User
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -793,6 +828,62 @@ export function TeamSettings() {
                             >
                                 <UserPlus className="w-4 h-4" />
                                 Assign
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Add Subproject Modal */}
+            {showAddSubproject && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Add New Subproject</h3>
+                            <button onClick={() => setShowAddSubproject(false)} className="p-1 hover:bg-gray-100 rounded">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="text-red-500">*</span></label>
+                                <select
+                                    value={selectedProjectForSub}
+                                    onChange={(e) => setSelectedProjectForSub(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Select a project...</option>
+                                    {projects.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Subproject Name <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    value={newSubprojectName}
+                                    onChange={(e) => setNewSubprojectName(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="e.g., Women's Prison"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setShowAddSubproject(false)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddSubproject}
+                                disabled={!selectedProjectForSub || !newSubprojectName.trim()}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Check className="w-4 h-4" />
+                                Add Subproject
                             </button>
                         </div>
                     </div>

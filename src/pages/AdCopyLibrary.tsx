@@ -160,6 +160,12 @@ export function AdCopyLibrary() {
         navigator.clipboard.writeText(copy.text);
     };
 
+    // Reorder Handler (for drag & drop)
+    const handleReorder = (newOrder: string[]) => {
+        const reordered = newOrder.map(id => copies.find(c => c.id === id)!).filter(Boolean);
+        setCopies(reordered);
+    };
+
     // Create Handler
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -190,6 +196,16 @@ export function AdCopyLibrary() {
 
     // Column Definitions
     const columns: ColumnDef<AdCopy>[] = [
+        {
+            key: 'row_number',
+            header: 'ID',
+            width: 50,
+            minWidth: 40,
+            editable: false,
+            render: (value) => (
+                <span className="text-[10px] text-gray-400">{value || '-'}</span>
+            ),
+        },
         {
             key: 'text',
             header: 'Ad Text',
@@ -301,11 +317,11 @@ export function AdCopyLibrary() {
     ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
+            <div className="flex items-center justify-between flex-shrink-0">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Ad Text</h1>
-                    <p className="mt-1 text-sm text-gray-500">
+                    <h1 className="text-xl font-bold text-gray-900">Ad Text</h1>
+                    <p className="text-xs text-gray-500">
                         Manage your ad headlines and primary text library.
                     </p>
                 </div>
@@ -319,7 +335,7 @@ export function AdCopyLibrary() {
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-shrink-0">
                 <div className="flex-1 flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -366,8 +382,11 @@ export function AdCopyLibrary() {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onCopy={handleCopy}
+                sortable={true}
+                onReorder={handleReorder}
                 resizable={true}
                 expandText={showFullText}
+                fullscreen={true}
             />
 
             {/* Create Modal */}
