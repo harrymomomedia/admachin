@@ -14,6 +14,7 @@ import { getProjects, getSubprojects, createAdCopy, type Project, type Subprojec
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { PersonaSelector } from '../components/PersonaSelector';
+import * as AI from '../lib/ai-service';
 
 interface Angle {
     id: string;
@@ -239,10 +240,24 @@ export function AICopywriting() {
 
         setPersonasLoading(true);
         try {
-            // TODO: Replace with actual AI API call
-            // For now, generating mock data
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Generate personas using AI
+            const generatedPersonas = await AI.generatePersonas({
+                model: selectedModel,
+                productDescription,
+                personaInput,
+                swipeFiles,
+                customPrompt: productCustomPrompt
+            });
 
+            setPersonas(generatedPersonas);
+            setPersonasExpanded(true);
+            setProductExpanded(false);
+        } catch (error) {
+            console.error('Failed to generate personas:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to generate personas: ${errorMessage}\n\nFalling back to example personas...`);
+
+            // Fallback to mock personas if AI fails
             const mockPersonas: Persona[] = [
                 {
                     id: '1',
@@ -369,9 +384,6 @@ export function AICopywriting() {
             setPersonas(mockPersonas);
             setPersonasExpanded(true);
             setProductExpanded(false);
-        } catch (error) {
-            console.error('Failed to generate personas:', error);
-            alert('Failed to generate personas. Please try again.');
         } finally {
             setPersonasLoading(false);
         }
@@ -385,36 +397,21 @@ export function AICopywriting() {
 
         setAnglesLoading(true);
         try {
-            // TODO: Replace with actual AI API call
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Generate angles using AI
+            const generatedAngles = await AI.generateAngles({
+                model: selectedModel,
+                personas: selectedPersonas,
+                productDescription,
+                customPrompt: anglesCustomPrompt
+            });
 
-            const mockAngles: Angle[] = selectedPersonas.flatMap((persona) => [
-                {
-                    id: `${persona.id}-1`,
-                    angle: 'Historic $115M settlement - you may qualify for compensation',
-                    persona_id: persona.id,
-                    persona_name: persona.name,
-                    pain_point: 'Years of trauma left unaddressed, feeling powerless',
-                    why_now: 'Settlement creates unprecedented opportunity for justice',
-                    selected: false
-                },
-                {
-                    id: `${persona.id}-2`,
-                    angle: 'Free, confidential case review - no obligation',
-                    persona_id: persona.id,
-                    persona_name: persona.name,
-                    pain_point: 'Fear of speaking up, not knowing who to trust',
-                    why_now: 'Safe, private process with experienced advocates',
-                    selected: false
-                }
-            ]);
-
-            setAngles(mockAngles);
+            setAngles(generatedAngles);
             setAnglesExpanded(true);
             setPersonasExpanded(false);
         } catch (error) {
             console.error('Failed to generate angles:', error);
-            alert('Failed to generate angles. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to generate angles: ${errorMessage}`);
         } finally {
             setAnglesLoading(false);
         }
@@ -428,23 +425,22 @@ export function AICopywriting() {
 
         setAdCopiesLoading(true);
         try {
-            // TODO: Replace with actual AI API call
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Generate ad copies using AI
+            const generatedAdCopies = await AI.generateAdCopies({
+                model: selectedModel,
+                angles: selectedAngles,
+                productDescription,
+                count: adCopiesCount,
+                customPrompt: '' // TODO: Add custom prompt input in UI
+            });
 
-            const mockAdCopies: AdCopyItem[] = selectedAngles.slice(0, adCopiesCount).map((angle, idx) => ({
-                id: `copy-${idx + 1}`,
-                copy: `🚨 Were you abused at ${['CCWF', 'Valley State', 'CIW'][idx % 3]}?\n\n${angle.angle}\n\n${angle.pain_point}\n\nClick below for a free, private case review.\n\n*Compensation amounts may vary by case`,
-                angle_ids: [angle.id],
-                angle_names: [angle.angle],
-                selected: false
-            }));
-
-            setAdCopies(mockAdCopies);
+            setAdCopies(generatedAdCopies);
             setAdCopiesExpanded(true);
             setAnglesExpanded(false);
         } catch (error) {
             console.error('Failed to generate ad copies:', error);
-            alert('Failed to generate ad copies. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to generate ad copies: ${errorMessage}`);
         } finally {
             setAdCopiesLoading(false);
         }
