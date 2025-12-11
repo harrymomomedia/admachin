@@ -7,7 +7,7 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 type ClaudeModel = 'claude-sonnet' | 'claude-opus' | 'claude-haiku';
-type AIModel = ClaudeModel | 'gpt' | 'gemini';
+type AIModel = ClaudeModel | 'gpt' | 'gemini' | 'claude'; // 'claude' for legacy support
 
 interface AIRequest {
     model: AIModel;
