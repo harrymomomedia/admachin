@@ -17,6 +17,23 @@ export type Creative = Database['public']['Tables']['creatives']['Row'];
 export type AdCopy = Database['public']['Tables']['ad_copies']['Row'];
 export type Subproject = Database['public']['Tables']['subprojects']['Row'];
 
+// Persona interface for AI Copywriting workflow
+export interface Persona {
+    id: string;
+    name: string;
+    age: number;
+    role: string;
+    tagline: string;
+    background: string;
+    current_situation: string;
+    pain_points: string[];
+    goals: string[];
+    motivations: string[];
+    objections: string[];
+    messaging_angles: string[];
+    selected?: boolean;
+}
+
 // ============================================
 // PROFILES
 // ============================================

@@ -10,19 +10,10 @@ import {
     Save,
     Bookmark,
 } from 'lucide-react';
-import { getProjects, getSubprojects, createAdCopy, type Project, type Subproject } from '../lib/supabase-service';
+import { getProjects, getSubprojects, createAdCopy, type Project, type Subproject, type Persona } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
-
-// Types for our workflow
-interface Persona {
-    id: string;
-    name: string;
-    age: number;
-    situation: string;
-    beliefs: string;
-    selected: boolean;
-}
+import { PersonaSelector } from '../components/PersonaSelector';
 
 interface Angle {
     id: string;
@@ -219,12 +210,6 @@ export function AICopywriting() {
         : [];
 
     // Toggle selection
-    const togglePersonaSelection = (id: string) => {
-        setPersonas(prev => prev.map(p =>
-            p.id === id ? { ...p, selected: !p.selected } : p
-        ));
-    };
-
     const toggleAngleSelection = (id: string) => {
         setAngles(prev => prev.map(a =>
             a.id === id ? { ...a, selected: !a.selected } : a
@@ -237,9 +222,7 @@ export function AICopywriting() {
         ));
     };
 
-    // Select all/none
-    const selectAllPersonas = () => setPersonas(prev => prev.map(p => ({ ...p, selected: true })));
-    const selectNonePersonas = () => setPersonas(prev => prev.map(p => ({ ...p, selected: false })));
+    // Select all/none (personas now handled by PersonaSelector component)
 
     const selectAllAngles = () => setAngles(prev => prev.map(a => ({ ...a, selected: true })));
     const selectNoneAngles = () => setAngles(prev => prev.map(a => ({ ...a, selected: false })));
@@ -263,26 +246,122 @@ export function AICopywriting() {
             const mockPersonas: Persona[] = [
                 {
                     id: '1',
-                    name: 'Maria, 58, Formerly Incarcerated',
+                    name: 'Maria',
                     age: 58,
-                    situation: 'Served 5 years at CCWF, now living with family, working part-time',
-                    beliefs: 'Believes in justice but hesitant to speak up due to fear of retaliation',
+                    role: 'Formerly Incarcerated',
+                    tagline: 'Seeking justice after years of silence',
+                    background: 'Maria served 5 years at Central California Women\'s Facility (CCWF) between 2015-2020. During her incarceration, she experienced multiple incidents of sexual misconduct by correctional staff that went unreported due to fear of retaliation.',
+                    current_situation: 'Now living with family in Fresno, working part-time at a local grocery store while rebuilding her life. She has limited financial resources and is still dealing with the psychological trauma from her experiences.',
+                    pain_points: [
+                        'Fear of retaliation and not being believed',
+                        'Financial struggles making it hard to afford legal help',
+                        'PTSD and anxiety from past trauma',
+                        'Shame and stigma around speaking up'
+                    ],
+                    goals: [
+                        'Get compensation for the trauma she endured',
+                        'Feel validated and heard',
+                        'Achieve some sense of closure',
+                        'Help prevent this from happening to others'
+                    ],
+                    motivations: [
+                        'Justice and accountability',
+                        'Financial compensation',
+                        'Healing and closure',
+                        'Protecting others'
+                    ],
+                    objections: [
+                        'Worried about privacy and publicity',
+                        'Concerned the process will be too difficult or triggering',
+                        'Unsure if she qualifies or has enough evidence',
+                        'Skeptical that anything will actually change'
+                    ],
+                    messaging_angles: [
+                        'Historic $115M settlement - you may qualify for compensation',
+                        'Free, confidential case review - no obligation',
+                        'Experienced advocates who understand your situation',
+                        'Your voice matters - help create systemic change'
+                    ],
                     selected: false
                 },
                 {
                     id: '2',
-                    name: 'Janice, 62, Survivor',
+                    name: 'Janice',
                     age: 62,
-                    situation: 'Released 3 years ago, struggling with PTSD',
-                    beliefs: 'Wants closure and compensation for trauma endured',
+                    role: 'Survivor & Advocate',
+                    tagline: 'Ready to speak truth to power',
+                    background: 'Janice was incarcerated at CCWF from 2012-2018, where she experienced systematic sexual harassment and abuse. After release, she became active in prison reform advocacy and support groups for survivors.',
+                    current_situation: 'Released 3 years ago and now works with local advocacy groups. She struggles with PTSD but has found strength in community and wants to use her voice to help others seek justice.',
+                    pain_points: [
+                        'Ongoing trauma and flashbacks',
+                        'Anger at the system that failed to protect her',
+                        'Difficulty trusting authority figures',
+                        'Financial instability affecting her recovery'
+                    ],
+                    goals: [
+                        'Hold abusers and the system accountable',
+                        'Support other survivors in their healing journey',
+                        'Secure compensation to aid recovery',
+                        'Create lasting policy changes'
+                    ],
+                    motivations: [
+                        'Accountability and reform',
+                        'Supporting other survivors',
+                        'Personal healing',
+                        'Financial stability'
+                    ],
+                    objections: [
+                        'Concerned about re-traumatization through legal process',
+                        'Worried about time commitment',
+                        'Skeptical of lawyers and the legal system',
+                        'Unsure if her case is strong enough'
+                    ],
+                    messaging_angles: [
+                        'Stand with other survivors - you\'re not alone',
+                        'Turn your pain into power and policy change',
+                        'Compassionate legal team with proven track record',
+                        'Join a community of survivors seeking justice together'
+                    ],
                     selected: false
                 },
                 {
                     id: '3',
-                    name: 'Rosa, 54, Advocate',
+                    name: 'Rosa',
                     age: 54,
-                    situation: 'Active in prison reform advocacy',
-                    beliefs: 'Believes sharing her story can help others and create systemic change',
+                    role: 'Prison Reform Activist',
+                    tagline: 'Fighting for systemic change',
+                    background: 'Rosa spent 8 years at CCWF (2010-2018) and became a vocal advocate for prison reform after witnessing widespread abuse. She now runs a non-profit supporting formerly incarcerated women.',
+                    current_situation: 'Active in prison reform advocacy, speaking at events and working with lawmakers. She sees this lawsuit as an opportunity to create meaningful systemic change and set precedents.',
+                    pain_points: [
+                        'Frustration with slow pace of reform',
+                        'Exhaustion from fighting for change',
+                        'Limited resources for her advocacy work',
+                        'Dealing with pushback from institutions'
+                    ],
+                    goals: [
+                        'Create systemic change in prison policies',
+                        'Set legal precedents for future cases',
+                        'Amplify survivor voices',
+                        'Secure resources to expand advocacy work'
+                    ],
+                    motivations: [
+                        'Creating lasting impact',
+                        'Justice for all survivors',
+                        'Policy and systemic reform',
+                        'Community empowerment'
+                    ],
+                    objections: [
+                        'Worried settlements might silence broader reform efforts',
+                        'Concerned about how this fits into larger advocacy strategy',
+                        'Time constraints with existing commitments',
+                        'Potential conflicts with her public advocacy role'
+                    ],
+                    messaging_angles: [
+                        'Use this settlement to fund lasting systemic change',
+                        'Set precedents that protect future incarcerated women',
+                        'Your advocacy can be amplified through legal action',
+                        'Join forces with other advocates for maximum impact'
+                    ],
                     selected: false
                 }
             ];
@@ -688,47 +767,16 @@ export function AICopywriting() {
 
                     {personasExpanded && (
                         <div className="p-4 pt-0 space-y-3 border-t border-gray-100">
-                            <div className="flex items-center justify-between">
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={selectAllPersonas}
-                                        className="text-[10px] text-blue-600 hover:text-blue-700 font-medium"
-                                    >
-                                        Select All
-                                    </button>
-                                    <span className="text-gray-300">|</span>
-                                    <button
-                                        onClick={selectNonePersonas}
-                                        className="text-[10px] text-gray-600 hover:text-gray-700 font-medium"
-                                    >
-                                        Clear
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
-                                {personas.map(persona => (
-                                    <button
-                                        key={persona.id}
-                                        onClick={() => togglePersonaSelection(persona.id)}
-                                        className={cn(
-                                            "relative p-3 border-2 rounded-lg text-left transition-all",
-                                            persona.selected
-                                                ? "border-purple-500 bg-purple-50"
-                                                : "border-gray-200 hover:border-gray-300 bg-white"
-                                        )}
-                                    >
-                                        {persona.selected && (
-                                            <div className="absolute top-2 right-2 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center">
-                                                <Check className="w-3 h-3 text-white" />
-                                            </div>
-                                        )}
-                                        <h4 className="text-xs font-semibold text-gray-900 mb-1 pr-6">{persona.name}</h4>
-                                        <p className="text-[10px] text-gray-600 leading-relaxed">{persona.situation}</p>
-                                        <p className="text-[10px] text-gray-500 mt-1 italic">{persona.beliefs}</p>
-                                    </button>
-                                ))}
-                            </div>
+                            <PersonaSelector
+                                personas={personas}
+                                selectedIds={personas.filter(p => p.selected).map(p => p.id)}
+                                onSelectionChange={(ids) => {
+                                    setPersonas(prev => prev.map(p => ({
+                                        ...p,
+                                        selected: ids.includes(p.id)
+                                    })));
+                                }}
+                            />
 
                             <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
