@@ -85,7 +85,7 @@ export function AICopywriting() {
     // Step 4: Ad Copies
     const [adCopies, setAdCopies] = useState<AdCopyItem[]>([]);
     const [adCopiesCount, setAdCopiesCount] = useState(10);
-    const [adCopiesCustomPrompt, setAdCopiesCustomPrompt] = useState('');
+    // const [adCopiesCustomPrompt, setAdCopiesCustomPrompt] = useState(''); // TODO: Add custom prompt input
     const [adCopiesLoading, setAdCopiesLoading] = useState(false);
     const [adCopiesExpanded, setAdCopiesExpanded] = useState(false);
 
@@ -388,7 +388,7 @@ export function AICopywriting() {
             // TODO: Replace with actual AI API call
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            const mockAngles: Angle[] = selectedPersonas.flatMap((persona, idx) => [
+            const mockAngles: Angle[] = selectedPersonas.flatMap((persona) => [
                 {
                     id: `${persona.id}-1`,
                     angle: 'Historic $115M settlement - you may qualify for compensation',
@@ -473,7 +473,7 @@ export function AICopywriting() {
                     user_id: currentUserId,
                     text: adCopy.copy,
                     type: 'primary_text',
-                    project: project?.name || null,
+                    project: project?.name || undefined,
                     project_id: selectedProjectId,
                     subproject_id: selectedSubprojectId || null,
                     platform: 'FB',
