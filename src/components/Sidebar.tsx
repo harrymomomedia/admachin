@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database, Type, X, Library } from "lucide-react";
+import { LayoutDashboard, Rocket, BarChart3, LogOut, Image, Users, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 
@@ -15,6 +15,7 @@ const mainNavigation = [
     { name: "Launch Ad", href: "/launch", icon: Rocket },
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Ad Text", href: "/ad-copies", icon: Type },
+    { name: "AI Copywriting", href: "/ai-copywriting", icon: Sparkles },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
     { name: "FB Ad Library", href: "/fb-ad-library", icon: Library },
 ];

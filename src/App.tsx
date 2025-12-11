@@ -11,6 +11,7 @@ import { TeamSettings } from "./pages/TeamSettings";
 import { AccessGate } from "./components/AccessGate";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
+import { AICopywriting } from "./pages/AICopywriting";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
               <Route path="ad-copies" element={<AdCopyLibrary />} />
               <Route path="ad-planning" element={<AdPlanning />} />
+              <Route path="ai-copywriting" element={<AICopywriting />} />
               <Route path="admin" element={<TeamSettings />} />
             </Route>
           </Routes>

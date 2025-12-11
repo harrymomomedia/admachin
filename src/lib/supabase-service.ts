@@ -365,8 +365,12 @@ export async function createAdCopy(copy: {
     type: string;
     project?: string;
     project_id?: string | null;
+    subproject_id?: string | null;
     platform?: string | null;
     name?: string;
+    source_angle?: string | null;
+    source_persona?: string | null;
+    ai_model?: string | null;
 }): Promise<AdCopy> {
     const { data, error } = await supabase
         .from('ad_copies')
@@ -376,8 +380,12 @@ export async function createAdCopy(copy: {
             type: copy.type,
             project: copy.project || null,
             project_id: copy.project_id || null,
+            subproject_id: copy.subproject_id || null,
             platform: copy.platform || null,
             name: copy.name || null,
+            source_angle: copy.source_angle || null,
+            source_persona: copy.source_persona || null,
+            ai_model: copy.ai_model || null,
         })
         .select()
         .single();

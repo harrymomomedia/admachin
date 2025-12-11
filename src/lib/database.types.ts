@@ -20,8 +20,12 @@ export interface Database {
                     type: string
                     project: string | null
                     project_id: string | null // Linked project
+                    subproject_id: string | null
                     platform: string | null
                     name: string | null
+                    source_angle: string | null
+                    source_persona: string | null
+                    ai_model: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -32,8 +36,12 @@ export interface Database {
                     type: string
                     project?: string | null
                     project_id?: string | null
+                    subproject_id?: string | null
                     platform?: string | null
                     name?: string | null
+                    source_angle?: string | null
+                    source_persona?: string | null
+                    ai_model?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -44,8 +52,12 @@ export interface Database {
                     type?: string
                     project?: string | null
                     project_id?: string | null
+                    subproject_id?: string | null
                     platform?: string | null
                     name?: string | null
+                    source_angle?: string | null
+                    source_persona?: string | null
+                    ai_model?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -226,6 +238,97 @@ export interface Database {
                     }
                 ]
             }
+            ai_copywriting_sessions: {
+                Row: {
+                    id: string
+                    user_id: string | null
+                    project_id: string | null
+                    subproject_id: string | null
+                    ai_model: string
+                    product_description: string | null
+                    persona_input: string | null
+                    swipe_files: string | null
+                    product_custom_prompt: string | null
+                    personas: Json | null
+                    personas_custom_prompt: string | null
+                    angles: Json | null
+                    angles_custom_prompt: string | null
+                    ad_copies: Json | null
+                    ad_copies_count: number
+                    ad_copies_custom_prompt: string | null
+                    exported: boolean
+                    exported_at: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id?: string | null
+                    project_id?: string | null
+                    subproject_id?: string | null
+                    ai_model?: string
+                    product_description?: string | null
+                    persona_input?: string | null
+                    swipe_files?: string | null
+                    product_custom_prompt?: string | null
+                    personas?: Json | null
+                    personas_custom_prompt?: string | null
+                    angles?: Json | null
+                    angles_custom_prompt?: string | null
+                    ad_copies?: Json | null
+                    ad_copies_count?: number
+                    ad_copies_custom_prompt?: string | null
+                    exported?: boolean
+                    exported_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string | null
+                    project_id?: string | null
+                    subproject_id?: string | null
+                    ai_model?: string
+                    product_description?: string | null
+                    persona_input?: string | null
+                    swipe_files?: string | null
+                    product_custom_prompt?: string | null
+                    personas?: Json | null
+                    personas_custom_prompt?: string | null
+                    angles?: Json | null
+                    angles_custom_prompt?: string | null
+                    ad_copies?: Json | null
+                    ad_copies_count?: number
+                    ad_copies_custom_prompt?: string | null
+                    exported?: boolean
+                    exported_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "ai_copywriting_sessions_user_id_fkey"
+                        columns: ["user_id"]
+                        isOneToOne: false
+                        referencedRelation: "users"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "ai_copywriting_sessions_project_id_fkey"
+                        columns: ["project_id"]
+                        isOneToOne: false
+                        referencedRelation: "projects"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "ai_copywriting_sessions_subproject_id_fkey"
+                        columns: ["project_id"]
+                        isOneToOne: false
+                        referencedRelation: "subprojects"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never
@@ -247,3 +350,5 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
 export type Creative = Database['public']['Tables']['creatives']['Row'];
 export type Subproject = Database['public']['Tables']['subprojects']['Row'];
+export type AICopywritingSession = Database['public']['Tables']['ai_copywriting_sessions']['Row'];
+export type AdCopy = Database['public']['Tables']['ad_copies']['Row'];
