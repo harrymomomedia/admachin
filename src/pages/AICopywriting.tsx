@@ -243,7 +243,9 @@ export function AICopywriting() {
         setProductCustomPrompt(preset.productCustomPrompt);
         setSelectedProjectId(preset.projectId);
         setSelectedSubprojectId(preset.subprojectId);
-        setSelectedModel(preset.aiModel);
+        // Validate model - fallback to claude-sonnet if invalid
+        const validModels: AIModel[] = ['claude-sonnet', 'claude-opus', 'claude-haiku', 'gpt', 'gemini'];
+        setSelectedModel(validModels.includes(preset.aiModel) ? preset.aiModel : 'claude-sonnet');
         setSelectedPresetId(presetId);
     };
 

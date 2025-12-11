@@ -38,11 +38,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let response: string;
 
-        switch (model) {
+        // Normalize model name - handle legacy 'claude' value
+        const normalizedModel = model === 'claude' ? 'claude-sonnet' : model;
+
+        switch (normalizedModel) {
             case 'claude-sonnet':
             case 'claude-opus':
             case 'claude-haiku':
-                response = await callClaude(model, systemPrompt, userPrompt);
+                response = await callClaude(normalizedModel, systemPrompt, userPrompt);
                 break;
             case 'gpt':
                 response = await callGPT(systemPrompt, userPrompt);
