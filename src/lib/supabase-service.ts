@@ -380,11 +380,11 @@ export async function createAdCopy(copy: {
     user_id?: string | null;
     text: string;
     type: string;
-    project?: string;
+    project?: string | null;
     project_id?: string | null;
     subproject_id?: string | null;
     platform?: string | null;
-    name?: string;
+    name?: string | null;
     source_angle?: string | null;
     source_persona?: string | null;
     ai_model?: string | null;

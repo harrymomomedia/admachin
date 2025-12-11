@@ -3,7 +3,21 @@
 
 import type { Persona } from './supabase-service';
 
-export type AIModel = 'claude' | 'gpt' | 'gemini';
+export type AIModel = 'claude-sonnet' | 'claude-opus' | 'claude-haiku' | 'gpt' | 'gemini';
+
+interface AutoFillProductParams {
+    model: AIModel;
+    briefDescription: string;
+}
+
+interface AutoFillResult {
+    productDescription: string;
+    personaInput: string;
+    swipeFiles: string;
+    productCustomPrompt: string;
+    suggestedProjectName?: string;
+    suggestedSubprojectName?: string;
+}
 
 interface GeneratePersonasParams {
     model: AIModel;
@@ -17,6 +31,7 @@ interface GenerateAnglesParams {
     model: AIModel;
     personas: Persona[];
     productDescription: string;
+    angleCount?: number; // How many angles to generate per persona
     customPrompt?: string;
 }
 
@@ -31,7 +46,81 @@ interface GenerateAdCopiesParams {
     }>;
     productDescription: string;
     count: number;
+    adCopyType?: 'FB Ad Text' | 'FB Ad Headline' | 'Video Transcript (Only Voice)' | 'Video Ad Script';
     customPrompt?: string;
+}
+
+// ============================================
+// AUTO-FILL PRODUCT INFORMATION
+// ============================================
+
+export async function autoFillProductInfo(params: AutoFillProductParams): Promise<AutoFillResult> {
+    const { model, briefDescription } = params;
+
+    const systemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into detailed marketing inputs for an ad campaign.
+
+Generate:
+1. productDescription: A comprehensive 3-4 paragraph description covering:
+   - What the product/service is
+   - Who it's for
+   - Key benefits and value proposition
+   - Any relevant context or background
+
+2. personaInput: Describe 3-5 potential customer personas/audiences who would be interested, including:
+   - Their demographics (age, occupation, situation)
+   - What problems they face
+   - Why they'd be interested in this product/service
+
+3. swipeFiles: Suggest 5-7 compelling headline examples that could work for this product, varying in style:
+   - Question-based headlines
+   - Benefit-focused headlines
+   - Urgency/scarcity headlines
+   - Social proof headlines
+
+4. productCustomPrompt: Any special considerations for ad copywriting (tone, legal requirements, sensitivities, etc.)
+
+5. suggestedProjectName: A short, clear project name (2-4 words)
+
+6. suggestedSubprojectName: An optional subproject name if the campaign could have multiple phases/audiences
+
+Return ONLY a valid JSON object with these exact keys, no additional text.`;
+
+    const userPrompt = `Brief Description: ${briefDescription}
+
+Generate comprehensive product information for an ad campaign in JSON format.`;
+
+    try {
+        let response: string;
+
+        switch (model) {
+            case 'claude-sonnet':
+            case 'claude-opus':
+            case 'claude-haiku':
+                response = await callClaude(model, systemPrompt, userPrompt);
+                break;
+            case 'gpt':
+                response = await callGPT(systemPrompt, userPrompt);
+                break;
+            case 'gemini':
+                response = await callGemini(systemPrompt, userPrompt);
+                break;
+            default:
+                throw new Error(`Unsupported AI model: ${model}`);
+        }
+
+        // Clean up response - remove markdown code blocks if present
+        const cleanedResponse = response
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        const result = JSON.parse(cleanedResponse);
+        return result;
+    } catch (error) {
+        console.error('Error auto-filling product info:', error);
+        throw new Error(`Failed to auto-fill with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 // ============================================
@@ -70,8 +159,10 @@ Generate detailed customer personas in JSON format.`;
         let response: string;
 
         switch (model) {
-            case 'claude':
-                response = await callClaude(systemPrompt, userPrompt);
+            case 'claude-sonnet':
+            case 'claude-opus':
+            case 'claude-haiku':
+                response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
                 response = await callGPT(systemPrompt, userPrompt);
@@ -83,8 +174,15 @@ Generate detailed customer personas in JSON format.`;
                 throw new Error(`Unsupported AI model: ${model}`);
         }
 
+        // Clean up response - remove markdown code blocks if present
+        const cleanedResponse = response
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
         // Parse and validate the response
-        const personas = JSON.parse(response);
+        const personas = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag
         return personas.map((p: any, idx: number) => ({
@@ -103,11 +201,11 @@ Generate detailed customer personas in JSON format.`;
 // ============================================
 
 export async function generateAngles(params: GenerateAnglesParams) {
-    const { model, personas, productDescription, customPrompt } = params;
+    const { model, personas, productDescription, angleCount = 3, customPrompt } = params;
 
     const systemPrompt = `You are an expert copywriter and marketing strategist. Your task is to generate compelling marketing angles tailored to specific customer personas.
 
-For each persona provided, generate 2-3 unique marketing angles. Each angle should include:
+For each persona provided, generate ${angleCount} unique marketing angles. Each angle should include:
 - angle: The main hook/angle (15-25 words)
 - pain_point: The specific pain point this addresses
 - why_now: Why this matters right now / urgency factor
@@ -125,15 +223,17 @@ ${personasSummary}
 
 ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
-Generate 2-3 compelling marketing angles for EACH persona. Return as JSON array with format:
+Generate ${angleCount} compelling marketing angles for EACH persona. Return as JSON array with format:
 [{ "persona_id": "id", "persona_name": "name", "angle": "...", "pain_point": "...", "why_now": "..." }]`;
 
     try {
         let response: string;
 
         switch (model) {
-            case 'claude':
-                response = await callClaude(systemPrompt, userPrompt);
+            case 'claude-sonnet':
+            case 'claude-opus':
+            case 'claude-haiku':
+                response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
                 response = await callGPT(systemPrompt, userPrompt);
@@ -145,7 +245,14 @@ Generate 2-3 compelling marketing angles for EACH persona. Return as JSON array 
                 throw new Error(`Unsupported AI model: ${model}`);
         }
 
-        const angles = JSON.parse(response);
+        // Clean up response - remove markdown code blocks if present
+        const cleanedResponse = response
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        const angles = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag, map persona IDs
         return angles.map((a: any, idx: number) => ({
@@ -165,17 +272,43 @@ Generate 2-3 compelling marketing angles for EACH persona. Return as JSON array 
 // ============================================
 
 export async function generateAdCopies(params: GenerateAdCopiesParams) {
-    const { model, angles, productDescription, count, customPrompt } = params;
+    const { model, angles, productDescription, count, adCopyType = 'FB Ad Text', customPrompt } = params;
 
-    const systemPrompt = `You are an expert Facebook ad copywriter. Your task is to write compelling primary text for Facebook ads based on specific marketing angles.
-
-Write ad copy that:
+    // Customize instructions based on ad copy type
+    const typeInstructions: Record<typeof adCopyType, string> = {
+        'FB Ad Text': `Write ad copy that:
 - Is attention-grabbing and scroll-stopping
 - Addresses the specific angle and pain point
 - Creates urgency and desire
 - Includes a clear call-to-action
 - Is 100-150 words (Facebook optimal length)
-- Uses conversational, persuasive language
+- Uses conversational, persuasive language`,
+        'FB Ad Headline': `Write ad headlines that:
+- Are punchy and attention-grabbing
+- Clearly communicate the main benefit or hook
+- Create curiosity or urgency
+- Are 5-10 words maximum
+- Use power words and emotional triggers`,
+        'Video Transcript (Only Voice)': `Write video voiceover scripts that:
+- Are conversational and natural-sounding
+- Hook attention in the first 3 seconds
+- Address the pain point and solution clearly
+- Build emotional connection
+- Are 30-60 seconds when read aloud
+- Include natural pauses and emphasis
+- NO visual cues or stage directions`,
+        'Video Ad Script': `Write complete video ad scripts that:
+- Include both voiceover (VO) and visual directions
+- Hook attention in the first 3 seconds
+- Show the problem, agitate, then present the solution
+- Are 30-60 seconds total length
+- Include specific shot descriptions
+- Format: [VISUAL] description, VO: "dialogue"`
+    };
+
+    const systemPrompt = `You are an expert ad copywriter. Your task is to write compelling ${adCopyType} based on specific marketing angles.
+
+${typeInstructions[adCopyType]}
 
 Return ONLY a valid JSON array, no additional text.`;
 
@@ -197,8 +330,10 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
         let response: string;
 
         switch (model) {
-            case 'claude':
-                response = await callClaude(systemPrompt, userPrompt);
+            case 'claude-sonnet':
+            case 'claude-opus':
+            case 'claude-haiku':
+                response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
                 response = await callGPT(systemPrompt, userPrompt);
@@ -210,7 +345,14 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
                 throw new Error(`Unsupported AI model: ${model}`);
         }
 
-        const adCopies = JSON.parse(response);
+        // Clean up response - remove markdown code blocks if present
+        const cleanedResponse = response
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        const adCopies = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag, map angle IDs
         return adCopies.map((ac: any, idx: number) => ({
@@ -230,105 +372,41 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
 // AI PROVIDER IMPLEMENTATIONS
 // ============================================
 
-async function callClaude(systemPrompt: string, userPrompt: string): Promise<string> {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+// Use serverless function proxy to avoid CORS issues
+async function callAIProxy(model: AIModel, systemPrompt: string, userPrompt: string): Promise<string> {
+    const apiUrl = import.meta.env.DEV
+        ? 'http://localhost:5174/api/ai-generate'  // Local development
+        : '/api/ai-generate';  // Production (Vercel)
 
-    if (!apiKey) {
-        throw new Error('Anthropic API key not configured. Please add VITE_ANTHROPIC_API_KEY to your .env file');
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [
-                {
-                    role: 'user',
-                    content: userPrompt
-                }
-            ]
-        })
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Claude API error: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-}
-
-async function callGPT(systemPrompt: string, userPrompt: string): Promise<string> {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-    if (!apiKey) {
-        throw new Error('OpenAI API key not configured. Please add VITE_OPENAI_API_KEY to your .env file');
-    }
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 4096
-        })
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`OpenAI API error: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
-    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
-
-    if (!apiKey) {
-        throw new Error('Google API key not configured. Please add VITE_GOOGLE_API_KEY to your .env file');
-    }
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+    const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            contents: [{
-                parts: [{
-                    text: `${systemPrompt}\n\n${userPrompt}`
-                }]
-            }],
-            generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 4096
-            }
+            model,
+            systemPrompt,
+            userPrompt
         })
     });
 
     if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Gemini API error: ${error}`);
+        const error = await response.json();
+        throw new Error(error.error || 'AI API request failed');
     }
 
     const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
+    return data.response;
+}
+
+async function callClaude(model: 'claude-sonnet' | 'claude-opus' | 'claude-haiku', systemPrompt: string, userPrompt: string): Promise<string> {
+    return callAIProxy(model, systemPrompt, userPrompt);
+}
+
+async function callGPT(systemPrompt: string, userPrompt: string): Promise<string> {
+    return callAIProxy('gpt', systemPrompt, userPrompt);
+}
+
+async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
+    return callAIProxy('gemini', systemPrompt, userPrompt);
 }

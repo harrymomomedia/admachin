@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     Sparkles,
     ChevronDown,
@@ -9,12 +9,16 @@ import {
     X,
     Save,
     Bookmark,
+    Copy,
+    Play,
 } from 'lucide-react';
 import { getProjects, getSubprojects, createAdCopy, type Project, type Subproject, type Persona } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { PersonaSelector } from '../components/PersonaSelector';
+import { AIProgressToast, type ProgressStep } from '../components/AIProgressToast';
 import * as AI from '../lib/ai-service';
+import type { AIModel } from '../lib/ai-service';
 
 interface Angle {
     id: string;
@@ -34,6 +38,13 @@ interface AdCopyItem {
     selected: boolean;
 }
 
+// Modal state for full copy preview
+interface PreviewModal {
+    isOpen: boolean;
+    copy: string;
+    angleName: string;
+}
+
 interface ProductPreset {
     id: string;
     name: string;
@@ -46,12 +57,16 @@ interface ProductPreset {
     aiModel: AIModel;
 }
 
-type AIModel = 'claude' | 'gpt' | 'gemini';
-
 export function AICopywriting() {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [projects, setProjects] = useState<Project[]>([]);
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
+
+    // Refs for auto-resizing textareas
+    const productDescRef = useRef<HTMLTextAreaElement>(null);
+    const personaInputRef = useRef<HTMLTextAreaElement>(null);
+    const swipeFilesRef = useRef<HTMLTextAreaElement>(null);
+    const productCustomPromptRef = useRef<HTMLTextAreaElement>(null);
 
     // Presets
     const [presets, setPresets] = useState<ProductPreset[]>([]);
@@ -59,8 +74,13 @@ export function AICopywriting() {
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [newPresetName, setNewPresetName] = useState('');
 
+    // Auto-fill
+    const [showAutoFillModal, setShowAutoFillModal] = useState(false);
+    const [autoFillBrief, setAutoFillBrief] = useState('');
+    const [autoFillLoading, setAutoFillLoading] = useState(false);
+
     // Model Selection
-    const [selectedModel, setSelectedModel] = useState<AIModel>('claude');
+    const [selectedModel, setSelectedModel] = useState<AIModel>('claude-sonnet');
 
     // Step 1: Product Info & Project Selection
     const [productDescription, setProductDescription] = useState('');
@@ -79,6 +99,7 @@ export function AICopywriting() {
 
     // Step 3: Angles
     const [angles, setAngles] = useState<Angle[]>([]);
+    const [angleCount, setAngleCount] = useState(3); // How many angles per persona
     const [anglesCustomPrompt, setAnglesCustomPrompt] = useState('');
     const [anglesLoading, setAnglesLoading] = useState(false);
     const [anglesExpanded, setAnglesExpanded] = useState(false);
@@ -86,12 +107,49 @@ export function AICopywriting() {
     // Step 4: Ad Copies
     const [adCopies, setAdCopies] = useState<AdCopyItem[]>([]);
     const [adCopiesCount, setAdCopiesCount] = useState(10);
+    const [adCopyType, setAdCopyType] = useState<'FB Ad Text' | 'FB Ad Headline' | 'Video Transcript (Only Voice)' | 'Video Ad Script'>('FB Ad Text');
     // const [adCopiesCustomPrompt, setAdCopiesCustomPrompt] = useState(''); // TODO: Add custom prompt input
     const [adCopiesLoading, setAdCopiesLoading] = useState(false);
     const [adCopiesExpanded, setAdCopiesExpanded] = useState(false);
 
     // Step 5: Export
     const [exportLoading, setExportLoading] = useState(false);
+
+    // Preview Modal
+    const [previewModal, setPreviewModal] = useState<PreviewModal>({ isOpen: false, copy: '', angleName: '' });
+
+    // Progress Toast
+    const [progressMessage, setProgressMessage] = useState('');
+    const [progressStatus, setProgressStatus] = useState<'loading' | 'success' | 'error' | null>(null);
+    const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+    const [liveOutput, setLiveOutput] = useState('');
+
+    // Auto-resize textarea function with max height
+    const autoResizeTextarea = (textarea: HTMLTextAreaElement | null) => {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        const newHeight = Math.min(textarea.scrollHeight, 400); // Max 400px height
+        textarea.style.height = `${newHeight}px`;
+        // Enable scrolling if content exceeds max height
+        textarea.style.overflowY = textarea.scrollHeight > 400 ? 'auto' : 'hidden';
+    };
+
+    // Auto-resize textareas when content changes
+    useEffect(() => {
+        autoResizeTextarea(productDescRef.current);
+    }, [productDescription]);
+
+    useEffect(() => {
+        autoResizeTextarea(personaInputRef.current);
+    }, [personaInput]);
+
+    useEffect(() => {
+        autoResizeTextarea(swipeFilesRef.current);
+    }, [swipeFiles]);
+
+    useEffect(() => {
+        autoResizeTextarea(productCustomPromptRef.current);
+    }, [productCustomPrompt]);
 
     // Load initial data
     useEffect(() => {
@@ -201,6 +259,78 @@ export function AICopywriting() {
         }
     };
 
+    // Auto-fill product info
+    const handleAutoFill = async () => {
+        if (!autoFillBrief.trim()) {
+            alert('Please enter a brief description');
+            return;
+        }
+
+        setAutoFillLoading(true);
+        setProgressMessage('AI is generating...');
+        setProgressStatus('loading');
+        setLiveOutput('Waiting for AI response...\n\n');
+        setProgressSteps([]);
+
+        try {
+            // Generate content
+            setLiveOutput('📡 Sending request to Claude Opus 4.5...\n\n');
+
+            const result = await AI.autoFillProductInfo({
+                model: selectedModel,
+                briefDescription: autoFillBrief
+            });
+
+            // Show the raw JSON response
+            setLiveOutput(prev => prev + '✅ Response received!\n\n' + JSON.stringify(result, null, 2));
+
+            // Wait a moment to show the response
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Fill in all the fields
+            setProductDescription(result.productDescription);
+            setPersonaInput(result.personaInput);
+            setSwipeFiles(result.swipeFiles);
+            setProductCustomPrompt(result.productCustomPrompt);
+
+            // Match project/subproject
+            if (result.suggestedProjectName) {
+                const matchingProject = projects.find(p =>
+                    p.name.toLowerCase().includes(result.suggestedProjectName!.toLowerCase()) ||
+                    result.suggestedProjectName!.toLowerCase().includes(p.name.toLowerCase())
+                );
+                if (matchingProject) {
+                    setSelectedProjectId(matchingProject.id);
+
+                    if (result.suggestedSubprojectName) {
+                        const matchingSubproject = subprojects.find(s =>
+                            s.project_id === matchingProject.id &&
+                            (s.name.toLowerCase().includes(result.suggestedSubprojectName!.toLowerCase()) ||
+                             result.suggestedSubprojectName!.toLowerCase().includes(s.name.toLowerCase()))
+                        );
+                        if (matchingSubproject) {
+                            setSelectedSubprojectId(matchingSubproject.id);
+                        }
+                    }
+                }
+            }
+
+            setShowAutoFillModal(false);
+            setAutoFillBrief('');
+            setProgressMessage('Section 1 Auto-Fill Complete!');
+            setProgressStatus('success');
+            setLiveOutput('');
+        } catch (error) {
+            console.error('Failed to auto-fill:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            setProgressMessage(`Auto-Fill Failed`);
+            setProgressStatus('error');
+            setLiveOutput(prev => prev + `\n\n❌ Error: ${errorMessage}`);
+        } finally {
+            setAutoFillLoading(false);
+        }
+    };
+
     // Selection helpers
     const selectedPersonas = personas.filter(p => p.selected);
     const selectedAngles = angles.filter(a => a.selected);
@@ -231,7 +361,7 @@ export function AICopywriting() {
     const selectAllAdCopies = () => setAdCopies(prev => prev.map(a => ({ ...a, selected: true })));
     const selectNoneAdCopies = () => setAdCopies(prev => prev.map(a => ({ ...a, selected: false })));
 
-    // Generate functions (placeholder - you'll integrate with actual AI APIs)
+    // Generate functions
     const generatePersonas = async () => {
         if (!productDescription.trim()) {
             alert('Please enter a product description first');
@@ -239,8 +369,12 @@ export function AICopywriting() {
         }
 
         setPersonasLoading(true);
+        setProgressMessage('Generating Customer Personas');
+        setProgressStatus('loading');
+        setLiveOutput('📡 Sending request to AI...\n\n');
+        setProgressSteps([]);
+
         try {
-            // Generate personas using AI
             const generatedPersonas = await AI.generatePersonas({
                 model: selectedModel,
                 productDescription,
@@ -249,145 +383,28 @@ export function AICopywriting() {
                 customPrompt: productCustomPrompt
             });
 
+            // Show the response
+            setLiveOutput(prev => prev + '✅ Received ' + generatedPersonas.length + ' personas!\n\n' + JSON.stringify(generatedPersonas, null, 2));
+
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
             setPersonas(generatedPersonas);
             setPersonasExpanded(true);
             setProductExpanded(false);
+            setProgressMessage(`Successfully generated ${generatedPersonas.length} personas!`);
+            setProgressStatus('success');
+            setLiveOutput('');
         } catch (error) {
             console.error('Failed to generate personas:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            alert(`Failed to generate personas: ${errorMessage}\n\nFalling back to example personas...`);
-
-            // Fallback to mock personas if AI fails
-            const mockPersonas: Persona[] = [
-                {
-                    id: '1',
-                    name: 'Maria',
-                    age: 58,
-                    role: 'Formerly Incarcerated',
-                    tagline: 'Seeking justice after years of silence',
-                    background: 'Maria served 5 years at Central California Women\'s Facility (CCWF) between 2015-2020. During her incarceration, she experienced multiple incidents of sexual misconduct by correctional staff that went unreported due to fear of retaliation.',
-                    current_situation: 'Now living with family in Fresno, working part-time at a local grocery store while rebuilding her life. She has limited financial resources and is still dealing with the psychological trauma from her experiences.',
-                    pain_points: [
-                        'Fear of retaliation and not being believed',
-                        'Financial struggles making it hard to afford legal help',
-                        'PTSD and anxiety from past trauma',
-                        'Shame and stigma around speaking up'
-                    ],
-                    goals: [
-                        'Get compensation for the trauma she endured',
-                        'Feel validated and heard',
-                        'Achieve some sense of closure',
-                        'Help prevent this from happening to others'
-                    ],
-                    motivations: [
-                        'Justice and accountability',
-                        'Financial compensation',
-                        'Healing and closure',
-                        'Protecting others'
-                    ],
-                    objections: [
-                        'Worried about privacy and publicity',
-                        'Concerned the process will be too difficult or triggering',
-                        'Unsure if she qualifies or has enough evidence',
-                        'Skeptical that anything will actually change'
-                    ],
-                    messaging_angles: [
-                        'Historic $115M settlement - you may qualify for compensation',
-                        'Free, confidential case review - no obligation',
-                        'Experienced advocates who understand your situation',
-                        'Your voice matters - help create systemic change'
-                    ],
-                    selected: false
-                },
-                {
-                    id: '2',
-                    name: 'Janice',
-                    age: 62,
-                    role: 'Survivor & Advocate',
-                    tagline: 'Ready to speak truth to power',
-                    background: 'Janice was incarcerated at CCWF from 2012-2018, where she experienced systematic sexual harassment and abuse. After release, she became active in prison reform advocacy and support groups for survivors.',
-                    current_situation: 'Released 3 years ago and now works with local advocacy groups. She struggles with PTSD but has found strength in community and wants to use her voice to help others seek justice.',
-                    pain_points: [
-                        'Ongoing trauma and flashbacks',
-                        'Anger at the system that failed to protect her',
-                        'Difficulty trusting authority figures',
-                        'Financial instability affecting her recovery'
-                    ],
-                    goals: [
-                        'Hold abusers and the system accountable',
-                        'Support other survivors in their healing journey',
-                        'Secure compensation to aid recovery',
-                        'Create lasting policy changes'
-                    ],
-                    motivations: [
-                        'Accountability and reform',
-                        'Supporting other survivors',
-                        'Personal healing',
-                        'Financial stability'
-                    ],
-                    objections: [
-                        'Concerned about re-traumatization through legal process',
-                        'Worried about time commitment',
-                        'Skeptical of lawyers and the legal system',
-                        'Unsure if her case is strong enough'
-                    ],
-                    messaging_angles: [
-                        'Stand with other survivors - you\'re not alone',
-                        'Turn your pain into power and policy change',
-                        'Compassionate legal team with proven track record',
-                        'Join a community of survivors seeking justice together'
-                    ],
-                    selected: false
-                },
-                {
-                    id: '3',
-                    name: 'Rosa',
-                    age: 54,
-                    role: 'Prison Reform Activist',
-                    tagline: 'Fighting for systemic change',
-                    background: 'Rosa spent 8 years at CCWF (2010-2018) and became a vocal advocate for prison reform after witnessing widespread abuse. She now runs a non-profit supporting formerly incarcerated women.',
-                    current_situation: 'Active in prison reform advocacy, speaking at events and working with lawmakers. She sees this lawsuit as an opportunity to create meaningful systemic change and set precedents.',
-                    pain_points: [
-                        'Frustration with slow pace of reform',
-                        'Exhaustion from fighting for change',
-                        'Limited resources for her advocacy work',
-                        'Dealing with pushback from institutions'
-                    ],
-                    goals: [
-                        'Create systemic change in prison policies',
-                        'Set legal precedents for future cases',
-                        'Amplify survivor voices',
-                        'Secure resources to expand advocacy work'
-                    ],
-                    motivations: [
-                        'Creating lasting impact',
-                        'Justice for all survivors',
-                        'Policy and systemic reform',
-                        'Community empowerment'
-                    ],
-                    objections: [
-                        'Worried settlements might silence broader reform efforts',
-                        'Concerned about how this fits into larger advocacy strategy',
-                        'Time constraints with existing commitments',
-                        'Potential conflicts with her public advocacy role'
-                    ],
-                    messaging_angles: [
-                        'Use this settlement to fund lasting systemic change',
-                        'Set precedents that protect future incarcerated women',
-                        'Your advocacy can be amplified through legal action',
-                        'Join forces with other advocates for maximum impact'
-                    ],
-                    selected: false
-                }
-            ];
-
-            setPersonas(mockPersonas);
-            setPersonasExpanded(true);
-            setProductExpanded(false);
+            setProgressMessage(`Failed to generate personas`);
+            setProgressStatus('error');
+            setLiveOutput(prev => prev + `\n\n❌ Error: ${errorMessage}`);
         } finally {
             setPersonasLoading(false);
         }
     };
+
 
     const generateAngles = async () => {
         if (selectedPersonas.length === 0) {
@@ -396,22 +413,35 @@ export function AICopywriting() {
         }
 
         setAnglesLoading(true);
+        setProgressMessage('Generating Marketing Angles');
+        setProgressStatus('loading');
+        setLiveOutput('📡 Sending request to AI...\n\n');
+        setProgressSteps([]);
+
         try {
-            // Generate angles using AI
             const generatedAngles = await AI.generateAngles({
                 model: selectedModel,
                 personas: selectedPersonas,
                 productDescription,
+                angleCount: angleCount,
                 customPrompt: anglesCustomPrompt
             });
+
+            setLiveOutput(prev => prev + '✅ Received ' + generatedAngles.length + ' angles!\n\n' + JSON.stringify(generatedAngles, null, 2));
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
             setAngles(generatedAngles);
             setAnglesExpanded(true);
             setPersonasExpanded(false);
+            setProgressMessage(`Successfully generated ${generatedAngles.length} marketing angles!`);
+            setProgressStatus('success');
+            setLiveOutput('');
         } catch (error) {
             console.error('Failed to generate angles:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            alert(`Failed to generate angles: ${errorMessage}`);
+            setProgressMessage(`Failed to generate angles`);
+            setProgressStatus('error');
+            setLiveOutput(prev => prev + `\n\n❌ Error: ${errorMessage}`);
         } finally {
             setAnglesLoading(false);
         }
@@ -424,23 +454,36 @@ export function AICopywriting() {
         }
 
         setAdCopiesLoading(true);
+        setProgressMessage('Writing Ad Copies');
+        setProgressStatus('loading');
+        setLiveOutput('📡 Sending request to AI...\n\n');
+        setProgressSteps([]);
+
         try {
-            // Generate ad copies using AI
             const generatedAdCopies = await AI.generateAdCopies({
                 model: selectedModel,
                 angles: selectedAngles,
                 productDescription,
                 count: adCopiesCount,
-                customPrompt: '' // TODO: Add custom prompt input in UI
+                adCopyType: adCopyType,
+                customPrompt: anglesCustomPrompt
             });
+
+            setLiveOutput(prev => prev + '✅ Received ' + generatedAdCopies.length + ' ad copies!\n\n' + JSON.stringify(generatedAdCopies, null, 2));
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
             setAdCopies(generatedAdCopies);
             setAdCopiesExpanded(true);
             setAnglesExpanded(false);
+            setProgressMessage(`Successfully generated ${generatedAdCopies.length} ad copies!`);
+            setProgressStatus('success');
+            setLiveOutput('');
         } catch (error) {
             console.error('Failed to generate ad copies:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            alert(`Failed to generate ad copies: ${errorMessage}`);
+            setProgressMessage(`Failed to generate ad copies`);
+            setProgressStatus('error');
+            setLiveOutput(prev => prev + `\n\n❌ Error: ${errorMessage}`);
         } finally {
             setAdCopiesLoading(false);
         }
@@ -469,7 +512,7 @@ export function AICopywriting() {
                     user_id: currentUserId,
                     text: adCopy.copy,
                     type: 'primary_text',
-                    project: project?.name || undefined,
+                    project: project?.name || null,
                     project_id: selectedProjectId,
                     subproject_id: selectedSubprojectId || null,
                     platform: 'FB',
@@ -485,14 +528,15 @@ export function AICopywriting() {
             setAdCopies(prev => prev.map(a => ({ ...a, selected: false })));
         } catch (error) {
             console.error('Failed to export ad copies:', error);
-            alert('Failed to export ad copies. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to export ad copies: ${errorMessage}`);
         } finally {
             setExportLoading(false);
         }
     };
 
     return (
-        <div className="h-full flex flex-col gap-3 p-4 overflow-y-auto bg-gray-50">
+        <div className="flex flex-col gap-3 bg-gray-50">
             {/* Header with Model Selector */}
             <div className="sticky top-0 z-10 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -506,24 +550,34 @@ export function AICopywriting() {
                         </p>
                     </div>
 
-                    {/* Model Selector */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-gray-600">AI Model:</span>
-                        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-                            {(['claude', 'gpt', 'gemini'] as AIModel[]).map(model => (
-                                <button
-                                    key={model}
-                                    onClick={() => setSelectedModel(model)}
-                                    className={cn(
-                                        "px-3 py-1 text-xs font-medium rounded transition-all",
-                                        selectedModel === model
-                                            ? "bg-blue-600 text-white shadow-sm"
-                                            : "text-gray-600 hover:text-gray-900"
-                                    )}
-                                >
-                                    {model === 'claude' ? 'Claude' : model === 'gpt' ? 'GPT' : 'Gemini'}
-                                </button>
-                            ))}
+                    {/* Model Selector and Auto-fill */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowAutoFillModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-xs font-medium rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-sm"
+                        >
+                            <Sparkles className="w-4 h-4" />
+                            AI Auto-Fill Section 1
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-600">Model:</span>
+                            <select
+                                value={selectedModel}
+                                onChange={(e) => setSelectedModel(e.target.value as AIModel)}
+                                className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none cursor-pointer"
+                            >
+                                <optgroup label="Claude">
+                                    <option value="claude-sonnet">Claude Sonnet 4</option>
+                                    <option value="claude-opus">Claude Opus 4.5</option>
+                                    <option value="claude-haiku">Claude Haiku 4</option>
+                                </optgroup>
+                                <optgroup label="OpenAI">
+                                    <option value="gpt">GPT-4o</option>
+                                </optgroup>
+                                <optgroup label="Google">
+                                    <option value="gemini">Gemini 1.5 Pro</option>
+                                </optgroup>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -619,11 +673,15 @@ export function AICopywriting() {
                                 Product/Service Description <span className="text-red-500">*</span>
                             </label>
                             <textarea
+                                ref={productDescRef}
                                 rows={4}
-                                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y overflow-hidden"
                                 placeholder="E.g., California women's prison sexual abuse lawsuit - seeking survivors for compensation..."
                                 value={productDescription}
-                                onChange={e => setProductDescription(e.target.value)}
+                                onChange={e => {
+                                    setProductDescription(e.target.value);
+                                    autoResizeTextarea(e.target);
+                                }}
                             />
                         </div>
 
@@ -633,11 +691,15 @@ export function AICopywriting() {
                                     Persona Input (Optional)
                                 </label>
                                 <textarea
+                                    ref={personaInputRef}
                                     rows={3}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y overflow-hidden"
                                     placeholder="E.g., Women 50-65 years old, formerly incarcerated, 50% Black and Hispanic..."
                                     value={personaInput}
-                                    onChange={e => setPersonaInput(e.target.value)}
+                                    onChange={e => {
+                                        setPersonaInput(e.target.value);
+                                        autoResizeTextarea(e.target);
+                                    }}
                                 />
                             </div>
 
@@ -646,11 +708,15 @@ export function AICopywriting() {
                                     Swipe Files / Headlines (Optional)
                                 </label>
                                 <textarea
+                                    ref={swipeFilesRef}
                                     rows={3}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y overflow-hidden"
                                     placeholder="Paste proven headline patterns here..."
                                     value={swipeFiles}
-                                    onChange={e => setSwipeFiles(e.target.value)}
+                                    onChange={e => {
+                                        setSwipeFiles(e.target.value);
+                                        autoResizeTextarea(e.target);
+                                    }}
                                 />
                             </div>
                         </div>
@@ -660,11 +726,15 @@ export function AICopywriting() {
                                 Custom Prompt / Guardrails (Optional)
                             </label>
                             <textarea
+                                ref={productCustomPromptRef}
                                 rows={2}
-                                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y overflow-hidden"
                                 placeholder="E.g., Use respectful tone, no sensationalism, focus on dignity..."
                                 value={productCustomPrompt}
-                                onChange={e => setProductCustomPrompt(e.target.value)}
+                                onChange={e => {
+                                    setProductCustomPrompt(e.target.value);
+                                    autoResizeTextarea(e.target);
+                                }}
                             />
                         </div>
 
@@ -780,14 +850,27 @@ export function AICopywriting() {
                                 </label>
                                 <textarea
                                     rows={2}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
                                     placeholder="E.g., Focus on safety and confidentiality..."
                                     value={personasCustomPrompt}
                                     onChange={e => setPersonasCustomPrompt(e.target.value)}
                                 />
                             </div>
 
-                            <div className="flex justify-end">
+                            <div className="flex justify-end items-end gap-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Angles per Persona
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="10"
+                                        value={angleCount}
+                                        onChange={e => setAngleCount(parseInt(e.target.value) || 3)}
+                                        className="w-20 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
                                 <button
                                     onClick={generateAngles}
                                     disabled={anglesLoading || selectedPersonas.length === 0}
@@ -892,6 +975,22 @@ export function AICopywriting() {
                                 ))}
                             </div>
 
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Type of Ad Copy
+                                </label>
+                                <select
+                                    value={adCopyType}
+                                    onChange={e => setAdCopyType(e.target.value as typeof adCopyType)}
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                                >
+                                    <option value="FB Ad Text">FB Ad Text</option>
+                                    <option value="FB Ad Headline">FB Ad Headline</option>
+                                    <option value="Video Transcript (Only Voice)">Video Transcript (Only Voice)</option>
+                                    <option value="Video Ad Script">Video Ad Script</option>
+                                </select>
+                            </div>
+
                             <div className="flex items-center gap-3">
                                 <div className="flex-1">
                                     <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -912,7 +1011,7 @@ export function AICopywriting() {
                                     </label>
                                     <textarea
                                         rows={2}
-                                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
                                         placeholder="E.g., Keep under 125 characters, include emoji..."
                                         value={anglesCustomPrompt}
                                         onChange={e => setAnglesCustomPrompt(e.target.value)}
@@ -992,34 +1091,67 @@ export function AICopywriting() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto pr-2">
-                                {adCopies.map(adCopy => (
-                                    <button
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto pr-2">
+                                {adCopies.map((adCopy) => (
+                                    <div
                                         key={adCopy.id}
-                                        onClick={() => toggleAdCopySelection(adCopy.id)}
                                         className={cn(
-                                            "relative p-3 border-2 rounded-lg text-left transition-all",
+                                            "relative flex flex-col bg-white border-2 rounded-xl overflow-hidden transition-all hover:shadow-md",
                                             adCopy.selected
-                                                ? "border-orange-500 bg-orange-50"
-                                                : "border-gray-200 hover:border-gray-300 bg-white"
+                                                ? "border-green-500 ring-2 ring-green-100"
+                                                : "border-gray-200 hover:border-gray-300"
                                         )}
                                     >
+                                        {/* Selection Indicator */}
                                         {adCopy.selected && (
-                                            <div className="absolute top-2 right-2 w-5 h-5 bg-orange-600 rounded-full flex items-center justify-center">
+                                            <div className="absolute top-3 right-3 w-5 h-5 bg-green-600 rounded-full flex items-center justify-center shadow-sm">
                                                 <Check className="w-3 h-3 text-white" />
                                             </div>
                                         )}
-                                        <div className="mb-2 flex flex-wrap gap-1">
-                                            {adCopy.angle_names.map((angleName, idx) => (
-                                                <span key={idx} className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-[9px] font-medium rounded">
-                                                    Angle: {angleName.slice(0, 40)}...
-                                                </span>
-                                            ))}
+
+                                        {/* Ad Copy Content */}
+                                        <div className="flex-1 p-4">
+                                            <div className="mb-3 flex flex-wrap gap-1">
+                                                {adCopy.angle_names.slice(0, 1).map((angleName, idx) => (
+                                                    <span key={idx} className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded">
+                                                        {angleName.length > 40 ? angleName.slice(0, 40) + '...' : angleName}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <p className="text-xs text-gray-800 leading-relaxed line-clamp-6">
+                                                {adCopy.copy}
+                                            </p>
                                         </div>
-                                        <pre className="text-[10px] text-gray-900 whitespace-pre-wrap font-sans leading-relaxed pr-6">
-                                            {adCopy.copy}
-                                        </pre>
-                                    </button>
+
+                                        {/* Select Button */}
+                                        <div className="px-4 py-3 border-t border-gray-100">
+                                            <button
+                                                onClick={() => toggleAdCopySelection(adCopy.id)}
+                                                className={cn(
+                                                    "w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition-colors",
+                                                    adCopy.selected
+                                                        ? "bg-green-600 text-white hover:bg-green-700"
+                                                        : "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+                                                )}
+                                            >
+                                                {adCopy.selected ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                                                {adCopy.selected ? 'Selected' : 'Select'}
+                                            </button>
+                                        </div>
+
+                                        {/* Preview Full Copy */}
+                                        <button
+                                            onClick={() => setPreviewModal({
+                                                isOpen: true,
+                                                copy: adCopy.copy,
+                                                angleName: adCopy.angle_names[0] || 'Ad Copy'
+                                            })}
+                                            className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-t border-gray-100 transition-colors"
+                                        >
+                                            <Play className="w-3.5 h-3.5" />
+                                            Preview Full Copy
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                         </div>
@@ -1124,6 +1256,156 @@ export function AICopywriting() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* AI Auto-Fill Modal */}
+            {showAutoFillModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 flex items-center justify-center">
+                                    <Sparkles className="w-5 h-5 text-white" />
+                                </div>
+                                <h2 className="text-lg font-bold text-gray-900">AI Auto-Fill Section 1</h2>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowAutoFillModal(false);
+                                    setAutoFillBrief('');
+                                }}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Brief Product/Service Description <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    value={autoFillBrief}
+                                    onChange={e => setAutoFillBrief(e.target.value)}
+                                    placeholder="E.g., A meal delivery service for busy professionals who want healthy, chef-prepared meals delivered to their door..."
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none resize-y"
+                                    rows={4}
+                                    autoFocus
+                                />
+                                <p className="mt-1.5 text-xs text-gray-500">
+                                    Just give a brief overview. AI will expand it into detailed product info, personas, and swipe files.
+                                </p>
+                            </div>
+
+                            <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-3 text-xs text-gray-700">
+                                <p className="font-medium mb-2 flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                                    AI will auto-fill:
+                                </p>
+                                <ul className="list-disc list-inside space-y-1 ml-1">
+                                    <li>Product description (expanded & detailed)</li>
+                                    <li>Persona input (target audiences)</li>
+                                    <li>Swipe files (headline examples)</li>
+                                    <li>Custom prompt suggestions</li>
+                                    <li>Project/Subproject matches (if found)</li>
+                                </ul>
+                            </div>
+
+                            <div className="pt-4 flex justify-end gap-3 border-t border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowAutoFillModal(false);
+                                        setAutoFillBrief('');
+                                    }}
+                                    disabled={autoFillLoading}
+                                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleAutoFill}
+                                    disabled={!autoFillBrief.trim() || autoFillLoading}
+                                    className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {autoFillLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Generating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="w-4 h-4" />
+                                            Auto-Fill with AI
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Preview Full Copy Modal */}
+            {previewModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900">Full Ad Copy</h2>
+                                <span className="inline-block mt-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                    {previewModal.angleName.length > 50 ? previewModal.angleName.slice(0, 50) + '...' : previewModal.angleName}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setPreviewModal({ isOpen: false, copy: '', angleName: '' })}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
+                                {previewModal.copy}
+                            </pre>
+                        </div>
+
+                        <div className="flex justify-end gap-3 p-4 border-t border-gray-200">
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(previewModal.copy);
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <Copy className="w-4 h-4" />
+                                Copy to Clipboard
+                            </button>
+                            <button
+                                onClick={() => setPreviewModal({ isOpen: false, copy: '', angleName: '' })}
+                                className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Progress Toast */}
+            {progressStatus && (
+                <AIProgressToast
+                    message={progressMessage}
+                    status={progressStatus}
+                    steps={progressSteps}
+                    liveOutput={liveOutput}
+                    onClose={() => {
+                        setProgressStatus(null);
+                        setLiveOutput('');
+                    }}
+                />
             )}
         </div>
     );
