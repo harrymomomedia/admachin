@@ -1,4 +1,5 @@
 import { Bell, Search, Menu } from "lucide-react";
+import { UserProfileDropdown } from "./UserProfileDropdown";
 
 interface HeaderProps {
     onMenuClick?: () => void;
@@ -34,20 +35,8 @@ export function Header({ onMenuClick }: HeaderProps) {
                     <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full"></span>
                 </button>
 
-                {/* Team & User Info */}
-                <div className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-border">
-                    <div className="text-right hidden md:block">
-                        <div className="text-sm font-semibold text-foreground">
-                            Harry Jung
-                        </div>
-                        <div className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                            Momomedia <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">ADMIN</span>
-                        </div>
-                    </div>
-                    <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-medium shadow-sm text-sm">
-                        HJ
-                    </div>
-                </div>
+                {/* User Profile Dropdown */}
+                <UserProfileDropdown />
             </div>
         </header>
     );

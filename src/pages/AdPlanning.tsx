@@ -7,11 +7,14 @@ import {
     getProjects,
     getUsers,
     getSubprojects,
+    getUserViewPreferences,
+    saveRowOrder,
     type AdPlan,
     type Project,
     type User,
     type Subproject,
 } from '../lib/supabase-service';
+import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { DataTable, type ColumnDef } from '../components/DataTable';
 
@@ -24,7 +27,8 @@ export function AdPlanning() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [groupByColumn, setGroupByColumn] = useState<string | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
 
     // Form State
     const [formData, setFormData] = useState({
@@ -50,13 +54,32 @@ export function AdPlanning() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [plansData, projectsData, usersData, subprojectsData] = await Promise.all([
+            const [plansData, projectsData, usersData, subprojectsData, user] = await Promise.all([
                 getAdPlans(),
                 getProjects(),
                 getUsers(),
                 getSubprojects(),
+                getCurrentUser()
             ]);
-            setPlans(plansData);
+
+            if (user?.id) {
+                setCurrentUserId(user.id);
+                // Load saved row order
+                const prefs = await getUserViewPreferences(user.id, 'ad_planning');
+                if (prefs?.row_order && prefs.row_order.length > 0) {
+                    const orderMap = new Map(prefs.row_order.map((id, index) => [id, index]));
+                    const ordered = [...plansData].sort((a, b) => {
+                        const aIndex = orderMap.get(a.id) ?? Infinity;
+                        const bIndex = orderMap.get(b.id) ?? Infinity;
+                        return aIndex - bIndex;
+                    });
+                    setPlans(ordered);
+                } else {
+                    setPlans(plansData);
+                }
+            } else {
+                setPlans(plansData);
+            }
             setProjects(projectsData);
             setUsers(usersData);
             setSubprojects(subprojectsData);
@@ -137,11 +160,19 @@ export function AdPlanning() {
         }
     };
 
-    // Reorder Handler
-    const handleReorder = (newOrder: string[]) => {
+    // Reorder Handler - persists to database
+    const handleReorder = async (newOrder: string[]) => {
         const reordered = newOrder.map(id => plans.find(p => p.id === id)!).filter(Boolean);
         setPlans(reordered);
-        // TODO: Persist order to database if needed
+
+        // Save order to database
+        if (currentUserId) {
+            try {
+                await saveRowOrder(currentUserId, 'ad_planning', newOrder);
+            } catch (error) {
+                console.error('Failed to save row order:', error);
+            }
+        }
     };
 
     // Create Handler
@@ -421,9 +452,6 @@ export function AdPlanning() {
                 resizable={true}
                 showRowActions={false}
                 fullscreen={true}
-                groupByColumn={groupByColumn ?? undefined}
-                onGroupByChange={setGroupByColumn}
-                groupableColumns={['status', 'project_id', 'plan_type', 'creative_type', 'user_id']}
             />
 
             {/* Create Modal */}

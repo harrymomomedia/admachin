@@ -3,7 +3,12 @@
 
 import type { Persona } from './supabase-service';
 
-export type AIModel = 'claude-sonnet' | 'claude-opus' | 'claude-haiku' | 'gpt' | 'gemini';
+export type AIModel = 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5' | 'gpt' | 'gemini';
+
+export interface PromptData {
+    system: string;
+    user: string;
+}
 
 interface AutoFillProductParams {
     model: AIModel;
@@ -25,6 +30,7 @@ interface GeneratePersonasParams {
     personaInput?: string;
     swipeFiles?: string;
     customPrompt?: string;
+    personaCount?: number; // How many personas to generate
 }
 
 interface GenerateAnglesParams {
@@ -93,9 +99,9 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
         let response: string;
 
         switch (model) {
-            case 'claude-sonnet':
-            case 'claude-opus':
-            case 'claude-haiku':
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
                 response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
@@ -128,11 +134,11 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
 // ============================================
 
 export async function generatePersonas(params: GeneratePersonasParams): Promise<Persona[]> {
-    const { model, productDescription, personaInput, swipeFiles, customPrompt } = params;
+    const { model, productDescription, personaInput, swipeFiles, customPrompt, personaCount = 5 } = params;
 
     const systemPrompt = `You are an expert marketing strategist and audience analyst. Your task is to generate detailed customer personas based on the product/service description provided.
 
-Generate 3-5 diverse, realistic personas that would be interested in this product/service. For each persona, provide:
+Generate exactly ${personaCount} diverse, realistic personas that would be interested in this product/service. For each persona, provide:
 - name: First name only
 - age: Realistic age
 - role: Their role/occupation/situation
@@ -141,9 +147,8 @@ Generate 3-5 diverse, realistic personas that would be interested in this produc
 - current_situation: Current circumstances and relationship to the product/service
 - pain_points: Array of 3-5 specific pain points they're experiencing
 - goals: Array of 3-5 concrete goals they want to achieve
-- motivations: Array of 3-5 key motivators (short phrases)
 - objections: Array of 3-5 potential objections or concerns
-- messaging_angles: Array of 3-5 suggested messaging approaches specifically for this persona
+- motivations: Array of 3-5 key motivators (short phrases)
 
 Return ONLY a valid JSON array of personas, no additional text.`;
 
@@ -153,15 +158,15 @@ ${personaInput ? `Additional Persona Context: ${personaInput}\n` : ''}
 ${swipeFiles ? `Reference Headlines/Content: ${swipeFiles}\n` : ''}
 ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
-Generate detailed customer personas in JSON format.`;
+Generate exactly ${personaCount} detailed customer personas in JSON format.`;
 
     try {
         let response: string;
 
         switch (model) {
-            case 'claude-sonnet':
-            case 'claude-opus':
-            case 'claude-haiku':
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
                 response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
@@ -203,17 +208,27 @@ Generate detailed customer personas in JSON format.`;
 export async function generateAngles(params: GenerateAnglesParams) {
     const { model, personas, productDescription, angleCount = 3, customPrompt } = params;
 
+    // Calculate distribution: randomly assign angles to personas
+    const personaCount = personas.length;
+    const distributionNote = personaCount > 1
+        ? `Distribute the ${angleCount} total angles randomly across the ${personaCount} personas. Not all personas need the same number of angles - vary the distribution naturally based on which personas have the strongest angle opportunities.`
+        : `Generate all ${angleCount} angles for this single persona.`;
+
     const systemPrompt = `You are an expert copywriter and marketing strategist. Your task is to generate compelling marketing angles tailored to specific customer personas.
 
-For each persona provided, generate ${angleCount} unique marketing angles. Each angle should include:
+Generate exactly ${angleCount} TOTAL unique marketing angles. ${distributionNote}
+
+Each angle should include:
 - angle: The main hook/angle (15-25 words)
 - pain_point: The specific pain point this addresses
 - why_now: Why this matters right now / urgency factor
-
+- persona_id: The ID of the persona this angle is for
+- persona_name: The name of the persona
+${customPrompt ? `\n**IMPORTANT CUSTOM INSTRUCTIONS (YOU MUST FOLLOW THESE):**\n${customPrompt}\n` : ''}
 Return ONLY a valid JSON array, no additional text.`;
 
     const personasSummary = personas.map(p =>
-        `Name: ${p.name}, ${p.age}, ${p.role}\nSituation: ${p.current_situation}\nPain Points: ${p.pain_points.join(', ')}\nGoals: ${p.goals.join(', ')}`
+        `ID: ${p.id}, Name: ${p.name}, ${p.age}, ${p.role}\nSituation: ${p.current_situation}\nPain Points: ${p.pain_points.join(', ')}\nGoals: ${p.goals.join(', ')}`
     ).join('\n\n');
 
     const userPrompt = `Product/Service: ${productDescription}
@@ -223,16 +238,16 @@ ${personasSummary}
 
 ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
-Generate ${angleCount} compelling marketing angles for EACH persona. Return as JSON array with format:
+Generate exactly ${angleCount} TOTAL marketing angles distributed across these personas. Return as JSON array with format:
 [{ "persona_id": "id", "persona_name": "name", "angle": "...", "pain_point": "...", "why_now": "..." }]`;
 
     try {
         let response: string;
 
         switch (model) {
-            case 'claude-sonnet':
-            case 'claude-opus':
-            case 'claude-haiku':
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
                 response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
@@ -258,8 +273,12 @@ Generate ${angleCount} compelling marketing angles for EACH persona. Return as J
         return angles.map((a: any, idx: number) => ({
             ...a,
             id: `${Date.now()}-${idx}`,
-            persona_id: personas.find(p => p.name === a.persona_name)?.id || a.persona_id,
-            selected: false
+            persona_id: personas.find(p => p.name === a.persona_name || p.id === a.persona_id)?.id || a.persona_id,
+            selected: false,
+            prompts: {
+                system: systemPrompt,
+                user: userPrompt
+            }
         }));
     } catch (error) {
         console.error('Error generating angles:', error);
@@ -330,9 +349,9 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
         let response: string;
 
         switch (model) {
-            case 'claude-sonnet':
-            case 'claude-opus':
-            case 'claude-haiku':
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
                 response = await callClaude(model, systemPrompt, userPrompt);
                 break;
             case 'gpt':
@@ -360,7 +379,11 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
             copy: ac.copy,
             angle_ids: [angles.find(a => a.angle === ac.angle_name)?.id || ac.angle_id],
             angle_names: [ac.angle_name],
-            selected: false
+            selected: false,
+            prompts: {
+                system: systemPrompt,
+                user: userPrompt
+            }
         }));
     } catch (error) {
         console.error('Error generating ad copies:', error);
@@ -374,9 +397,8 @@ Generate ${count} ad copy variations. Use different angles from the list above. 
 
 // Use serverless function proxy to avoid CORS issues
 async function callAIProxy(model: AIModel, systemPrompt: string, userPrompt: string): Promise<string> {
-    const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:5174/api/ai-generate'  // Local development
-        : '/api/ai-generate';  // Production (Vercel)
+    // Use relative URL - Vite middleware proxies /api routes in dev, Vercel handles in prod
+    const apiUrl = '/api/ai-generate';
 
     const response = await fetch(apiUrl, {
         method: 'POST',
@@ -399,7 +421,7 @@ async function callAIProxy(model: AIModel, systemPrompt: string, userPrompt: str
     return data.response;
 }
 
-async function callClaude(model: 'claude-sonnet' | 'claude-opus' | 'claude-haiku', systemPrompt: string, userPrompt: string): Promise<string> {
+async function callClaude(model: 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5', systemPrompt: string, userPrompt: string): Promise<string> {
     return callAIProxy(model, systemPrompt, userPrompt);
 }
 

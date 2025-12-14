@@ -375,6 +375,8 @@ export async function getAdCopies(): Promise<AdCopy[]> {
 
 /**
  * Create a new Ad Copy
+ * NOTE: subproject_id is accepted but not inserted until column is added to database
+ * Run: ALTER TABLE ad_copies ADD COLUMN subproject_id UUID REFERENCES subprojects(id);
  */
 export async function createAdCopy(copy: {
     user_id?: string | null;
@@ -382,12 +384,9 @@ export async function createAdCopy(copy: {
     type: string;
     project?: string | null;
     project_id?: string | null;
-    subproject_id?: string | null;
+    subproject_id?: string | null; // TODO: Enable once column exists in database
     platform?: string | null;
     name?: string | null;
-    source_angle?: string | null;
-    source_persona?: string | null;
-    ai_model?: string | null;
 }): Promise<AdCopy> {
     const { data, error } = await supabase
         .from('ad_copies')
@@ -400,9 +399,6 @@ export async function createAdCopy(copy: {
             subproject_id: copy.subproject_id || null,
             platform: copy.platform || null,
             name: copy.name || null,
-            source_angle: copy.source_angle || null,
-            source_persona: copy.source_persona || null,
-            ai_model: copy.ai_model || null,
         })
         .select()
         .single();
@@ -450,6 +446,60 @@ export async function deleteAdCopy(id: string): Promise<void> {
 }
 
 // ============================================
+// SAVED PERSONAS
+// ============================================
+
+export interface SavedPersona {
+    id: string;
+    user_id: string;
+    project_id: string;
+    subproject_id?: string | null;
+    vertical: string; // Stores product_description
+    name: string;
+    role: string;
+    data: Persona; // Full persona object
+    created_at: string;
+    // Joined fields
+    profile?: { fb_name: string };
+    project?: { name: string };
+    subproject?: { name: string };
+}
+
+export async function createSavedPersona(persona: Omit<SavedPersona, 'id' | 'created_at' | 'profiles' | 'projects' | 'subprojects'>) {
+    const { data, error } = await supabaseUntyped
+        .from('saved_personas')
+        .insert(persona)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating saved persona:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function getSavedPersonas() {
+    const { data, error } = await supabaseUntyped
+        .from('saved_personas')
+        .select(`
+            *,
+            project:projects(name),
+            subproject:subprojects(name),
+            profile:profiles(fb_name)
+        `)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching saved personas:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+// ============================================
 // PROJECTS
 // ============================================
 
@@ -463,14 +513,12 @@ export interface Project {
 
 export interface User {
     id: string;
-    name: string;
+    first_name: string;
+    last_name: string;
     email: string;
     password?: string;
     role: string;
     created_at: string;
-    // Legacy fields for compatibility during migration (optional)
-    first_name?: string;
-    last_name?: string;
 }
 
 export interface ProjectUserAssignment {
@@ -602,6 +650,11 @@ export async function updateUser(id: string, updates: { first_name?: string; las
         dbUpdates.name = `${updates.first_name || ''} ${updates.last_name || ''}`.trim();
         delete dbUpdates.first_name;
         delete dbUpdates.last_name;
+    }
+
+    // Remove password from dbUpdates as it cannot be updated directly in the users table
+    if (dbUpdates.password) {
+        delete dbUpdates.password;
     }
 
     const { data, error } = await supabaseUntyped
@@ -878,3 +931,195 @@ export async function deleteSubproject(id: string): Promise<void> {
         throw error;
     }
 }
+
+// ============================================
+// AI COPYWRITING PRESETS (Team-Level)
+// ============================================
+
+export interface AICopywritingPreset {
+    id: string;
+    name: string;
+    product_description: string | null;
+    persona_input: string | null;
+    swipe_files: string | null;
+    custom_prompt: string | null;
+    project_id: string | null;
+    subproject_id: string | null;
+    ai_model: string;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Get all AI Copywriting presets (team-level) via secure API
+ */
+export async function getAICopywritingPresets(): Promise<AICopywritingPreset[]> {
+    try {
+        const response = await fetch('/api/presets');
+        if (!response.ok) {
+            throw new Error('Failed to fetch presets');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('[API] Error fetching AI copywriting presets:', error);
+        // Return empty array on error (API might not be available)
+        return [];
+    }
+}
+
+/**
+ * Create a new AI Copywriting preset via secure API
+ */
+export async function createAICopywritingPreset(preset: {
+    name: string;
+    product_description?: string;
+    persona_input?: string;
+    swipe_files?: string;
+    custom_prompt?: string;
+    project_id?: string | null;
+    subproject_id?: string | null;
+    ai_model?: string;
+    created_by?: string | null;
+}): Promise<AICopywritingPreset> {
+    const response = await fetch('/api/presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: preset.name,
+            product_description: preset.product_description || null,
+            persona_input: preset.persona_input || null,
+            swipe_files: preset.swipe_files || null,
+            custom_prompt: preset.custom_prompt || null,
+            project_id: preset.project_id || null,
+            subproject_id: preset.subproject_id || null,
+            ai_model: preset.ai_model || 'claude-sonnet',
+            created_by: preset.created_by || null,
+        }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        console.error('[API] Error creating AI copywriting preset:', error);
+        throw new Error(error.error || 'Failed to create preset');
+    }
+
+    return await response.json();
+}
+
+/**
+ * Update an AI Copywriting preset via secure API
+ */
+export async function updateAICopywritingPreset(id: string, updates: Partial<AICopywritingPreset>): Promise<AICopywritingPreset> {
+    const response = await fetch('/api/presets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        console.error('[API] Error updating AI copywriting preset:', error);
+        throw new Error(error.error || 'Failed to update preset');
+    }
+
+    return await response.json();
+}
+
+/**
+ * Delete an AI Copywriting preset via secure API
+ */
+export async function deleteAICopywritingPreset(id: string): Promise<void> {
+    const response = await fetch(`/api/presets?id=${id}`, {
+        method: 'DELETE',
+    });
+
+    if (!response.ok && response.status !== 204) {
+        const error = await response.json();
+        console.error('[API] Error deleting AI copywriting preset:', error);
+        throw new Error(error.error || 'Failed to delete preset');
+    }
+}
+
+// ============================================
+// USER VIEW PREFERENCES (Row Order, Sort, Group)
+// ============================================
+
+export interface UserViewPreferences {
+    id?: string;
+    user_id: string;
+    view_id: string;
+    group_by?: string | null;
+    sort_config?: Array<{ key: string; direction: 'asc' | 'desc' }>;
+    row_order?: string[];
+    column_order?: string[];
+    column_widths?: Record<string, number>;
+    created_at?: string;
+    updated_at?: string;
+}
+
+/**
+ * Get user's view preferences (sort, group, row order)
+ */
+export async function getUserViewPreferences(userId: string, viewId: string): Promise<UserViewPreferences | null> {
+    const { data, error } = await supabaseUntyped
+        .from('user_view_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('view_id', viewId)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('[Supabase] Error fetching view preferences:', error);
+        throw error;
+    }
+
+    return data || null;
+}
+
+/**
+ * Save user's row order for a specific view
+ */
+export async function saveRowOrder(userId: string, viewId: string, rowOrder: string[]): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('user_view_preferences')
+        .upsert({
+            user_id: userId,
+            view_id: viewId,
+            row_order: rowOrder,
+            updated_at: new Date().toISOString()
+        }, {
+            onConflict: 'user_id,view_id'
+        });
+
+    if (error) {
+        console.error('[Supabase] Error saving row order:', error);
+        throw error;
+    }
+}
+
+/**
+ * Save user's full view preferences (sort, group, row order)
+ */
+export async function saveUserViewPreferences(
+    userId: string,
+    viewId: string,
+    preferences: Partial<Omit<UserViewPreferences, 'id' | 'user_id' | 'view_id' | 'created_at' | 'updated_at'>>
+): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('user_view_preferences')
+        .upsert({
+            user_id: userId,
+            view_id: viewId,
+            ...preferences,
+            updated_at: new Date().toISOString()
+        }, {
+            onConflict: 'user_id,view_id'
+        });
+
+    if (error) {
+        console.error('[Supabase] Error saving view preferences:', error);
+        throw error;
+    }
+}
+

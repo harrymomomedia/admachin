@@ -3,14 +3,26 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
 import { Header } from "../components/Header";
 
+const SIDEBAR_COLLAPSED_KEY = 'admachin_sidebar_collapsed';
+
 export function DashboardLayout() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+        return stored === 'true';
+    });
+
+    const toggleCollapse = () => {
+        const newState = !isCollapsed;
+        setIsCollapsed(newState);
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(newState));
+    };
 
     return (
         <div className="flex h-screen w-screen bg-background text-foreground overflow-hidden">
             {/* Desktop Sidebar */}
             <div className="hidden md:block">
-                <Sidebar />
+                <Sidebar isCollapsed={isCollapsed} onToggleCollapse={toggleCollapse} />
             </div>
 
             {/* Mobile Sidebar Overlay */}

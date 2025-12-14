@@ -224,7 +224,7 @@ export function CreativeUploader({
 
         setFiles((prev) => [...prev, ...processedFiles]);
 
-        // Upload valid files to B2
+        // Upload valid files to Supabase Storage
         for (const file of processedFiles) {
             if (file.status === "uploading") {
                 uploadFile(file);

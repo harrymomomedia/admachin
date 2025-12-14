@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2 } from 'lucide-react';
+import { SingleSelect, SearchInput } from './fields';
 import {
     DndContext,
     closestCenter,
@@ -20,6 +21,66 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../utils/cn';
 
+// ============ Sortable Sort Rule Item ============
+function SortableSortRule({
+    rule,
+    columns,
+    onUpdate,
+    onRemove
+}: {
+    rule: { id: string; key: string; direction: 'asc' | 'desc' };
+    columns: ColumnDef<any>[];
+    onUpdate: (updates: Partial<typeof rule>) => void;
+    onRemove: () => void;
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id: rule.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : 0,
+        position: 'relative' as const,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} className={cn("flex items-center gap-2", isDragging && "opacity-50")}>
+            <div {...attributes} {...listeners} className="cursor-grab text-gray-400 hover:text-gray-600">
+                <GripVertical className="w-4 h-4" />
+            </div>
+            <select
+                value={rule.key}
+                onChange={(e) => onUpdate({ key: e.target.value })}
+                className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+            >
+                {columns.map(col => (
+                    <option key={col.key} value={col.key}>{col.header}</option>
+                ))}
+            </select>
+            <select
+                value={rule.direction}
+                onChange={(e) => onUpdate({ direction: e.target.value as 'asc' | 'desc' })}
+                className="w-24 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+            >
+                <option value="asc">A → Z</option>
+                <option value="desc">Z → A</option>
+            </select>
+            <button
+                onClick={onRemove}
+                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+            >
+                <X className="w-3.5 h-3.5" />
+            </button>
+        </div>
+    );
+}
+
 // ============ Types ============
 
 export interface ColumnDef<T> {
@@ -31,7 +92,7 @@ export interface ColumnDef<T> {
     type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     colorMap?: Record<string, string>;
-    render?: (value: any, row: T, isEditing: boolean) => React.ReactNode;
+    render?: (value: any, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
     getValue?: (row: T) => any;
 }
 
@@ -50,6 +111,11 @@ export interface DataTableProps<T> {
     // Row actions
     onDelete?: (id: string) => void;
     onCopy?: (row: T) => void;
+    onDuplicate?: (row: T) => void;
+
+    // Inline row creation (no popup)
+    onCreateRow?: () => Promise<T> | T;
+
     showRowActions?: boolean;
 
     // Drag & drop
@@ -59,16 +125,24 @@ export interface DataTableProps<T> {
     // Resize
     resizable?: boolean;
 
-    // Expand text
-    expandText?: boolean;
+    // Wrap - per-column line wrapping
+    wrapRules?: { columnKey: string; lines: '1' | '3' | 'full' }[];
+    onWrapRulesChange?: (rules: { columnKey: string; lines: '1' | '3' | 'full' }[]) => void;
 
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;
 
     // Grouping
-    groupByColumn?: string;
-    onGroupByChange?: (column: string | null) => void;
-    groupableColumns?: string[];
+    groupRules?: { id: string; key: string; direction: 'asc' | 'desc' }[];
+    onGroupRulesChange?: (rules: { id: string; key: string; direction: 'asc' | 'desc' }[]) => void;
+
+    // Column order (for drag-to-reorder columns)
+    columnOrder?: string[];
+    onColumnOrderChange?: (order: string[]) => void;
+
+    // Column widths persistence
+    savedColumnWidths?: Record<string, number>;
+    onColumnWidthsChange?: (widths: Record<string, number>) => void;
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -81,33 +155,192 @@ interface DropdownMenuProps {
 }
 
 function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps) {
+    const [search, setSearch] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Focus search input on mount
+    useEffect(() => {
+        inputRef.current?.focus();
+    }, []);
+
+    const filteredOptions = options.filter(opt =>
+        opt.label.toLowerCase().includes(search.toLowerCase())
+    );
+
     return (
         <div
-            className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[140px] max-h-[250px] overflow-y-auto"
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] overflow-hidden"
             style={{ top: position.top, left: position.left }}
         >
-            {options.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-gray-400 italic whitespace-nowrap">
-                    No options available
+            {/* Search Input */}
+            <div className="p-2 border-b border-gray-100">
+                <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Find an option"
+                        className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white"
+                    />
                 </div>
-            ) : (
-                options.map((opt) => (
-                    <div
-                        key={opt.value}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onSelect(opt.value);
-                        }}
-                        className={cn(
-                            "px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap",
-                            opt.value === value ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700"
-                        )}
-                    >
-                        {opt.label}
+            </div>
+
+            {/* Options List */}
+            <div className="max-h-[200px] overflow-y-auto py-1">
+                {filteredOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-400 italic whitespace-nowrap">
+                        No options found
                     </div>
-                ))
-            )}
+                ) : (
+                    filteredOptions.map((opt) => (
+                        <div
+                            key={opt.value}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelect(opt.value);
+                            }}
+                            className={cn(
+                                "px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap flex items-center gap-2",
+                                opt.value === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                            )}
+                        >
+                            <span className="flex-1">{opt.label}</span>
+                            {opt.value === value && (
+                                <Check className="w-3.5 h-3.5 text-blue-600" />
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
+    );
+}
+
+// ============ Column Context Menu (Right-click on header) ============
+
+interface ColumnContextMenuProps {
+    columnKey: string;
+    columnHeader: string;
+    columnType?: string;
+    position: { top: number; left: number };
+    onGroupBy: (columnKey: string) => void;
+    onSort: (columnKey: string, direction: 'asc' | 'desc') => void;
+    onFilter: (columnKey: string) => void;
+    onClose: () => void;
+    isGroupedBy: boolean;
+    sortRules: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+}
+
+function ColumnContextMenu({
+    columnKey,
+    columnHeader,
+    columnType,
+    position,
+    onGroupBy,
+    onSort,
+    onFilter,
+    onClose,
+    isGroupedBy,
+    sortRules
+}: ColumnContextMenuProps) {
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onClose]);
+
+    const currentSort = sortRules.find(r => r.key === columnKey);
+    const isSortedAsc = currentSort?.direction === 'asc';
+    const isSortedDesc = currentSort?.direction === 'desc';
+
+    // Suppress unused variable warning - columnHeader is used for display in future enhancements
+    void columnHeader;
+
+    return createPortal(
+        <div
+            ref={menuRef}
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[200px]"
+            style={{ top: position.top, left: position.left }}
+        >
+            {/* Field Type Label */}
+            <div className="px-3 py-1.5 border-b border-gray-100 mb-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wider">Field type: </span>
+                <span className="text-[10px] text-gray-600 font-medium">
+                    {columnType === 'select' || columnType === 'badge' ? 'Single Select' :
+                        columnType === 'textarea' ? 'Long Text' :
+                            columnType === 'text' ? 'Text' :
+                                columnType === 'date' ? 'Date' :
+                                    columnType === 'number' ? 'Number' :
+                                        !columnType ? 'Not Defined' : columnType}
+                </span>
+            </div>
+            {/* Sort Options */}
+            <button
+                onClick={() => {
+                    onSort(columnKey, 'asc');
+                    onClose();
+                }}
+                className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left",
+                    isSortedAsc ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                )}
+            >
+                <ArrowUp className="w-4 h-4 text-gray-400" />
+                Sort A → Z
+            </button>
+            <button
+                onClick={() => {
+                    onSort(columnKey, 'desc');
+                    onClose();
+                }}
+                className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left",
+                    isSortedDesc ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                )}
+            >
+                <ArrowDown className="w-4 h-4 text-gray-400" />
+                Sort Z → A
+            </button>
+
+            {/* Divider */}
+            <div className="my-1 border-t border-gray-100" />
+
+            {/* Group By */}
+            <button
+                onClick={() => {
+                    onGroupBy(isGroupedBy ? '' : columnKey);
+                    onClose();
+                }}
+                className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left",
+                    isGroupedBy ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                )}
+            >
+                <LayoutGrid className="w-4 h-4 text-gray-400" />
+                {isGroupedBy ? `Ungroup` : `Group by this field`}
+            </button>
+
+            {/* Filter By */}
+            <button
+                onClick={() => {
+                    onFilter(columnKey);
+                    onClose();
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left text-gray-700"
+            >
+                <Filter className="w-4 h-4 text-gray-400" />
+                Filter by this field
+            </button>
+        </div>,
+        document.body
     );
 }
 
@@ -120,15 +353,17 @@ interface GroupHeaderProps {
     onToggle: () => void;
     colSpan: number;
     colorClass?: string;
+    level?: number;
 }
 
-function GroupHeader({ groupValue, count, isCollapsed, onToggle, colSpan, colorClass }: GroupHeaderProps) {
+function GroupHeader({ groupValue, count, isCollapsed, onToggle, colSpan, colorClass, level = 0 }: GroupHeaderProps) {
     return (
         <tr className="bg-gray-50 border-b border-gray-200">
             <td colSpan={colSpan} className="px-2 py-1.5">
                 <button
                     type="button"
                     onClick={onToggle}
+                    style={{ paddingLeft: `${level * 20}px` }}
                     className="flex items-center gap-2 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors w-full"
                 >
                     {isCollapsed ? (
@@ -162,7 +397,7 @@ interface SortableRowProps<T> {
     showRowActions: boolean;
     editingCell: { id: string; field: string } | null;
     editingValue: string;
-    expandText: boolean;
+    wrapRules: { columnKey: string; lines: '1' | '3' | 'full' }[];
     dropdownPosition: { top: number; left: number };
     onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
@@ -170,7 +405,17 @@ interface SortableRowProps<T> {
     onEditCancel: () => void;
     onDelete?: (id: string) => void;
     onCopy?: (row: T) => void;
+    onDuplicate?: (row: T) => void;
     copiedId: string | null;
+    // Native HTML5 drag handlers
+    onRowDragStart: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    onRowDragEnd: () => void;
+    onRowDragEnter: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    onRowDragOver: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    onRowDragLeave: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    onRowDrop: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    isDragging: boolean;
+    isDragOver: boolean;
 }
 
 function SortableRow<T>({
@@ -182,7 +427,7 @@ function SortableRow<T>({
     showRowActions,
     editingCell,
     editingValue,
-    expandText,
+    wrapRules,
     dropdownPosition,
     onEditStart,
     onEditChange,
@@ -190,20 +435,18 @@ function SortableRow<T>({
     onEditCancel,
     onDelete,
     onCopy,
+    onDuplicate,
     copiedId,
+    onRowDragStart,
+    onRowDragEnd,
+    onRowDragEnter,
+    onRowDragOver,
+    onRowDragLeave,
+    onRowDrop,
+    isDragging,
+    isDragOver,
 }: SortableRowProps<T>) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({ id: rowId, disabled: !sortable });
-
     const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
         opacity: isDragging ? 0.5 : 1,
     };
 
@@ -241,17 +484,26 @@ function SortableRow<T>({
     };
 
     return (
-        <tr ref={setNodeRef} style={style} className="group hover:bg-gray-50">
+        <tr
+            style={style}
+            className={cn(
+                "group hover:bg-gray-50 relative",
+                isDragOver && "before:absolute before:left-0 before:right-0 before:top-0 before:h-0.5 before:bg-blue-500 before:z-20"
+            )}
+            draggable={sortable}
+            onDragStart={onRowDragStart}
+            onDragEnd={onRowDragEnd}
+            onDragEnter={onRowDragEnter}
+            onDragOver={onRowDragOver}
+            onDragLeave={onRowDragLeave}
+            onDrop={onRowDrop}
+        >
             {/* Drag Handle */}
             {sortable && (
                 <td className="data-grid-td w-10 px-2">
-                    <button
-                        {...attributes}
-                        {...listeners}
-                        className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing"
-                    >
+                    <div className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
                         <GripVertical className="w-4 h-4" />
-                    </button>
+                    </div>
                 </td>
             )}
 
@@ -264,37 +516,60 @@ function SortableRow<T>({
                 // Resolve options if they are a function
                 const options = typeof col.options === 'function' ? col.options(row) : col.options;
 
+                // Get wrap setting for this column
+                const wrapRule = wrapRules.find(r => r.columnKey === col.key);
+                const wrapLines = wrapRule?.lines;
+
                 return (
                     <td
                         key={col.key}
-                        className="data-grid-td px-2 relative"
-                        style={{ width, maxWidth: width }}
+                        className={cn(
+                            "data-grid-td px-2 relative",
+                            wrapLines !== 'full' && "overflow-hidden"
+                        )}
+                        style={{
+                            width,
+                            maxWidth: width,
+                            ...(wrapLines === '1' && { maxHeight: '24px' }),
+                            ...(wrapLines === '3' && { maxHeight: '60px' })
+                        }}
                     >
                         {/* Check for editing FIRST - takes priority over custom render */}
                         {isEditing && col.editable ? (
                             col.type === 'select' || col.type === 'badge' ? (
-                                createPortal(
-                                    <>
-                                        {/* Backdrop to close on click outside */}
-                                        <div
-                                            className="fixed inset-0 z-[9998]"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEditCancel();
-                                            }}
-                                        />
-                                        {/* Dropdown menu */}
-                                        <DropdownMenu
-                                            options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
-                                            value={editingValue}
-                                            onSelect={(val: string) => {
-                                                onEditSave(val);
-                                            }}
-                                            position={dropdownPosition}
-                                        />
-                                    </>,
-                                    document.body
-                                )
+                                <>
+                                    {/* Still show the selected value in the cell */}
+                                    <span
+                                        className={cn(
+                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap ring-2 ring-blue-400",
+                                            col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
+                                        )}
+                                    >
+                                        {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
+                                    </span>
+                                    {createPortal(
+                                        <>
+                                            {/* Backdrop to close on click outside */}
+                                            <div
+                                                className="fixed inset-0 z-[9998]"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEditCancel();
+                                                }}
+                                            />
+                                            {/* Dropdown menu */}
+                                            <DropdownMenu
+                                                options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
+                                                value={editingValue}
+                                                onSelect={(val: string) => {
+                                                    onEditSave(val);
+                                                }}
+                                                position={dropdownPosition}
+                                            />
+                                        </>,
+                                        document.body
+                                    )}
+                                </>
                             ) : col.type === 'textarea' || col.type === 'text' ? (
                                 <textarea
                                     ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -306,7 +581,7 @@ function SortableRow<T>({
                                     }}
                                     onBlur={() => onEditSave()}
                                     onKeyDown={handleKeyDown}
-                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
+                                    className="data-grid-input border border-blue-300 rounded focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
                                     rows={1}
                                 />
                             ) : (
@@ -326,7 +601,7 @@ function SortableRow<T>({
                                 className={col.editable ? "cursor-pointer" : ""}
                                 onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                             >
-                                {col.render(value, row, isEditing)}
+                                {col.render(value, row, isEditing, wrapLines === 'full')}
                             </div>
                         ) : (
                             // Default display mode
@@ -353,9 +628,10 @@ function SortableRow<T>({
                             ) : (
                                 <p
                                     className={cn(
-                                        "text-xs text-gray-900 cursor-pointer hover:text-blue-600 transition-colors",
-                                        !expandText && "line-clamp-1",
-                                        expandText && "whitespace-pre-wrap"
+                                        "text-xs text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-2",
+                                        wrapLines === '1' && "line-clamp-1",
+                                        wrapLines === '3' && "line-clamp-3",
+                                        wrapLines === 'full' && "whitespace-pre-wrap"
                                     )}
                                     onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                 >
@@ -370,7 +646,16 @@ function SortableRow<T>({
             {/* Row Actions */}
             {showRowActions && (
                 <td className="data-grid-td px-2 w-20">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {onDuplicate && (
+                            <button
+                                onClick={() => onDuplicate(row)}
+                                className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                title="Duplicate"
+                            >
+                                <Plus className="w-3 h-3" />
+                            </button>
+                        )}
                         {onCopy && (
                             <button
                                 onClick={() => onCopy(row)}
@@ -380,7 +665,7 @@ function SortableRow<T>({
                                         ? "text-green-600 bg-green-50"
                                         : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
                                 )}
-                                title="Copy"
+                                title="Copy Text"
                             >
                                 {copiedId === rowId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                             </button>
@@ -401,6 +686,9 @@ function SortableRow<T>({
     );
 }
 
+// Memoized SortableRow to prevent re-renders of unchanged rows
+const MemoizedSortableRow = React.memo(SortableRow) as typeof SortableRow;
+
 // ============ Main DataTable Component ============
 
 export function DataTable<T>({
@@ -412,24 +700,167 @@ export function DataTable<T>({
     onUpdate,
     onDelete,
     onCopy,
+    onDuplicate,
+    onCreateRow,
     showRowActions = true,
     sortable = false,
     onReorder,
     resizable = true,
-    expandText = false,
+    wrapRules: externalWrapRules,
+    onWrapRulesChange,
     fullscreen = false,
-    groupByColumn,
-    onGroupByChange,
-    groupableColumns = [],
+    groupRules: externalGroupRules,
+    onGroupRulesChange,
+    columnOrder: externalColumnOrder,
+    onColumnOrderChange,
+    savedColumnWidths,
+    onColumnWidthsChange
 }: DataTableProps<T>) {
+    // Wrap state (per-column line wrapping, managed internally if not provided externally)
+    const [internalWrapRules, setInternalWrapRules] = useState<Array<{ columnKey: string; lines: '1' | '3' | 'full' }>>([]);
+    const wrapRules = externalWrapRules || internalWrapRules;
+    const setWrapRules = (newRules: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>) => {
+        if (onWrapRulesChange) {
+            onWrapRulesChange(newRules);
+        } else {
+            setInternalWrapRules(newRules);
+        }
+    };
+
+    // Grouping state (managed internally if not provided externally)
+    const [internalGroupRules, setInternalGroupRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>([]);
+
+    const groupRules = externalGroupRules || internalGroupRules;
+    const setGroupRules = useMemo(() => {
+        return (newRules: Array<{ id: string; key: string; direction: 'asc' | 'desc' }> | ((prev: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>) => Array<{ id: string; key: string; direction: 'asc' | 'desc' }>)) => {
+            if (onGroupRulesChange) {
+                // If using external state, we can't fully support functional updates easily without the current value, 
+                // but usually we can assume the parent handles it. 
+                // However, for verify/toggle logic, we often need 'prev'.
+                // Ideally, onGroupRulesChange should take the new array.
+                // We'll calculate new rules based on current 'groupRules' prop if possible.
+                // But for now, let's just support 'setInternal' style logic if we can, or just call the prop.
+
+                // If newRules is a function, resolve it
+                let resolved: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+                if (typeof newRules === 'function') {
+                    resolved = newRules(groupRules);
+                } else {
+                    resolved = newRules;
+                }
+                onGroupRulesChange(resolved);
+            } else {
+                setInternalGroupRules(newRules);
+            }
+        };
+    }, [groupRules, onGroupRulesChange]);
+
+    // Handle group by change (toggles or adds)
+    const handleGroupByChange = (columnKey: string | null) => {
+        if (columnKey === null) {
+            setGroupRules([]);
+            return;
+        }
+
+        setGroupRules(prev => {
+            // Check if already grouped by this column
+            const exists = prev.find(r => r.key === columnKey);
+            if (exists) {
+                // If it's the only one, remove it (toggle off)
+                // If there are others, remove it (remove from group)
+                return prev.filter(r => r.key !== columnKey);
+            } else {
+                // Add to end
+                return [...prev, { id: `${columnKey}-${Date.now()}`, key: columnKey, direction: 'asc' }];
+            }
+        });
+    };
+
+
     // Column widths state
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
         const widths: Record<string, number> = {};
         columns.forEach((col) => {
-            widths[col.key] = col.width || 120;
+            // Use saved width if available, otherwise use column default or 120px
+            widths[col.key] = savedColumnWidths?.[col.key] || col.width || 120;
         });
         return widths;
     });
+
+    // Sync columnWidths when savedColumnWidths prop changes (async load from DB)
+    useEffect(() => {
+        if (savedColumnWidths && Object.keys(savedColumnWidths).length > 0) {
+            setColumnWidths(prev => {
+                const updated = { ...prev };
+                for (const [key, width] of Object.entries(savedColumnWidths)) {
+                    if (typeof width === 'number') {
+                        updated[key] = width;
+                    }
+                }
+                return updated;
+            });
+        }
+    }, [savedColumnWidths]);
+
+    // Notify parent when column widths change (for persistence)
+    const handleColumnResize = useCallback((key: string, width: number) => {
+        setColumnWidths(prev => {
+            const updated = { ...prev, [key]: width };
+            // Notify parent for persistence
+            if (onColumnWidthsChange) {
+                onColumnWidthsChange(updated);
+            }
+            return updated;
+        });
+    }, [onColumnWidthsChange]);
+
+    // Column order state
+    const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() =>
+        columns.map(c => c.key)
+    );
+    const columnOrder = externalColumnOrder || internalColumnOrder;
+
+    // Sync internalColumnOrder when externalColumnOrder prop changes (async load from DB)
+    useEffect(() => {
+        if (externalColumnOrder && externalColumnOrder.length > 0) {
+            setInternalColumnOrder(externalColumnOrder);
+        }
+    }, [externalColumnOrder]);
+
+    // Ordered columns based on columnOrder
+    const orderedColumns = useMemo(() => {
+        const colMap = new Map(columns.map(c => [c.key, c]));
+        const ordered: typeof columns = [];
+
+        // Add columns in order
+        for (const key of columnOrder) {
+            const col = colMap.get(key);
+            if (col) {
+                ordered.push(col);
+                colMap.delete(key);
+            }
+        }
+
+        // Add any remaining columns not in order (new columns)
+        for (const col of colMap.values()) {
+            ordered.push(col);
+        }
+
+        return ordered;
+    }, [columns, columnOrder]);
+
+    // Handle column reorder
+    const handleColumnReorder = useCallback((oldIndex: number, newIndex: number) => {
+        const newOrder = [...columnOrder];
+        const [removed] = newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, removed);
+
+        if (onColumnOrderChange) {
+            onColumnOrderChange(newOrder);
+        } else {
+            setInternalColumnOrder(newOrder);
+        }
+    }, [columnOrder, onColumnOrderChange]);
 
     // Resize tracking
     const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
@@ -442,8 +873,63 @@ export function DataTable<T>({
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
+    // Native row drag state
+    const [draggingRowId, setDraggingRowId] = useState<string | null>(null);
+    const [dragOverRowId, setDragOverRowId] = useState<string | null>(null);
+
     // Collapsed groups state
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+    // Multi-sort state (managed by DataTable)
+    const [sortRules, setSortRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>([]);
+
+    // Grouping state
+    // Grouping state is managed above (lines 588+)
+
+
+    // Sort panel visibility
+    const [showSortPanel, setShowSortPanel] = useState(false);
+    const [sortSearch, setSortSearch] = useState('');
+    const sortPanelRef = useRef<HTMLDivElement>(null);
+
+    // Group panel visibility
+    const [showGroupPanel, setShowGroupPanel] = useState(false);
+    const [groupSearch, setGroupSearch] = useState('');
+    const groupPanelRef = useRef<HTMLDivElement>(null);
+
+    // Wrap panel visibility
+    const [showWrapPanel, setShowWrapPanel] = useState(false);
+    const [wrapSearch, setWrapSearch] = useState('');
+    const wrapPanelRef = useRef<HTMLDivElement>(null);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(50);
+    const rowsPerPageOptions = [10, 25, 50, 100, 200];
+
+    // Inline row creation state
+    const [isCreating, setIsCreating] = useState(false);
+
+    // Filter state - Notion-style filtering
+    type FilterOperator = 'contains' | 'does_not_contain' | 'is' | 'is_not' | 'is_empty' | 'is_not_empty';
+    interface FilterRule {
+        id: string;
+        field: string;
+        operator: FilterOperator;
+        value: string;
+        conjunction: 'and' | 'or';
+    }
+    const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+    const [showFilterPanel, setShowFilterPanel] = useState(false);
+    const filterPanelRef = useRef<HTMLDivElement>(null);
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{
+        columnKey: string;
+        columnHeader: string;
+        columnType?: string;
+        position: { top: number; left: number };
+    } | null>(null);
 
     // DnD sensors
     const sensors = useSensors(
@@ -451,50 +937,196 @@ export function DataTable<T>({
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
 
-    // Group column definition (for getting options/colorMap)
-    const groupColumn = groupByColumn ? columns.find(c => c.key === groupByColumn) : null;
+    // Apply filters first, then sort
+    const filteredData = useMemo(() => {
+        if (filterRules.length === 0) return data;
 
-    // Compute grouped data
-    const groupedData = useMemo(() => {
-        if (!groupByColumn) {
-            return null; // No grouping
-        }
+        return data.filter((row) => {
+            let result = true; // Start with AND logic
 
-        const groups = new Map<string, T[]>();
+            for (let i = 0; i < filterRules.length; i++) {
+                const rule = filterRules[i];
+                const col = columns.find(c => c.key === rule.field);
+                const cellValue = col?.getValue ? col.getValue(row) : (row as Record<string, unknown>)[rule.field];
+                const strValue = cellValue == null ? '' : String(cellValue).toLowerCase();
+                const filterValue = rule.value.toLowerCase();
 
-        data.forEach(row => {
-            const value = groupColumn?.getValue
-                ? groupColumn.getValue(row)
-                : (row as Record<string, unknown>)[groupByColumn];
-            const groupKey = value === null || value === undefined || value === '' ? '(Empty)' : String(value);
+                let matches = false;
+                switch (rule.operator) {
+                    case 'contains':
+                        matches = strValue.includes(filterValue);
+                        break;
+                    case 'does_not_contain':
+                        matches = !strValue.includes(filterValue);
+                        break;
+                    case 'is':
+                        matches = strValue === filterValue;
+                        break;
+                    case 'is_not':
+                        matches = strValue !== filterValue;
+                        break;
+                    case 'is_empty':
+                        matches = strValue === '' || cellValue == null;
+                        break;
+                    case 'is_not_empty':
+                        matches = strValue !== '' && cellValue != null;
+                        break;
+                }
 
-            if (!groups.has(groupKey)) {
-                groups.set(groupKey, []);
+                // Apply conjunction logic
+                if (i === 0) {
+                    result = matches;
+                } else if (rule.conjunction === 'and') {
+                    result = result && matches;
+                } else {
+                    result = result || matches;
+                }
             }
-            groups.get(groupKey)!.push(row);
+
+            return result;
+        });
+    }, [data, filterRules, columns]);
+
+    // Compute sorted data (must be before groupedData) - supports multi-sort and grouping
+    const sortedData = useMemo(() => {
+        // Combine group rules and sort rules (groups take precedence)
+        // Group rules need to act as "sort by group key asc/desc"
+        const effectiveSortRules = [...groupRules, ...sortRules];
+
+        if (effectiveSortRules.length === 0) return filteredData;
+
+        const sorted = [...filteredData].sort((a, b) => {
+            for (const rule of effectiveSortRules) {
+                const col = columns.find(c => c.key === rule.key);
+                const aVal = col?.getValue ? col.getValue(a) : (a as Record<string, unknown>)[rule.key];
+                const bVal = col?.getValue ? col.getValue(b) : (b as Record<string, unknown>)[rule.key];
+
+                // Handle null/undefined
+                if (aVal == null && bVal == null) continue;
+                if (aVal == null) return 1;
+                if (bVal == null) return -1;
+
+                // Compare
+                // Try number comparison first if looks like number
+                const aNum = Number(aVal);
+                const bNum = Number(bVal);
+                let comparison = 0;
+
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    comparison = aNum - bNum;
+                } else {
+                    const aStr = String(aVal).toLowerCase();
+                    const bStr = String(bVal).toLowerCase();
+                    comparison = aStr.localeCompare(bStr);
+                }
+
+                if (comparison !== 0) {
+                    return rule.direction === 'asc' ? comparison : -comparison;
+                }
+            }
+            return 0;
         });
 
-        return groups;
-    }, [data, groupByColumn, groupColumn]);
+        return sorted;
+    }, [filteredData, sortRules, groupRules, columns]);
 
-    // Get display label for a group value
-    const getGroupLabel = useCallback((groupValue: string) => {
-        if (groupValue === '(Empty)') return '(Empty)';
-        if (!groupColumn) return groupValue;
+    // Pagination - compute paginated data from sorted data (only when not grouped)
+    const totalRows = sortedData.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
 
-        // If column has options, find the label
-        const options = typeof groupColumn.options === 'function'
-            ? [] // Can't use function options for grouping display
-            : groupColumn.options;
-        const opt = options?.find(o => String(o.value) === groupValue);
-        return opt?.label || groupValue;
-    }, [groupColumn]);
+    // Reset to page 1 if current page exceeds total pages
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(1);
+        }
+    }, [totalPages, currentPage]);
 
-    // Get color class for a group value
-    const getGroupColorClass = useCallback((groupValue: string) => {
-        if (!groupColumn?.colorMap || groupValue === '(Empty)') return undefined;
-        return groupColumn.colorMap[groupValue];
-    }, [groupColumn]);
+    const paginatedData = useMemo(() => {
+        // Don't paginate when grouping is active
+        if (groupRules.length > 0) return sortedData;
+
+        const startIdx = (currentPage - 1) * rowsPerPage;
+        const endIdx = startIdx + rowsPerPage;
+        return sortedData.slice(startIdx, endIdx);
+    }, [sortedData, currentPage, rowsPerPage, groupRules.length]);
+
+    // Recursive Grouping Logic
+    type GroupNode = {
+        id: string;
+        key: string;
+        value: string; // The display value
+        level: number;
+        count: number;
+        children?: GroupNode[];
+        rows?: T[];
+        colorClass?: string;
+    };
+
+    const groupedData = useMemo(() => {
+        if (groupRules.length === 0) return null;
+
+        const buildGroups = (currentRows: T[], level: number, parentId: string): GroupNode[] => {
+            const rule = groupRules[level];
+            if (!rule) return []; // Should not happen if recursion is correct
+
+            const groups = new Map<string, T[]>();
+            const col = columns.find(c => c.key === rule.key);
+
+            currentRows.forEach(row => {
+                const value = col?.getValue
+                    ? col.getValue(row)
+                    : (row as any)[rule.key];
+                const key = value === null || value === undefined || value === '' ? '(Empty)' : String(value);
+
+                if (!groups.has(key)) {
+                    groups.set(key, []);
+                }
+                groups.get(key)!.push(row);
+            });
+
+            // Convert Map to Array and sort based on rule direction (already sorted by sortedData but good to ensure order)
+            // actually sortedData handled the order, so we can just iterate the map in insertion order if we populated it correctly?
+            // Map preserves insertion order. sortedData is sorted effectively.
+
+            const nodes: GroupNode[] = [];
+            groups.forEach((rows, key) => {
+                const nodeId = `${parentId}-${rule.key}-${key}`;
+
+                // Get display label
+                let label = key;
+                if (col?.options && Array.isArray(col.options)) {
+                    const opt = col.options.find(o => String(o.value) === key);
+                    if (opt) label = opt.label;
+                }
+
+                // Get color
+                let colorClass = undefined;
+                if (col?.colorMap) colorClass = col.colorMap[key];
+
+                const node: GroupNode = {
+                    id: nodeId,
+                    key: rule.key,
+                    value: label,
+                    level,
+                    count: rows.length,
+                    colorClass
+                };
+
+                if (level < groupRules.length - 1) {
+                    node.children = buildGroups(rows, level + 1, nodeId);
+                } else {
+                    node.rows = rows;
+                }
+                nodes.push(node);
+            });
+
+            return nodes;
+        };
+
+        return buildGroups(sortedData, 0, 'root');
+    }, [sortedData, groupRules, columns]);
+
+
 
     // Toggle group collapse
     const toggleGroupCollapse = useCallback((groupKey: string) => {
@@ -506,6 +1138,52 @@ export function DataTable<T>({
                 next.add(groupKey);
             }
             return next;
+        });
+    }, []);
+
+    // Close sort/group panel when clicking outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (sortPanelRef.current && !sortPanelRef.current.contains(event.target as Node)) {
+                setShowSortPanel(false);
+            }
+            if (groupPanelRef.current && !groupPanelRef.current.contains(event.target as Node)) {
+                setShowGroupPanel(false);
+            }
+        }
+        if (showSortPanel || showGroupPanel) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showSortPanel, showGroupPanel]);
+
+    // Handle sort from context menu (adds/replaces sort rule)
+    const handleSort = useCallback((columnKey: string, direction: 'asc' | 'desc') => {
+        setSortRules(prev => {
+            // Check if this column already has a sort
+            const existingIndex = prev.findIndex(r => r.key === columnKey);
+            if (existingIndex >= 0) {
+                // If same direction, remove the sort
+                if (prev[existingIndex].direction === direction) {
+                    return prev.filter((_, i) => i !== existingIndex);
+                }
+                // Otherwise update the direction
+                const newRules = [...prev];
+                newRules[existingIndex] = { ...prev[existingIndex], direction };
+                return newRules;
+            }
+            // Add new sort rule
+            return [...prev, { id: Math.random().toString(36).substr(2, 9), key: columnKey, direction }];
+        });
+    }, []);
+
+    // Handle header right-click
+    const handleHeaderContextMenu = useCallback((e: React.MouseEvent, col: ColumnDef<T>) => {
+        e.preventDefault();
+        setContextMenu({
+            columnKey: col.key,
+            columnHeader: col.header,
+            position: { top: e.clientY, left: e.clientX }
         });
     }, []);
 
@@ -532,10 +1210,20 @@ export function DataTable<T>({
     }, [columns]);
 
     const handleResizeEnd = useCallback(() => {
+        console.log('[DataTable] handleResizeEnd called, resizingRef:', resizingRef.current, 'onColumnWidthsChange:', !!onColumnWidthsChange);
+        // Notify parent of final widths for persistence
+        if (onColumnWidthsChange && resizingRef.current) {
+            // Get current columnWidths state (closure captures the latest via setColumnWidths callback)
+            setColumnWidths(currentWidths => {
+                console.log('[DataTable] Calling onColumnWidthsChange with:', currentWidths);
+                onColumnWidthsChange(currentWidths);
+                return currentWidths; // Don't modify, just access
+            });
+        }
         resizingRef.current = null;
         document.removeEventListener('mousemove', handleResizeMove);
         document.removeEventListener('mouseup', handleResizeEnd);
-    }, [handleResizeMove]);
+    }, [handleResizeMove, onColumnWidthsChange]);
 
     // Edit handlers
     const handleEditStart = useCallback((row: T, field: string, event: React.MouseEvent) => {
@@ -586,6 +1274,21 @@ export function DataTable<T>({
         }
     }, [onCopy, getRowId]);
 
+    // Inline row creation handler
+    const handleCreateRow = useCallback(async () => {
+        if (!onCreateRow || isCreating) return;
+
+        setIsCreating(true);
+        try {
+            await onCreateRow();
+            // Don't reload - parent component should optimistically update data
+        } catch (error) {
+            console.error('Failed to create row:', error);
+        } finally {
+            setIsCreating(false);
+        }
+    }, [onCreateRow, isCreating]);
+
     // Drag end handler
     const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over } = event;
@@ -600,63 +1303,716 @@ export function DataTable<T>({
         }
     }, [data, getRowId, onReorder]);
 
+    // Create native drag handlers for a specific row
+    const createRowDragHandlers = useCallback((rowId: string) => ({
+        onRowDragStart: (e: React.DragEvent<HTMLTableRowElement>) => {
+            console.log('[DataTable] Drag started:', rowId);
+            setDraggingRowId(rowId);
+            e.dataTransfer.setData('text/plain', rowId);
+            e.dataTransfer.effectAllowed = 'move';
+        },
+        onRowDragEnd: () => {
+            console.log('[DataTable] Drag ended');
+            setDraggingRowId(null);
+            setDragOverRowId(null);
+        },
+        onRowDragEnter: (e: React.DragEvent<HTMLTableRowElement>) => {
+            e.preventDefault();
+            if (draggingRowId && draggingRowId !== rowId) {
+                console.log('[DataTable] Drag enter:', rowId, 'from:', draggingRowId);
+                setDragOverRowId(rowId);
+            }
+        },
+        onRowDragOver: (e: React.DragEvent<HTMLTableRowElement>) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        },
+        onRowDragLeave: (e: React.DragEvent<HTMLTableRowElement>) => {
+            // Only clear if we're leaving to a non-child element
+            const relatedTarget = e.relatedTarget as HTMLElement;
+            if (!e.currentTarget.contains(relatedTarget)) {
+                if (dragOverRowId === rowId) {
+                    setDragOverRowId(null);
+                }
+            }
+        },
+        onRowDrop: (e: React.DragEvent<HTMLTableRowElement>) => {
+            e.preventDefault();
+            const draggedId = e.dataTransfer.getData('text/plain');
+            console.log('[DataTable] Drop on:', rowId, 'data:', draggedId, 'onReorder:', !!onReorder);
+            if (draggedId !== rowId && onReorder) {
+                const oldIndex = data.findIndex(row => getRowId(row) === draggedId);
+                const newIndex = data.findIndex(row => getRowId(row) === rowId);
+                console.log('[DataTable] Reorder - oldIndex:', oldIndex, 'newIndex:', newIndex);
+                if (oldIndex !== -1 && newIndex !== -1) {
+                    const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
+                    console.log('[DataTable] Calling onReorder with:', newOrder);
+                    onReorder(newOrder);
+                }
+            }
+            setDraggingRowId(null);
+            setDragOverRowId(null);
+        },
+    }), [data, getRowId, onReorder, draggingRowId, dragOverRowId]);
+
     // Calculate total width
     const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0)
-        + (sortable ? 40 : 0)
-        + (showRowActions ? 80 : 0);
+        + (sortable ? 40 : 0)  // Drag handle column (w-10 = 40px)
+        + (showRowActions ? 80 : 0);  // Actions column (w-20 = 80px)
 
-    const rowIds = data.map(getRowId);
+    const rowIds = sortedData.map(getRowId);
+
+    const handleSortDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (active.id !== over?.id) {
+            setSortRules((items) => {
+                const oldIndex = items.findIndex((item) => item.id === active.id);
+                const newIndex = items.findIndex((item) => item.id === over!.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
+
+    const handleGroupDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (active.id !== over?.id) {
+            setGroupRules((items) => {
+                const oldIndex = items.findIndex((item) => item.id === active.id);
+                const newIndex = items.findIndex((item) => item.id === over!.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
 
     return (
         <div className={cn(
             "bg-white border border-gray-200 shadow-sm",
             fullscreen ? "flex-1 flex flex-col h-full overflow-hidden" : "rounded-xl"
         )}>
-            {/* Group By Toolbar */}
-            {groupableColumns.length > 0 && (
-                <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-3 flex-shrink-0 bg-gray-50">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Group by:</span>
-                        <select
-                            value={groupByColumn || ''}
-                            onChange={(e) => onGroupByChange?.(e.target.value || null)}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            {/* Sort/Group Toolbar */}
+            <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 relative z-20 shadow-sm">
+                {/* Sort Button */}
+                <div className="relative">
+                    <button
+                        onClick={() => setShowSortPanel(!showSortPanel)}
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            sortRules.length > 0
+                                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                        )}
+                    >
+                        <ArrowUpDown className="w-3.5 h-3.5" />
+                        {sortRules.length > 0 ? `Sorted by ${sortRules.length} field${sortRules.length > 1 ? 's' : ''}` : 'Sort'}
+                    </button>
+
+                    {/* Sort Panel Popup */}
+                    {showSortPanel && (
+                        <div
+                            ref={sortPanelRef}
+                            className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50"
                         >
-                            <option value="">None</option>
-                            {groupableColumns.map(colKey => {
-                                const col = columns.find(c => c.key === colKey);
-                                return (
-                                    <option key={colKey} value={colKey}>
-                                        {col?.header || colKey}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </div>
-                    {groupByColumn && (
-                        <div className="flex items-center gap-2 ml-auto">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (groupedData) {
-                                        setCollapsedGroups(new Set(groupedData.keys()));
-                                    }
+                            <div className="text-xs font-medium text-gray-500 mb-2">Sort by</div>
+
+                            {sortRules.length > 0 ? (
+                                <div className="space-y-2">
+                                    <DndContext
+                                        sensors={sensors}
+                                        collisionDetection={closestCenter}
+                                        onDragEnd={handleSortDragEnd}
+                                    >
+                                        <SortableContext items={sortRules} strategy={verticalListSortingStrategy}>
+                                            {sortRules.map((rule) => (
+                                                <SortableSortRule
+                                                    key={rule.id}
+                                                    rule={rule}
+                                                    columns={orderedColumns}
+                                                    onUpdate={(updates) => {
+                                                        const newRules = [...sortRules];
+                                                        const index = newRules.findIndex(r => r.id === rule.id);
+                                                        if (index !== -1) {
+                                                            newRules[index] = { ...newRules[index], ...updates };
+                                                            setSortRules(newRules);
+                                                        }
+                                                    }}
+                                                    onRemove={() => setSortRules(sortRules.filter(r => r.id !== rule.id))}
+                                                />
+                                            ))}
+                                        </SortableContext>
+                                    </DndContext>
+
+                                    {/* Add another sort button */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setSortSearch(sortSearch === '' ? ' ' : '')}
+                                            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 py-1"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                            Add another sort
+                                        </button>
+
+                                        {/* Sort field picker (shows when expanded) */}
+                                        {sortSearch !== '' && (
+                                            <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-2">
+                                                <div className="mb-2">
+                                                    <SearchInput
+                                                        value={sortSearch.trim()}
+                                                        onChange={(v) => setSortSearch(v || ' ')}
+                                                        placeholder="Find a field"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                                <div className="max-h-[150px] overflow-y-auto">
+                                                    {columns
+                                                        .filter(col => col.header.toLowerCase().includes(sortSearch.trim().toLowerCase()) && !sortRules.some(r => r.key === col.key))
+                                                        .map(col => (
+                                                            <button
+                                                                key={col.key}
+                                                                onClick={() => {
+                                                                    setSortRules([...sortRules, {
+                                                                        id: Math.random().toString(36).substr(2, 9),
+                                                                        key: col.key,
+                                                                        direction: 'asc'
+                                                                    }]);
+                                                                    setSortSearch('');
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-white rounded text-left transition-colors text-gray-700 hover:text-blue-600"
+                                                            >
+                                                                <span className="flex-1">{col.header}</span>
+                                                            </button>
+                                                        ))
+                                                    }
+                                                    {columns.filter(col => col.header.toLowerCase().includes(sortSearch.trim().toLowerCase()) && !sortRules.some(r => r.key === col.key)).length === 0 && (
+                                                        <div className="px-2 py-1.5 text-xs text-gray-400 text-center">No more fields</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Initial field list when no sorts selected */
+                                <>
+                                    <div className="mb-2">
+                                        <SearchInput
+                                            value={sortSearch}
+                                            onChange={setSortSearch}
+                                            placeholder="Find a field"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="max-h-[200px] overflow-y-auto">
+                                        {columns
+                                            .filter(col => col.header.toLowerCase().includes(sortSearch.toLowerCase()))
+                                            .map(col => (
+                                                <button
+                                                    key={col.key}
+                                                    onClick={() => {
+                                                        setSortRules([{
+                                                            id: Math.random().toString(36).substr(2, 9),
+                                                            key: col.key,
+                                                            direction: 'asc'
+                                                        }]);
+                                                        setSortSearch('');
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 rounded text-left transition-colors text-gray-700 hover:text-blue-600"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center text-gray-400">
+                                                        <ArrowUpDown className="w-3.5 h-3.5" />
+                                                    </div>
+                                                    <span className="flex-1">{col.header}</span>
+                                                </button>
+                                            ))
+                                        }
+                                        {columns.filter(col => col.header.toLowerCase().includes(sortSearch.toLowerCase())).length === 0 && (
+                                            <div className="px-4 py-2 text-xs text-gray-400 text-center">No fields found</div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Filter Button */}
+                <div ref={filterPanelRef} className="relative">
+                    <button
+                        onClick={() => setShowFilterPanel(!showFilterPanel)}
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            filterRules.length > 0
+                                ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                        )}
+                    >
+                        <Filter className="w-3.5 h-3.5" />
+                        {filterRules.length > 0 ? `Filtered by ${filterRules.length} rule${filterRules.length > 1 ? 's' : ''}` : 'Filter'}
+                        {filterRules.length > 0 && (
+                            <span
+                                className="ml-1 p-0.5 hover:bg-green-200 rounded-full"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFilterRules([]);
                                 }}
-                                className="text-xs text-gray-500 hover:text-gray-700 underline"
                             >
-                                Collapse all
-                            </button>
+                                <X className="w-3 h-3" />
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Filter Panel Popup */}
+                    {showFilterPanel && (
+                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[450px] z-50">
+                            <div className="text-xs font-medium text-gray-500 mb-2">
+                                In this view, show records
+                            </div>
+
+                            {/* Filter Rules */}
+                            {filterRules.length > 0 ? (
+                                <div className="space-y-2 mb-3">
+                                    {filterRules.map((rule, index) => (
+                                        <div key={rule.id} className="flex items-center gap-2">
+                                            {/* Conjunction (and/or) */}
+                                            {index === 0 ? (
+                                                <div className="w-14 text-xs text-gray-500 text-right">Where</div>
+                                            ) : (
+                                                <select
+                                                    value={rule.conjunction}
+                                                    onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                        r.id === rule.id ? { ...r, conjunction: e.target.value as 'and' | 'or' } : r
+                                                    ))}
+                                                    className="w-14 text-xs px-1 py-1 border border-gray-200 rounded bg-gray-50"
+                                                >
+                                                    <option value="and">and</option>
+                                                    <option value="or">or</option>
+                                                </select>
+                                            )}
+
+                                            {/* Field */}
+                                            <select
+                                                value={rule.field}
+                                                onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                    r.id === rule.id ? { ...r, field: e.target.value } : r
+                                                ))}
+                                                className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
+                                            >
+                                                {columns.map(col => (
+                                                    <option key={col.key} value={col.key}>{col.header}</option>
+                                                ))}
+                                            </select>
+
+                                            {/* Operator */}
+                                            <select
+                                                value={rule.operator}
+                                                onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                    r.id === rule.id ? { ...r, operator: e.target.value as FilterRule['operator'] } : r
+                                                ))}
+                                                className="w-32 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
+                                            >
+                                                <option value="contains">contains</option>
+                                                <option value="does_not_contain">does not contain</option>
+                                                <option value="is">is</option>
+                                                <option value="is_not">is not</option>
+                                                <option value="is_empty">is empty</option>
+                                                <option value="is_not_empty">is not empty</option>
+                                            </select>
+
+                                            {/* Value - smart input based on column type */}
+                                            {rule.operator !== 'is_empty' && rule.operator !== 'is_not_empty' && (() => {
+                                                const col = columns.find(c => c.key === rule.field);
+                                                const rawOptions = col?.options;
+                                                // Only use options if they're an array (not a function)
+                                                const colOptions = Array.isArray(rawOptions) ? rawOptions : undefined;
+
+                                                if (colOptions && colOptions.length > 0) {
+                                                    // Column has options - use SingleSelect component
+                                                    return (
+                                                        <SingleSelect
+                                                            value={rule.value}
+                                                            options={colOptions}
+                                                            onChange={(val) => setFilterRules(prev => prev.map(r =>
+                                                                r.id === rule.id ? { ...r, value: String(val) } : r
+                                                            ))}
+                                                            colorMap={col?.colorMap}
+                                                            placeholder="Select..."
+                                                            className="flex-1 border-gray-200"
+                                                        />
+                                                    );
+                                                } else {
+                                                    // Regular text input
+                                                    return (
+                                                        <input
+                                                            type="text"
+                                                            value={rule.value}
+                                                            onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                                r.id === rule.id ? { ...r, value: e.target.value } : r
+                                                            ))}
+                                                            placeholder="Enter a value"
+                                                            className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                                                        />
+                                                    );
+                                                }
+                                            })()}
+
+                                            {/* Delete */}
+                                            <button
+                                                onClick={() => setFilterRules(prev => prev.filter(r => r.id !== rule.id))}
+                                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-xs text-gray-400 py-2 mb-2">No filters applied</div>
+                            )}
+
+                            {/* Add Condition */}
                             <button
-                                type="button"
-                                onClick={() => setCollapsedGroups(new Set())}
-                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                onClick={() => setFilterRules([...filterRules, {
+                                    id: Math.random().toString(36).substr(2, 9),
+                                    field: columns[0]?.key || '',
+                                    operator: 'contains',
+                                    value: '',
+                                    conjunction: 'and'
+                                }])}
+                                className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700"
                             >
-                                Expand all
+                                <Plus className="w-3.5 h-3.5" />
+                                Add condition
                             </button>
                         </div>
                     )}
                 </div>
-            )}
+
+                {/* Group Button */}
+                <div ref={groupPanelRef} className="relative">
+                    <button
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            groupRules.length > 0
+                                ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                                : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                        )}
+                        onClick={() => setShowGroupPanel(!showGroupPanel)}
+                    >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        {groupRules.length > 0 ? `Grouped by ${groupRules.length} rule${groupRules.length > 1 ? 's' : ''}` : 'Group'}
+                        {groupRules.length > 0 && (
+                            <span
+                                className="ml-1 p-0.5 hover:bg-purple-200 rounded-full"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setGroupRules([]);
+                                }}
+                            >
+                                <X className="w-3 h-3" />
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Group Panel Popup */}
+                    {showGroupPanel && (
+                        <div
+                            className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50 flex flex-col gap-2"
+                        >
+                            {/* Header with Collapse/Expand */}
+                            <div className="flex items-center justify-between">
+                                <div className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                                    Group by
+                                    <span className="text-gray-400 cursor-help" title="Group rows by field values">ⓘ</span>
+                                </div>
+                                {groupRules.length > 0 && groupedData && (
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const allIds = new Set<string>();
+                                                const traverse = (nodes: any[]) => {
+                                                    nodes.forEach(n => {
+                                                        allIds.add(n.id);
+                                                        if (n.children) traverse(n.children);
+                                                    });
+                                                };
+                                                traverse(groupedData);
+                                                setCollapsedGroups(allIds);
+                                            }}
+                                            className="text-gray-500 hover:text-gray-700"
+                                        >
+                                            Collapse all
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCollapsedGroups(new Set())}
+                                            className="text-gray-500 hover:text-gray-700"
+                                        >
+                                            Expand all
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Active Group Rules */}
+                            {groupRules.length > 0 ? (
+                                <div className="space-y-2">
+                                    <DndContext
+                                        sensors={sensors}
+                                        collisionDetection={closestCenter}
+                                        onDragEnd={handleGroupDragEnd}
+                                    >
+                                        <SortableContext items={groupRules.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                                            {groupRules.map(rule => (
+                                                <SortableSortRule
+                                                    key={rule.id}
+                                                    rule={rule}
+                                                    columns={orderedColumns}
+                                                    onUpdate={(updates) => {
+                                                        setGroupRules(prev => prev.map(r => r.id === rule.id ? { ...r, ...updates } : r));
+                                                    }}
+                                                    onRemove={() => {
+                                                        setGroupRules(prev => prev.filter(r => r.id !== rule.id));
+                                                    }}
+                                                />
+                                            ))}
+                                        </SortableContext>
+                                    </DndContext>
+
+                                    {/* Add subgroup button */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setGroupSearch(groupSearch === '' ? ' ' : '')}
+                                            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 py-1"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                            Add subgroup
+                                        </button>
+
+                                        {/* Subgroup field picker (shows when expanded) */}
+                                        {groupSearch !== '' && (
+                                            <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-2">
+                                                <div className="mb-2">
+                                                    <SearchInput
+                                                        value={groupSearch.trim()}
+                                                        onChange={(v) => setGroupSearch(v || ' ')}
+                                                        placeholder="Find a field"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                                <div className="max-h-[150px] overflow-y-auto">
+                                                    {columns
+                                                        .filter(col => col.header.toLowerCase().includes(groupSearch.trim().toLowerCase()) && !groupRules.some(r => r.key === col.key))
+                                                        .map(col => (
+                                                            <button
+                                                                key={col.key}
+                                                                onClick={() => {
+                                                                    handleGroupByChange(col.key);
+                                                                    setGroupSearch('');
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-white rounded text-left transition-colors text-gray-700 hover:text-blue-600"
+                                                            >
+                                                                <span className="flex-1">{col.header}</span>
+                                                            </button>
+                                                        ))
+                                                    }
+                                                    {columns.filter(col => col.header.toLowerCase().includes(groupSearch.trim().toLowerCase()) && !groupRules.some(r => r.key === col.key)).length === 0 && (
+                                                        <div className="px-2 py-1.5 text-xs text-gray-400 text-center">No more fields</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Initial field list when no groups selected */
+                                <>
+                                    <SearchInput
+                                        value={groupSearch}
+                                        onChange={setGroupSearch}
+                                        placeholder="Find a field"
+                                        autoFocus
+                                    />
+                                    <div className="max-h-[200px] overflow-y-auto">
+                                        {columns
+                                            .filter(col => col.header.toLowerCase().includes(groupSearch.toLowerCase()))
+                                            .map(col => (
+                                                <button
+                                                    key={col.key}
+                                                    onClick={() => {
+                                                        handleGroupByChange(col.key);
+                                                        setGroupSearch('');
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 rounded text-left transition-colors text-gray-700 hover:text-blue-600"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center text-gray-400">
+                                                        <GripVertical className="w-3.5 h-3.5" />
+                                                    </div>
+                                                    <span className="flex-1">{col.header}</span>
+                                                </button>
+                                            ))
+                                        }
+                                        {columns.filter(col => col.header.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 && (
+                                            <div className="px-4 py-2 text-xs text-gray-400 text-center">No fields found</div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Wrap Button and Panel */}
+                <div className="relative" ref={wrapPanelRef}>
+                    <button
+                        onClick={() => setShowWrapPanel(!showWrapPanel)}
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            wrapRules.length > 0
+                                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                        )}
+                    >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        Wrap
+                        {wrapRules.length > 0 && (
+                            <span className="text-[10px] bg-blue-200 text-blue-700 px-1.5 rounded-full">
+                                {wrapRules.length}
+                            </span>
+                        )}
+                    </button>
+
+                    {showWrapPanel && (
+                        <>
+                            {/* Panel Container */}
+                            <div
+                                className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 w-72"
+                            >
+                                {/* Panel Header */}
+                                <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+                                    <span className="text-xs font-medium text-gray-600">Wrap columns</span>
+                                    <div className="flex-1" />
+                                    {wrapRules.length > 0 && (
+                                        <button
+                                            onClick={() => setWrapRules([])}
+                                            className="text-[10px] text-gray-400 hover:text-gray-600"
+                                        >
+                                            Clear all
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Search */}
+                                <div className="p-2 border-b border-gray-100">
+                                    <SearchInput
+                                        value={wrapSearch}
+                                        onChange={setWrapSearch}
+                                        placeholder="Find a field"
+                                    />
+                                </div>
+
+                                {/* Column List */}
+                                <div className="max-h-[250px] overflow-y-auto py-1">
+                                    {columns
+                                        .filter(col => col.header.toLowerCase().includes(wrapSearch.toLowerCase()))
+                                        .map(col => {
+                                            const wrapRule = wrapRules.find(r => r.columnKey === col.key);
+                                            const currentLines = wrapRule?.lines || null;
+
+                                            const handleLineClick = (lines: '1' | '3' | 'full') => {
+                                                if (currentLines === lines) {
+                                                    // Remove wrap rule
+                                                    setWrapRules(wrapRules.filter(r => r.columnKey !== col.key));
+                                                } else {
+                                                    // Add or update wrap rule
+                                                    const newRules = wrapRules.filter(r => r.columnKey !== col.key);
+                                                    newRules.push({ columnKey: col.key, lines });
+                                                    setWrapRules(newRules);
+                                                }
+                                            };
+
+                                            return (
+                                                <div
+                                                    key={col.key}
+                                                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50"
+                                                >
+                                                    <GripVertical className="w-3 h-3 text-gray-300" />
+                                                    <span className="flex-1 text-xs text-gray-700 truncate">{col.header}</span>
+
+                                                    {/* Line Options */}
+                                                    <div className="flex items-center gap-0.5 text-[9px]">
+                                                        <button
+                                                            onClick={() => handleLineClick('1')}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded transition-colors",
+                                                                currentLines === '1'
+                                                                    ? "bg-blue-100 text-blue-700"
+                                                                    : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                                            )}
+                                                        >
+                                                            1
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleLineClick('3')}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded transition-colors",
+                                                                currentLines === '3'
+                                                                    ? "bg-blue-100 text-blue-700"
+                                                                    : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                                            )}
+                                                        >
+                                                            3
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleLineClick('full')}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded transition-colors",
+                                                                currentLines === 'full'
+                                                                    ? "bg-blue-100 text-blue-700"
+                                                                    : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                                            )}
+                                                        >
+                                                            Full
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Collapse/Expand buttons for groups */}
+                {groupRules.length > 0 && groupedData && (
+                    <div className="flex items-center gap-2 ml-auto text-xs">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const allIds = new Set<string>();
+                                const traverse = (nodes: any[]) => {
+                                    nodes.forEach(n => {
+                                        allIds.add(n.id);
+                                        if (n.children) traverse(n.children);
+                                    });
+                                };
+                                traverse(groupedData);
+                                setCollapsedGroups(allIds);
+                            }}
+                            className="text-gray-500 hover:text-gray-700 underline"
+                        >
+                            Collapse all
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCollapsedGroups(new Set())}
+                            className="text-gray-500 hover:text-gray-700 underline"
+                        >
+                            Expand all
+                        </button>
+                    </div>
+                )}
+            </div>
             <div className={cn(
                 "overflow-x-auto",
                 fullscreen && "flex-1 overflow-y-auto"
@@ -665,129 +2021,323 @@ export function DataTable<T>({
                     className="data-grid-table"
                     style={{ width: totalWidth, tableLayout: 'fixed' }}
                 >
-                    <thead>
+                    {/* Column Header with native HTML5 drag-and-drop */}
+                    <thead className="sticky top-0 z-10 bg-white">
                         <tr>
                             {sortable && <th className="data-grid-th w-10"></th>}
-                            {columns.map((col) => (
-                                <th
-                                    key={col.key}
-                                    className="data-grid-th relative"
-                                    style={{ width: columnWidths[col.key] }}
-                                >
-                                    {col.header}
-                                    {resizable && (
-                                        <div
-                                            className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                                            onMouseDown={(e) => handleResizeStart(col.key, e)}
-                                        />
-                                    )}
-                                </th>
-                            ))}
+                            {orderedColumns.map((col, colIndex) => {
+                                const sortRule = sortRules.find(r => r.key === col.key);
+                                return (
+                                    <th
+                                        key={col.key}
+                                        className="data-grid-th relative group/header cursor-grab active:cursor-grabbing"
+                                        style={{ width: columnWidths[col.key] }}
+                                        onContextMenu={(e) => handleHeaderContextMenu(e, col)}
+                                        draggable
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData('text/plain', col.key);
+                                            e.dataTransfer.effectAllowed = 'move';
+                                        }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = 'move';
+                                        }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            const draggedKey = e.dataTransfer.getData('text/plain');
+                                            if (draggedKey !== col.key) {
+                                                const oldIndex = columnOrder.findIndex(k => k === draggedKey);
+                                                const newIndex = colIndex;
+                                                handleColumnReorder(oldIndex, newIndex);
+                                            }
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <GripVertical className="w-3 h-3 text-gray-300 group-hover/header:text-gray-500 rotate-90" />
+                                            {col.header}
+                                            {sortRule && (
+                                                sortRule.direction === 'asc'
+                                                    ? <ArrowUp className="w-3 h-3 text-blue-600" />
+                                                    : <ArrowDown className="w-3 h-3 text-blue-600" />
+                                            )}
+                                            {/* Dropdown arrow - visible on hover, opens context menu on click */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setContextMenu({
+                                                        columnKey: col.key,
+                                                        columnHeader: col.header,
+                                                        columnType: col.type,
+                                                        position: { top: e.currentTarget.getBoundingClientRect().bottom + 4, left: e.currentTarget.getBoundingClientRect().left }
+                                                    });
+                                                }}
+                                                className="ml-auto opacity-0 group-hover/header:opacity-100 p-0.5 text-gray-400 hover:text-gray-600 transition-opacity"
+                                            >
+                                                <ChevronDown className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                        {resizable && (
+                                            <div
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                                onMouseDown={(e) => handleResizeStart(col.key, e)}
+                                            />
+                                        )}
+                                    </th>
+                                );
+                            })}
                             {showRowActions && <th className="data-grid-th w-20">Actions</th>}
                         </tr>
                     </thead>
 
-                    <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEnd}
-                        autoScroll={false}
-                    >
-                        <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
-                            <tbody>
-                                {isLoading ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <tr key={i} className="animate-pulse">
-                                            {sortable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-6 mx-2"></div></td>}
-                                            {columns.map((col) => (
-                                                <td key={col.key} className="data-grid-td">
-                                                    <div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div>
-                                                </td>
-                                            ))}
-                                            {showRowActions && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-12 mx-2"></div></td>}
-                                        </tr>
-                                    ))
-                                ) : data.length === 0 ? (
-                                    <tr>
-                                        <td
-                                            colSpan={columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0)}
-                                            className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs"
-                                        >
-                                            {emptyMessage}
+                    {/* Table Body - using native HTML5 drag-and-drop for rows */}
+                    <tbody>
+                        {isLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="animate-pulse">
+                                    {sortable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-6 mx-2"></div></td>}
+                                    {columns.map((col) => (
+                                        <td key={col.key} className="data-grid-td">
+                                            <div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div>
                                         </td>
-                                    </tr>
-                                ) : groupedData ? (
-                                    // Grouped rendering
-                                    Array.from(groupedData.entries()).map(([groupKey, rows]) => {
-                                        const isCollapsed = collapsedGroups.has(groupKey);
-                                        const colSpan = columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0);
+                                    ))}
+                                    {showRowActions && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-12 mx-2"></div></td>}
+                                </tr>
+                            ))
+                        ) : data.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0)}
+                                    className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs"
+                                >
+                                    {emptyMessage}
+                                </td>
+                            </tr>
+                        ) : groupedData ? (
+                            // Recursive Grouped Rendering
+                            (() => {
+                                const colSpan = columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0);
+
+                                const renderGroupNodes = (nodes: any[]) => {
+                                    return nodes.map((node: any) => {
+                                        const isCollapsed = collapsedGroups.has(node.id);
 
                                         return (
-                                            <React.Fragment key={groupKey}>
+                                            <React.Fragment key={node.id}>
                                                 <GroupHeader
-                                                    groupValue={getGroupLabel(groupKey)}
-                                                    count={rows.length}
+                                                    groupValue={node.value}
+                                                    count={node.count}
                                                     isCollapsed={isCollapsed}
-                                                    onToggle={() => toggleGroupCollapse(groupKey)}
+                                                    onToggle={() => toggleGroupCollapse(node.id)}
                                                     colSpan={colSpan}
-                                                    colorClass={getGroupColorClass(groupKey)}
+                                                    colorClass={node.colorClass}
+                                                    level={node.level}
                                                 />
-                                                {!isCollapsed && rows.map((row) => (
-                                                    <SortableRow
-                                                        key={getRowId(row)}
-                                                        row={row}
-                                                        rowId={getRowId(row)}
-                                                        columns={columns}
-                                                        columnWidths={columnWidths}
-                                                        sortable={sortable}
-                                                        showRowActions={showRowActions}
-                                                        editingCell={editingCell}
-                                                        editingValue={editingValue}
-                                                        expandText={expandText}
-                                                        dropdownPosition={dropdownPosition}
-                                                        onEditStart={handleEditStart}
-                                                        onEditChange={setEditingValue}
-                                                        onEditSave={handleEditSave}
-                                                        onEditCancel={handleEditCancel}
-                                                        onDelete={onDelete}
-                                                        onCopy={handleCopy}
-                                                        copiedId={copiedId}
-                                                    />
-                                                ))}
+                                                {!isCollapsed && (
+                                                    node.children
+                                                        ? renderGroupNodes(node.children)
+                                                        : node.rows?.map((row: any) => (
+                                                            <MemoizedSortableRow
+                                                                key={getRowId(row)}
+                                                                row={row}
+                                                                rowId={getRowId(row)}
+                                                                columns={orderedColumns}
+                                                                columnWidths={columnWidths}
+                                                                sortable={sortable}
+                                                                showRowActions={showRowActions}
+                                                                editingCell={editingCell}
+                                                                editingValue={editingValue}
+                                                                wrapRules={wrapRules}
+                                                                dropdownPosition={dropdownPosition}
+                                                                onEditStart={handleEditStart}
+                                                                onEditChange={setEditingValue}
+                                                                onEditSave={handleEditSave}
+                                                                onEditCancel={handleEditCancel}
+                                                                onDelete={onDelete}
+                                                                onCopy={handleCopy}
+                                                                onDuplicate={onDuplicate}
+                                                                copiedId={copiedId}
+                                                                {...createRowDragHandlers(getRowId(row))}
+                                                                isDragging={draggingRowId === getRowId(row)}
+                                                                isDragOver={dragOverRowId === getRowId(row)}
+                                                            />
+                                                        ))
+                                                )}
                                             </React.Fragment>
                                         );
-                                    })
-                                ) : (
-                                    // Ungrouped rendering (original)
-                                    data.map((row) => (
-                                        <SortableRow
-                                            key={getRowId(row)}
-                                            row={row}
-                                            rowId={getRowId(row)}
-                                            columns={columns}
-                                            columnWidths={columnWidths}
-                                            sortable={sortable}
-                                            showRowActions={showRowActions}
-                                            editingCell={editingCell}
-                                            editingValue={editingValue}
-                                            expandText={expandText}
-                                            dropdownPosition={dropdownPosition}
-                                            onEditStart={handleEditStart}
-                                            onEditChange={setEditingValue}
-                                            onEditSave={handleEditSave}
-                                            onEditCancel={handleEditCancel}
-                                            onDelete={onDelete}
-                                            onCopy={handleCopy}
-                                            copiedId={copiedId}
-                                        />
-                                    ))
-                                )}
-                            </tbody>
-                        </SortableContext>
-                    </DndContext>
+                                    });
+                                };
+                                return renderGroupNodes(groupedData);
+                            })()
+                        ) : (
+                            // Ungrouped rendering with pagination
+                            paginatedData.map((row) => (
+                                <MemoizedSortableRow
+                                    key={getRowId(row)}
+                                    row={row}
+                                    rowId={getRowId(row)}
+                                    columns={orderedColumns}
+                                    columnWidths={columnWidths}
+                                    sortable={sortable}
+                                    showRowActions={showRowActions}
+                                    editingCell={editingCell}
+                                    editingValue={editingValue}
+                                    wrapRules={wrapRules}
+                                    dropdownPosition={dropdownPosition}
+                                    onEditStart={handleEditStart}
+                                    onEditChange={setEditingValue}
+                                    onEditSave={handleEditSave}
+                                    onEditCancel={handleEditCancel}
+                                    onDelete={onDelete}
+                                    onCopy={handleCopy}
+                                    onDuplicate={onDuplicate}
+                                    copiedId={copiedId}
+                                    {...createRowDragHandlers(getRowId(row))}
+                                    isDragging={draggingRowId === getRowId(row)}
+                                    isDragOver={dragOverRowId === getRowId(row)}
+                                />
+                            ))
+                        )}
+
+                        {/* + New Row (inline creation) */}
+                        {onCreateRow && (
+                            <tr
+                                onClick={handleCreateRow}
+                                className="group cursor-pointer hover:bg-blue-50 transition-colors border-b border-gray-100"
+                            >
+                                {sortable && <td className="w-10" />}
+                                <td
+                                    colSpan={columns.length}
+                                    className="px-4 py-2 text-xs text-gray-400 group-hover:text-blue-600"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {isCreating ? (
+                                            <>
+                                                <span className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                                                <span>Creating...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus className="w-4 h-4" />
+                                                <span>New</span>
+                                            </>
+                                        )}
+                                    </div>
+                                </td>
+                                {showRowActions && <td className="w-20" />}
+                            </tr>
+                        )}
+                    </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Column Context Menu */}
+            {
+                contextMenu && (
+                    <ColumnContextMenu
+                        columnKey={contextMenu.columnKey}
+                        columnHeader={contextMenu.columnHeader}
+                        columnType={contextMenu.columnType}
+                        position={contextMenu.position}
+                        onGroupBy={(colKey) => {
+                            // onGroupBy usage from Context Menu should ADD the group
+                            setGroupRules(prev => {
+                                if (prev.find(r => r.key === colKey)) return prev.filter(r => r.key !== colKey);
+                                return [...prev, { id: `${colKey}-${Date.now()}`, key: colKey, direction: 'asc' }];
+                            });
+                        }}
+                        onSort={handleSort}
+                        onFilter={(colKey) => {
+                            // Add a filter rule for this column and open filter panel
+                            setFilterRules(prev => [
+                                ...prev,
+                                {
+                                    id: Math.random().toString(36).substr(2, 9),
+                                    field: colKey,
+                                    operator: 'contains',
+                                    value: '',
+                                    conjunction: prev.length > 0 ? 'and' : 'and'
+                                }
+                            ]);
+                            setShowFilterPanel(true);
+                        }}
+                        onClose={() => setContextMenu(null)}
+                        isGroupedBy={groupRules.some(r => r.key === contextMenu.columnKey)}
+                        sortRules={sortRules}
+                    />
+                )
+            }
+
+            {/* Pagination Bottom Bar */}
+            {
+                groupRules.length === 0 && totalRows > 0 && (
+                    <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-600">
+                        {/* Left: Total count */}
+                        <div className="flex items-center gap-4">
+                            <span className="text-gray-500">
+                                {totalRows} {totalRows === 1 ? 'row' : 'rows'}
+                            </span>
+                        </div>
+
+                        {/* Center: Rows per page */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Rows per page:</span>
+                            <div className="flex items-center gap-1">
+                                {rowsPerPageOptions.map(option => (
+                                    <button
+                                        key={option}
+                                        onClick={() => {
+                                            setRowsPerPage(option);
+                                            setCurrentPage(1);
+                                        }}
+                                        className={cn(
+                                            "px-2 py-1 rounded text-xs transition-colors",
+                                            rowsPerPage === option
+                                                ? "bg-blue-100 text-blue-700 font-medium"
+                                                : "text-gray-500 hover:bg-gray-200"
+                                        )}
+                                    >
+                                        {option}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Right: Page navigation */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-500">
+                                {Math.min((currentPage - 1) * rowsPerPage + 1, totalRows)}-{Math.min(currentPage * rowsPerPage, totalRows)} of {totalRows}
+                            </span>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className={cn(
+                                        "p-1 rounded transition-colors",
+                                        currentPage === 1
+                                            ? "text-gray-300 cursor-not-allowed"
+                                            : "text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                                    )}
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className={cn(
+                                        "p-1 rounded transition-colors",
+                                        currentPage === totalPages
+                                            ? "text-gray-300 cursor-not-allowed"
+                                            : "text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                                    )}
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 

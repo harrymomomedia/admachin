@@ -1,13 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
 
-// Load environment variables from .env file (for local development)
-// Explicitly specify the path since this file might be imported from a different location
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-
-type ClaudeModel = 'claude-sonnet' | 'claude-opus' | 'claude-haiku';
-type AIModel = ClaudeModel | 'gpt' | 'gemini' | 'claude'; // 'claude' for legacy support
+type ClaudeModel = 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+type AIModel = ClaudeModel | 'gpt' | 'gemini' | 'claude' | 'claude-sonnet' | 'claude-haiku' | 'claude-opus'; // legacy support
 
 interface AIRequest {
     model: AIModel;
@@ -38,13 +32,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let response: string;
 
-        // Normalize model name - handle legacy 'claude' value
-        const normalizedModel = model === 'claude' ? 'claude-sonnet' : model;
+        // Normalize model name - handle legacy values
+        let normalizedModel: ClaudeModel | 'gpt' | 'gemini' = model as any;
+        if (model === 'claude' || model === 'claude-sonnet') normalizedModel = 'claude-sonnet-4.5';
+        if (model === 'claude-haiku') normalizedModel = 'claude-haiku-4.5';
+        if (model === 'claude-opus') normalizedModel = 'claude-opus-4.5';
 
         switch (normalizedModel) {
-            case 'claude-sonnet':
-            case 'claude-opus':
-            case 'claude-haiku':
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
                 response = await callClaude(normalizedModel, systemPrompt, userPrompt);
                 break;
             case 'gpt':
@@ -67,9 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // Map our model names to Anthropic API model IDs
 const CLAUDE_MODEL_MAP: Record<ClaudeModel, string> = {
-    'claude-sonnet': 'claude-sonnet-4-20250514',
-    'claude-opus': 'claude-opus-4-20250514',
-    'claude-haiku': 'claude-haiku-4-20250514'
+    'claude-sonnet-4.5': 'claude-sonnet-4-5-20250929',
+    'claude-opus-4.5': 'claude-opus-4-5-20251101',
+    'claude-haiku-4.5': 'claude-haiku-4-5-20251001'
 };
 
 async function callClaude(model: ClaudeModel, systemPrompt: string, userPrompt: string): Promise<string> {
@@ -97,7 +94,7 @@ async function callClaude(model: ClaudeModel, systemPrompt: string, userPrompt: 
         },
         body: JSON.stringify({
             model: CLAUDE_MODEL_MAP[model],
-            max_tokens: 4096,
+            max_tokens: 8192,
             system: systemPrompt,
             messages: [
                 {
@@ -137,7 +134,7 @@ async function callGPT(systemPrompt: string, userPrompt: string): Promise<string
                 { role: 'user', content: userPrompt }
             ],
             temperature: 0.7,
-            max_tokens: 4096
+            max_tokens: 8192
         })
     });
 

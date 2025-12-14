@@ -104,6 +104,70 @@ export default defineConfig({
             next();
           }
         });
+
+        // Presets API proxy
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url?.startsWith('/api/presets')) {
+            const handler = await import('./api/presets');
+
+            // Handle different methods
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.statusCode = 200;
+              res.end();
+              return;
+            }
+
+            // Parse body for POST/PUT
+            let body: any = {};
+            if (req.method === 'POST' || req.method === 'PUT') {
+              body = await new Promise((resolve) => {
+                let data = '';
+                req.on('data', chunk => { data += chunk; });
+                req.on('end', () => {
+                  try {
+                    resolve(JSON.parse(data));
+                  } catch {
+                    resolve({});
+                  }
+                });
+              });
+            }
+
+            // Parse query params for DELETE
+            const urlObj = new URL(req.url || '', 'http://localhost');
+            const query: Record<string, string> = {};
+            urlObj.searchParams.forEach((value, key) => {
+              query[key] = value;
+            });
+
+            const vercelReq = {
+              method: req.method,
+              body,
+              headers: req.headers,
+              query
+            };
+            const vercelRes = {
+              status: (code: number) => {
+                res.statusCode = code;
+                return vercelRes;
+              },
+              json: (data: any) => {
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(data));
+              },
+              setHeader: (name: string, value: string) => {
+                res.setHeader(name, value);
+              },
+              end: () => res.end()
+            };
+            await handler.default(vercelReq as any, vercelRes as any);
+          } else {
+            next();
+          }
+        });
       }
     }
   ],

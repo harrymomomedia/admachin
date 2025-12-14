@@ -1,5 +1,6 @@
+
 import { useState } from 'react';
-import { Check, Info, X, Target, AlertTriangle, Lightbulb, MessageSquare, User } from 'lucide-react';
+import { Check, Info, X, Target, AlertTriangle, Lightbulb, User } from 'lucide-react';
 import { cn } from '../utils/cn';
 import type { Persona } from '../lib/supabase-service';
 
@@ -8,6 +9,8 @@ interface PersonaSelectorProps {
     selectedIds: string[];
     onSelectionChange: (ids: string[]) => void;
     maxSelections?: number;
+    onSave?: (persona: Persona) => void;
+    onSaveSelected?: (personas: Persona[]) => void;
 }
 
 export function PersonaSelector({
@@ -15,6 +18,8 @@ export function PersonaSelector({
     selectedIds,
     onSelectionChange,
     maxSelections,
+    onSave,
+    onSaveSelected
 }: PersonaSelectorProps) {
     const [detailPersona, setDetailPersona] = useState<Persona | null>(null);
 
@@ -37,15 +42,33 @@ export function PersonaSelector({
 
     const clearAll = () => onSelectionChange([]);
 
+    const handleBulkSave = () => {
+        if (onSaveSelected) {
+            const selectedPersonas = personas.filter(p => selectedIds.includes(p.id));
+            onSaveSelected(selectedPersonas);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <button onClick={selectAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium">Select All</button>
+                    <button onClick={selectAll} className="text-[10px] text-blue-600 hover:text-blue-700 font-medium">Select All</button>
                     <span className="text-gray-300">|</span>
-                    <button onClick={clearAll} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Clear</button>
+                    <button onClick={clearAll} className="text-[10px] text-gray-500 hover:text-gray-700 font-medium">Clear</button>
+                    {onSaveSelected && selectedIds.length > 0 && (
+                        <>
+                            <span className="text-gray-300">|</span>
+                            <button onClick={handleBulkSave} className="flex items-center gap-1 text-[10px] text-green-600 hover:text-green-700 font-medium">
+                                <div className="w-3 h-3 border border-current rounded-sm flex items-center justify-center">
+                                    <div className="w-1.5 h-1.5 bg-current rounded-sm" />
+                                </div>
+                                Save {selectedIds.length} Selected
+                            </button>
+                        </>
+                    )}
                 </div>
-                <span className="text-sm text-blue-600 font-medium">{selectedIds.length} selected</span>
+                <span className="text-[10px] text-blue-600 font-medium">{selectedIds.length} selected</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -65,18 +88,80 @@ export function PersonaSelector({
                                     <Check className="w-4 h-4 text-white" />
                                 </div>
                             )}
-                            <div className="pr-8">
-                                <h3 className="font-semibold text-gray-900">{persona.name}, {persona.age}, {persona.role}</h3>
-                                <p className="text-sm text-gray-600 mt-1">{persona.current_situation}</p>
-                                <p className="text-sm text-blue-600 italic mt-1">{persona.tagline}</p>
+                            <div className="pr-8 space-y-2">
+                                <div>
+                                    <h3 className="font-semibold text-gray-900 text-sm">{persona.name}, {persona.age}, {persona.role}</h3>
+                                    <p className="text-xs text-blue-600 italic mt-0.5">{persona.tagline}</p>
+                                </div>
+
+                                <p className="text-xs text-gray-700 leading-relaxed">{persona.current_situation}</p>
+
+                                {persona.pain_points && persona.pain_points.length > 0 && (
+                                    <div>
+                                        <div className="flex items-center gap-1 mb-1">
+                                            <AlertTriangle className="w-3 h-3 text-red-500" />
+                                            <p className="text-[10px] font-semibold text-gray-500 uppercase">Pain Points</p>
+                                        </div>
+                                        <ul className="text-xs text-gray-700 space-y-0.5 list-disc list-inside">
+                                            {persona.pain_points.slice(0, 3).map((point, idx) => (
+                                                <li key={idx}>{point}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {persona.goals && persona.goals.length > 0 && (
+                                    <div>
+                                        <div className="flex items-center gap-1 mb-1">
+                                            <Target className="w-3 h-3 text-green-500" />
+                                            <p className="text-[10px] font-semibold text-gray-500 uppercase">Goals</p>
+                                        </div>
+                                        <ul className="text-xs text-gray-700 space-y-0.5 list-disc list-inside">
+                                            {persona.goals.slice(0, 3).map((goal, idx) => (
+                                                <li key={idx}>{goal}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {persona.objections && persona.objections.length > 0 && (
+                                    <div>
+                                        <div className="flex items-center gap-1 mb-1">
+                                            <AlertTriangle className="w-3 h-3 text-orange-500" />
+                                            <p className="text-[10px] font-semibold text-gray-500 uppercase">Potential Objections</p>
+                                        </div>
+                                        <ul className="text-xs text-gray-700 space-y-0.5 list-disc list-inside">
+                                            {persona.objections.slice(0, 3).map((obj, idx) => (
+                                                <li key={idx}>{obj}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setDetailPersona(persona); }}
-                                className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
-                            >
-                                <Info className="w-3.5 h-3.5" />
-                                View full profile
-                            </button>
+                            <div className="mt-3 flex items-center justify-between">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setDetailPersona(persona); }}
+                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                                >
+                                    <Info className="w-3.5 h-3.5" />
+                                    View full profile
+                                </button>
+                                {onSave && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSave(persona);
+                                        }}
+                                        className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                        title="Save to Library"
+                                    >
+                                        <div className="w-3 h-3 border border-current rounded-sm flex items-center justify-center">
+                                            <div className="w-1.5 h-1.5 bg-current rounded-sm" />
+                                        </div>
+                                        Save
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     );
                 })}
@@ -131,9 +216,7 @@ function PersonaDetailModal({ persona, onClose }: { persona: Persona; onClose: (
                         </Section>
                     )}
 
-                    <Section title="Suggested Messaging Angles" icon={<MessageSquare className="w-4 h-4 text-purple-500" />}>
-                        <div className="space-y-3">{persona.messaging_angles?.map((angle, i) => <div key={i} className="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800">💡 {angle}</div>)}</div>
-                    </Section>
+
                 </div>
 
                 <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">

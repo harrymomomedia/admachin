@@ -61,7 +61,7 @@
   }
 
   .data-grid-td {
-    @apply border border-gray-200 px-0 py-0 h-9 bg-white relative hover:bg-gray-50 transition-colors align-middle;
+    @apply border border-gray-200 px-0 py-2 bg-white relative hover:bg-gray-50 transition-colors align-middle;
   }
 
   .data-grid-input {

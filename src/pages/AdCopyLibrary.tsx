@@ -1,11 +1,5 @@
-import { useState, useEffect } from 'react';
-import {
-    Plus,
-    Search,
-    X,
-    Maximize2,
-    Minimize2,
-} from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, X } from 'lucide-react';
 import {
     getAdCopies,
     createAdCopy,
@@ -13,6 +7,9 @@ import {
     deleteAdCopy,
     getProjects,
     getUsers,
+    getUserViewPreferences,
+    saveUserViewPreferences,
+    saveRowOrder,
     type AdCopy,
     type Project,
     type User
@@ -26,10 +23,16 @@ export function AdCopyLibrary() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
+
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [showFullText, setShowFullText] = useState(false);
+
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const currentUserIdRef = useRef<string | null>(null);
+
+    // Keep ref in sync with state
+    useEffect(() => {
+        currentUserIdRef.current = currentUserId;
+    }, [currentUserId]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -41,6 +44,44 @@ export function AdCopyLibrary() {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Column settings state (persisted per user)
+    const [columnOrder, setColumnOrder] = useState<string[] | undefined>();
+    const [columnWidths, setColumnWidths] = useState<Record<string, number> | undefined>();
+
+    // Handle column order change (persist to Supabase)
+    const handleColumnOrderChange = async (order: string[]) => {
+        const userId = currentUserIdRef.current;
+        console.log('[AdCopyLibrary] Saving column order:', order, 'userId:', userId);
+        setColumnOrder(order);
+        if (userId) {
+            try {
+                await saveUserViewPreferences(userId, 'ad_copies', { column_order: order });
+                console.log('[AdCopyLibrary] Column order saved successfully');
+            } catch (error) {
+                console.error('Failed to save column order:', error);
+            }
+        } else {
+            console.warn('[AdCopyLibrary] No currentUserId, cannot save column order');
+        }
+    };
+
+    // Handle column widths change (persist to Supabase)
+    const handleColumnWidthsChange = async (widths: Record<string, number>) => {
+        const userId = currentUserIdRef.current;
+        console.log('[AdCopyLibrary] Saving column widths:', widths, 'userId:', userId);
+        setColumnWidths(widths);
+        if (userId) {
+            try {
+                await saveUserViewPreferences(userId, 'ad_copies', { column_widths: widths });
+                console.log('[AdCopyLibrary] Column widths saved successfully');
+            } catch (error) {
+                console.error('Failed to save column widths:', error);
+            }
+        } else {
+            console.warn('[AdCopyLibrary] No currentUserId, cannot save column widths');
+        }
+    };
+
     // Load Data
     useEffect(() => {
         loadData();
@@ -50,12 +91,45 @@ export function AdCopyLibrary() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [copiesData, projectsData, usersData] = await Promise.all([
+            const [copiesData, projectsData, usersData, user] = await Promise.all([
                 getAdCopies(),
                 getProjects(),
-                getUsers()
+                getUsers(),
+                getCurrentUser()
             ]);
-            setCopies(copiesData);
+
+            if (user?.id) {
+                setCurrentUserId(user.id);
+                // Load saved preferences
+                const prefs = await getUserViewPreferences(user.id, 'ad_copies');
+                console.log('[AdCopyLibrary] Loaded prefs:', prefs);
+
+                // Load column order/widths
+                if (prefs?.column_order) {
+                    console.log('[AdCopyLibrary] Setting column order from prefs:', prefs.column_order);
+                    setColumnOrder(prefs.column_order);
+                }
+                if (prefs?.column_widths) {
+                    console.log('[AdCopyLibrary] Setting column widths from prefs:', prefs.column_widths);
+                    setColumnWidths(prefs.column_widths);
+                }
+
+                // Load row order
+                if (prefs?.row_order && prefs.row_order.length > 0) {
+                    // Sort copies based on saved order
+                    const orderMap = new Map(prefs.row_order.map((id, index) => [id, index]));
+                    const ordered = [...copiesData].sort((a, b) => {
+                        const aIndex = orderMap.get(a.id) ?? Infinity;
+                        const bIndex = orderMap.get(b.id) ?? Infinity;
+                        return aIndex - bIndex;
+                    });
+                    setCopies(ordered);
+                } else {
+                    setCopies(copiesData);
+                }
+            } else {
+                setCopies(copiesData);
+            }
             setProjects(projectsData);
             setUsers(usersData);
         } catch (error) {
@@ -83,18 +157,25 @@ export function AdCopyLibrary() {
         return 'Unknown';
     };
 
-    // Filter Logic
-    const filteredCopies = copies.filter(copy => {
-        const searchLower = searchQuery.toLowerCase();
-        const projectName = getProjectName(copy).toLowerCase();
-        const creatorName = getCreatorName(copy).toLowerCase();
 
-        return (
-            copy.text.toLowerCase().includes(searchLower) ||
-            projectName.includes(searchLower) ||
-            creatorName.includes(searchLower)
-        );
-    });
+
+    // Quick inline row creation (no popup, no refresh)
+    const handleQuickCreate = async () => {
+        // Create empty row with defaults
+        const newCopy = await createAdCopy({
+            text: '',
+            type: 'primary_text',
+            project_id: null,
+            project: null,
+            platform: 'FB',
+            user_id: currentUserId
+        });
+
+        // Optimistic update - add to top of list
+        setCopies(prev => [newCopy, ...prev]);
+
+        return newCopy;
+    };
 
     // Update Handler
     const handleUpdate = async (id: string, field: string, value: unknown) => {
@@ -140,7 +221,7 @@ export function AdCopyLibrary() {
             ));
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const errorMessage = (error as any)?.message || 'Unknown error';
-            alert(`Failed to save changes: ${errorMessage}`);
+            alert(`Failed to save changes: ${errorMessage} `);
         }
     };
 
@@ -155,15 +236,52 @@ export function AdCopyLibrary() {
         }
     };
 
-    // Copy Handler
+    // Copy Handler (copy text to clipboard)
     const handleCopy = (copy: AdCopy) => {
         navigator.clipboard.writeText(copy.text);
     };
 
-    // Reorder Handler (for drag & drop)
-    const handleReorder = (newOrder: string[]) => {
+    // Duplicate Handler (create new row with empty text but same type/project/platform)
+    const handleDuplicate = async (copy: AdCopy) => {
+        try {
+            console.log('Duplicating ad copy:', {
+                user_id: currentUserId,
+                text: '(new copy)',
+                type: copy.type,
+                project_id: copy.project_id,
+                subproject_id: copy.subproject_id,
+                platform: copy.platform
+            });
+            await createAdCopy({
+                user_id: currentUserId, // Set to current user who clicked duplicate
+                text: '(new copy)', // Placeholder text - can be edited inline
+                type: copy.type,
+                project: copy.project,
+                project_id: copy.project_id,
+                subproject_id: copy.subproject_id,
+                platform: copy.platform
+            });
+            await loadData();
+        } catch (error) {
+            console.error('Failed to duplicate ad copy:', error);
+            const errorMessage = (error as { message?: string })?.message || 'Unknown error';
+            alert(`Failed to duplicate row: ${errorMessage} `);
+        }
+    };
+
+    // Reorder Handler (for drag & drop) - persists to database
+    const handleReorder = async (newOrder: string[]) => {
         const reordered = newOrder.map(id => copies.find(c => c.id === id)!).filter(Boolean);
         setCopies(reordered);
+
+        // Save order to database
+        if (currentUserId) {
+            try {
+                await saveRowOrder(currentUserId, 'ad_copies', newOrder);
+            } catch (error) {
+                console.error('Failed to save row order:', error);
+            }
+        }
     };
 
     // Create Handler
@@ -303,13 +421,13 @@ export function AdCopyLibrary() {
         },
         {
             key: 'user_id',
-            header: 'Owner',
+            header: 'Created By',
             width: 120,
             minWidth: 80,
             editable: true,
             type: 'select',
             options: users.map(u => ({
-                label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.name || u.email),
+                label: u.first_name ? `${u.first_name} ${u.last_name || ''} `.trim() : (u.name || u.email),
                 value: u.id
             })),
             getValue: (copy) => copy.user_id || '',
@@ -334,59 +452,28 @@ export function AdCopyLibrary() {
                 </button>
             </div>
 
-            {/* Filters */}
-            <div className="flex items-center gap-4 flex-shrink-0">
-                <div className="flex-1 flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search ad text, project, or name..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        />
-                    </div>
-                    <div className="h-6 w-px bg-gray-200" />
-                    <button
-                        onClick={() => setShowFullText(!showFullText)}
-                        className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                            showFullText
-                                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                : "text-gray-600 hover:bg-gray-100 border border-transparent"
-                        )}
-                    >
-                        {showFullText ? (
-                            <>
-                                <Minimize2 className="w-4 h-4" />
-                                Collapse Text
-                            </>
-                        ) : (
-                            <>
-                                <Maximize2 className="w-4 h-4" />
-                                Expand Text
-                            </>
-                        )}
-                    </button>
-                </div>
-            </div>
+
 
             {/* Data Table */}
             <DataTable
                 columns={columns}
-                data={filteredCopies}
+                data={copies}
                 isLoading={isLoading}
                 emptyMessage="No ad copies found. Create one for your next campaign!"
                 getRowId={(copy) => copy.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onCopy={handleCopy}
+                onDuplicate={handleDuplicate}
+                onCreateRow={handleQuickCreate}
                 sortable={true}
                 onReorder={handleReorder}
                 resizable={true}
-                expandText={showFullText}
                 fullscreen={true}
+                columnOrder={columnOrder}
+                onColumnOrderChange={handleColumnOrderChange}
+                savedColumnWidths={columnWidths}
+                onColumnWidthsChange={handleColumnWidthsChange}
             />
 
             {/* Create Modal */}

@@ -26,9 +26,17 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
 );
 
 // Helper to get the current user
+// In development, defaults to Harry Jung if no Supabase auth session
 export async function getCurrentUser() {
     const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) {
+    if (error || !user) {
+        // Return mock Harry Jung user for development
+        if (import.meta.env.DEV) {
+            return {
+                id: '807f4cb3-fd03-4e02-8828-44436a6d00e5', // harry@momomedia.io
+                email: 'harry@momomedia.io',
+            };
+        }
         console.error('[Supabase] Error getting user:', error);
         return null;
     }

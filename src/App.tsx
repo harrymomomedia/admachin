@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { FacebookProvider } from "./contexts/FacebookContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import { Dashboard } from "./pages/Dashboard";
 import { LaunchAd } from "./pages/LaunchAd";
@@ -8,18 +9,77 @@ import { FBProfiles } from "./pages/FBProfiles";
 import { FBAdAccounts } from "./pages/FBAdAccounts";
 import { FBAdLibrary } from './pages/FBAdLibrary';
 import { TeamSettings } from "./pages/TeamSettings";
-import { AccessGate } from "./components/AccessGate";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
-import { AICopywriting } from "./pages/AICopywriting";
+import { PersonaAICopy } from "./pages/PersonaAICopy";
+import { SavedPersonasLibrary } from "./pages/SavedPersonasLibrary";
+import { Login } from "./pages/Login";
+import { UserSettings } from "./pages/UserSettings";
+import { Loader2 } from "lucide-react";
+
+// Protected route wrapper
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Public route wrapper (redirect to dashboard if already logged in)
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 function App() {
   return (
-    <FacebookProvider>
-      <AccessGate>
+    <AuthProvider>
+      <FacebookProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<DashboardLayout />}>
+            {/* Public Routes */}
+            <Route path="/login" element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            } />
+
+            {/* Protected Routes */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }>
               <Route index element={<Dashboard />} />
               <Route path="launch" element={<LaunchAd />} />
               <Route path="creatives" element={<Creatives />} />
@@ -31,15 +91,16 @@ function App() {
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
               <Route path="ad-copies" element={<AdCopyLibrary />} />
               <Route path="ad-planning" element={<AdPlanning />} />
-              <Route path="ai-copywriting" element={<AICopywriting />} />
+              <Route path="ai-copywriting" element={<PersonaAICopy />} />
+              <Route path="saved-personas" element={<SavedPersonasLibrary />} />
               <Route path="admin" element={<TeamSettings />} />
+              <Route path="settings" element={<UserSettings />} />
             </Route>
           </Routes>
         </BrowserRouter>
-      </AccessGate>
-    </FacebookProvider>
+      </FacebookProvider>
+    </AuthProvider>
   );
 }
 
 export default App;
-
