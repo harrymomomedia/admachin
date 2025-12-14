@@ -445,7 +445,6 @@ function SortableRow<T>({
     onRowDragLeave,
     onRowDrop,
     isDragging,
-    _isDragOver,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, UserPlus, Loader2 } from 'lucide-react';
 
 export function Register() {
-    const { signUp } = useAuth();
+    // const { signUp } = useAuth(); // TODO: Implement signUp
     const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -32,7 +32,9 @@ export function Register() {
             return;
         }
 
-        const { error } = await signUp(email, password);
+        // TODO: Implement signUp functionality
+        const { error } = { error: new Error('Sign up not implemented') } as { error: Error | null };
+        // const { error } = await signUp(email, password);
 
         if (error) {
             setError(error.message);
