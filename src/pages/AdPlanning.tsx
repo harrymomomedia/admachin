@@ -219,7 +219,7 @@ export function AdPlanning() {
             minWidth: 40,
             editable: false,
             render: (value) => (
-                <span className="text-[10px] text-gray-400">{value || '-'}</span>
+                <span className="text-[10px] text-gray-400">{String(value || '-')}</span>
             ),
         },
         {
@@ -233,8 +233,7 @@ export function AdPlanning() {
             render: (_value, row, isEditing) => {
                 if (isEditing) return null; // Use default select in edit mode
                 const project = projects.find(p => p.id === row.project_id);
-                // @ts-ignore - access legacy field if needed, though AdPlan type doesn't have it explicitly typed as string usually, but row might
-                const legacyName = (row as any).project;
+                const legacyName = (row as AdPlan & { project?: string }).project;
 
                 const content = (!project && !row.project_id && legacyName)
                     ? <span className="text-gray-500 italic">{legacyName}</span>

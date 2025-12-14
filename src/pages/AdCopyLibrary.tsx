@@ -153,16 +153,6 @@ export function AdCopyLibrary() {
         return copy.project || '-';
     };
 
-    const getCreatorName = (copy: AdCopy) => {
-        if (copy.user_id) {
-            const user = users.find(u => u.id === copy.user_id);
-            if (user) return user.name || user.email;
-            if (copy.user_id === currentUserId) return 'Me';
-        }
-        return 'Unknown';
-    };
-
-
 
     // Quick inline row creation (no popup, no refresh)
     const handleQuickCreate = async () => {
@@ -340,7 +330,7 @@ export function AdCopyLibrary() {
             minWidth: 40,
             editable: false,
             render: (value) => (
-                <span className="text-[10px] text-gray-400">{value || '-'}</span>
+                <span className="text-[10px] text-gray-400">{String(value || '-')}</span>
             ),
         },
         {

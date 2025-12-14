@@ -29,6 +29,7 @@ function SortableSortRule({
     onRemove
 }: {
     rule: { id: string; key: string; direction: 'asc' | 'desc' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     columns: ColumnDef<any>[];
     onUpdate: (updates: Partial<typeof rule>) => void;
     onRemove: () => void;
@@ -92,8 +93,8 @@ export interface ColumnDef<T> {
     type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     colorMap?: Record<string, string>;
-    render?: (value: any, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
-    getValue?: (row: T) => any;
+    render?: (value: unknown, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
+    getValue?: (row: T) => unknown;
 }
 
 export interface DataTableProps<T> {
@@ -444,7 +445,7 @@ function SortableRow<T>({
     onRowDragLeave,
     onRowDrop,
     isDragging,
-    isDragOver,
+    _isDragOver,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -835,7 +836,7 @@ export function DataTable<T>({
     }, [savedColumnWidths]);
 
     // Notify parent when column widths change (for persistence)
-    const handleColumnResize = useCallback((key: string, width: number) => {
+    const _handleColumnResize = useCallback((key: string, width: number) => {
         setColumnWidths(prev => {
             const updated = { ...prev, [key]: width };
             // Notify parent for persistence
@@ -1339,7 +1340,7 @@ export function DataTable<T>({
     }, [onCreateRow, isCreating]);
 
     // Drag end handler
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const _handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id || !onReorder) return;
 
@@ -1413,7 +1414,7 @@ export function DataTable<T>({
         + (sortable ? 40 : 0)  // Drag handle column (w-10 = 40px)
         + (showRowActions ? 80 : 0);  // Actions column (w-20 = 80px)
 
-    const rowIds = sortedData.map(getRowId);
+    const _rowIds = sortedData.map(getRowId);
 
     const handleSortDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;

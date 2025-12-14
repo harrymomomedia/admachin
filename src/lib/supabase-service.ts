@@ -515,6 +515,7 @@ export interface User {
     id: string;
     first_name: string;
     last_name: string;
+    name?: string; // Legacy field for backwards compatibility
     email: string;
     password?: string;
     role: string;

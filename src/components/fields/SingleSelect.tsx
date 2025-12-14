@@ -55,17 +55,19 @@ export function SingleSelect({
         opt.label.toLowerCase().includes(search.toLowerCase())
     );
 
-    const getDropdownPosition = () => {
-        if (!buttonRef.current) return { top: 0, left: 0, width: 200 };
-        const rect = buttonRef.current.getBoundingClientRect();
-        return {
-            top: rect.bottom + 4,
-            left: rect.left,
-            width: Math.max(rect.width, 180)
-        };
-    };
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 200 });
 
-    const position = getDropdownPosition();
+    // Update dropdown position when button ref changes or dropdown opens
+    useEffect(() => {
+        if (isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + 4,
+                left: rect.left,
+                width: Math.max(rect.width, 180)
+            });
+        }
+    }, [isOpen]);
 
     return (
         <>
@@ -99,9 +101,9 @@ export function SingleSelect({
                     ref={dropdownRef}
                     className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] overflow-hidden"
                     style={{
-                        top: position.top,
-                        left: position.left,
-                        minWidth: position.width
+                        top: dropdownPosition.top,
+                        left: dropdownPosition.left,
+                        minWidth: dropdownPosition.width
                     }}
                 >
                     {/* Search Input */}
