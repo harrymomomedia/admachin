@@ -213,13 +213,13 @@ export function AdPlanning() {
     // Column Definitions
     const columns: ColumnDef<AdPlan>[] = [
         {
-            key: 'id_display',
+            key: 'ad_number',
             header: 'ID',
             width: 50,
             minWidth: 40,
             editable: false,
-            render: (_, plan, __) => (
-                <span className="text-[10px] text-gray-400">{plans.indexOf(plan) + 1}</span>
+            render: (value) => (
+                <span className="text-[10px] text-gray-400">{value || '-'}</span>
             ),
         },
         {
@@ -467,8 +467,9 @@ export function AdPlanning() {
 
                         <form onSubmit={handleCreate} className="grid grid-cols-2 gap-4">
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                                <label htmlFor="plan-project" className="block text-sm font-medium text-gray-700 mb-1">Project</label>
                                 <select
+                                    id="plan-project"
                                     required
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.project_id}
@@ -482,8 +483,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Subproject</label>
+                                <label htmlFor="plan-subproject" className="block text-sm font-medium text-gray-700 mb-1">Subproject</label>
                                 <input
+                                    id="plan-subproject"
                                     type="text"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.subproject}
@@ -493,8 +495,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Plan Type</label>
+                                <label htmlFor="plan-type" className="block text-sm font-medium text-gray-700 mb-1">Plan Type</label>
                                 <select
+                                    id="plan-type"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.plan_type}
                                     onChange={e => setFormData({ ...formData, plan_type: e.target.value })}
@@ -506,8 +509,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Creative Type</label>
+                                <label htmlFor="plan-creative-type" className="block text-sm font-medium text-gray-700 mb-1">Creative Type</label>
                                 <select
+                                    id="plan-creative-type"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.creative_type}
                                     onChange={e => setFormData({ ...formData, creative_type: e.target.value })}
@@ -518,8 +522,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Priority (1-10)</label>
+                                <label htmlFor="plan-priority" className="block text-sm font-medium text-gray-700 mb-1">Priority (1-10)</label>
                                 <input
+                                    id="plan-priority"
                                     type="number"
                                     min="1"
                                     max="10"
@@ -530,8 +535,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Owner</label>
+                                <label htmlFor="plan-owner" className="block text-sm font-medium text-gray-700 mb-1">Owner</label>
                                 <select
+                                    id="plan-owner"
                                     required
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.user_id}
@@ -545,8 +551,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                <label htmlFor="plan-status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                                 <select
+                                    id="plan-status"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.status}
                                     onChange={e => setFormData({ ...formData, status: e.target.value })}
@@ -559,8 +566,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">HJ Rating</label>
+                                <label htmlFor="plan-hj-rating" className="block text-sm font-medium text-gray-700 mb-1">HJ Rating</label>
                                 <input
+                                    id="plan-hj-rating"
                                     type="number"
                                     min="0"
                                     max="10"
@@ -571,8 +579,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Spy URL</label>
+                                <label htmlFor="plan-spy-url" className="block text-sm font-medium text-gray-700 mb-1">Spy URL</label>
                                 <input
+                                    id="plan-spy-url"
                                     type="url"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.spy_url}
@@ -582,8 +591,9 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                <label htmlFor="plan-description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                 <textarea
+                                    id="plan-description"
                                     rows={3}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                                     value={formData.description}

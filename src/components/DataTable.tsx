@@ -446,9 +446,8 @@ function SortableRow<T>({
     isDragging,
     isDragOver,
 }: SortableRowProps<T>) {
-    const style = {
-        opacity: isDragging ? 0.5 : 1,
-    };
+    const rowRef = useRef<HTMLTableRowElement>(null);
+    const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
     const inputRef = useRef<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>(null);
 
@@ -484,205 +483,238 @@ function SortableRow<T>({
     };
 
     return (
-        <tr
-            style={style}
-            className={cn(
-                "group hover:bg-gray-50 relative",
-                isDragOver && "before:absolute before:left-0 before:right-0 before:top-0 before:h-0.5 before:bg-blue-500 before:z-20"
+        <>
+            {/* Drop indicator rendered via portal - completely outside table structure */}
+            {indicatorRect !== null && createPortal(
+                <div
+                    style={{
+                        position: 'fixed',
+                        left: indicatorRect.left,
+                        top: indicatorRect.top,
+                        width: indicatorRect.width,
+                        height: '2px',
+                        background: '#3b82f6',
+                        zIndex: 9999,
+                        pointerEvents: 'none',
+                    }}
+                />,
+                document.body
             )}
-            draggable={sortable}
-            onDragStart={onRowDragStart}
-            onDragEnd={onRowDragEnd}
-            onDragEnter={onRowDragEnter}
-            onDragOver={onRowDragOver}
-            onDragLeave={onRowDragLeave}
-            onDrop={onRowDrop}
-        >
-            {/* Drag Handle */}
-            {sortable && (
-                <td className="data-grid-td w-10 px-2">
-                    <div className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
-                        <GripVertical className="w-4 h-4" />
-                    </div>
-                </td>
-            )}
+            <tr
+                ref={rowRef}
+                style={{
+                    opacity: isDragging ? 0.5 : 1,
+                }}
+                className="group hover:bg-gray-50"
+                draggable={sortable}
+                onDragStart={onRowDragStart}
+                onDragEnd={onRowDragEnd}
+                onDragEnter={onRowDragEnter}
+                onDragOver={(e) => {
+                    onRowDragOver(e);
+                    // Update indicator position directly for immediate feedback
+                    if (rowRef.current) {
+                        const rect = rowRef.current.getBoundingClientRect();
+                        setIndicatorRect({ top: rect.top, left: rect.left, width: rect.width });
+                    }
+                }}
+                onDragLeave={(e) => {
+                    onRowDragLeave(e);
+                    // Clear indicator when leaving this row
+                    setIndicatorRect(null);
+                }}
+                onDrop={(e) => {
+                    onRowDrop(e);
+                    setIndicatorRect(null);
+                }}
+            >
+                {/* Drag Handle */}
+                {sortable && (
+                    <td className="data-grid-td w-10 px-2">
+                        <div className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
+                            <GripVertical className="w-4 h-4" />
+                        </div>
+                    </td>
+                )}
 
-            {/* Data Columns */}
-            {columns.map((col) => {
-                const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[col.key];
-                const isEditing = editingCell?.id === rowId && editingCell?.field === col.key;
-                const width = columnWidths[col.key] || col.width || 100;
 
-                // Resolve options if they are a function
-                const options = typeof col.options === 'function' ? col.options(row) : col.options;
+                {/* Data Columns */}
+                {columns.map((col) => {
+                    const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[col.key];
+                    const isEditing = editingCell?.id === rowId && editingCell?.field === col.key;
+                    const width = columnWidths[col.key] || col.width || 100;
 
-                // Get wrap setting for this column
-                const wrapRule = wrapRules.find(r => r.columnKey === col.key);
-                const wrapLines = wrapRule?.lines;
+                    // Resolve options if they are a function
+                    const options = typeof col.options === 'function' ? col.options(row) : col.options;
 
-                return (
-                    <td
-                        key={col.key}
-                        className={cn(
-                            "data-grid-td px-2 relative",
-                            wrapLines !== 'full' && "overflow-hidden"
-                        )}
-                        style={{
-                            width,
-                            maxWidth: width,
-                            ...(wrapLines === '1' && { maxHeight: '24px' }),
-                            ...(wrapLines === '3' && { maxHeight: '60px' })
-                        }}
-                    >
-                        {/* Check for editing FIRST - takes priority over custom render */}
-                        {isEditing && col.editable ? (
-                            col.type === 'select' || col.type === 'badge' ? (
-                                <>
-                                    {/* Still show the selected value in the cell */}
+                    // Get wrap setting for this column
+                    const wrapRule = wrapRules.find(r => r.columnKey === col.key);
+                    const wrapLines = wrapRule?.lines;
+
+                    return (
+                        <td
+                            key={col.key}
+                            className={cn(
+                                "data-grid-td px-2 relative",
+                                wrapLines !== 'full' && "overflow-hidden"
+                            )}
+                            style={{
+                                width,
+                                maxWidth: width,
+                                ...(wrapLines === '1' && { maxHeight: '24px' }),
+                                ...(wrapLines === '3' && { maxHeight: '60px' })
+                            }}
+                        >
+                            {/* Check for editing FIRST - takes priority over custom render */}
+                            {isEditing && col.editable ? (
+                                col.type === 'select' || col.type === 'badge' ? (
+                                    <>
+                                        {/* Still show the selected value in the cell */}
+                                        <span
+                                            className={cn(
+                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap ring-2 ring-blue-400",
+                                                col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
+                                            )}
+                                        >
+                                            {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
+                                        </span>
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop to close on click outside */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditCancel();
+                                                    }}
+                                                />
+                                                {/* Dropdown menu */}
+                                                <DropdownMenu
+                                                    options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
+                                                    value={editingValue}
+                                                    onSelect={(val: string) => {
+                                                        onEditSave(val);
+                                                    }}
+                                                    position={dropdownPosition}
+                                                />
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
+                                ) : col.type === 'textarea' || col.type === 'text' ? (
+                                    <textarea
+                                        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                                        value={editingValue}
+                                        onChange={(e) => {
+                                            onEditChange(e.target.value);
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = `${e.target.scrollHeight}px`;
+                                        }}
+                                        onBlur={() => onEditSave()}
+                                        onKeyDown={handleKeyDown}
+                                        className="data-grid-input border border-blue-300 rounded focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
+                                        rows={1}
+                                    />
+                                ) : (
+                                    <input
+                                        ref={inputRef as React.RefObject<HTMLInputElement>}
+                                        type="text"
+                                        value={editingValue}
+                                        onChange={(e) => onEditChange(e.target.value)}
+                                        onBlur={() => onEditSave()}
+                                        onKeyDown={handleKeyDown}
+                                        className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                    />
+                                )
+                            ) : col.render ? (
+                                // Custom render for display mode only - wrap in clickable div if editable
+                                <div
+                                    className={col.editable ? "cursor-pointer" : ""}
+                                    onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                >
+                                    {col.render(value, row, isEditing, wrapLines === 'full')}
+                                </div>
+                            ) : (
+                                // Default display mode
+                                col.type === 'badge' || col.type === 'select' ? (
                                     <span
                                         className={cn(
-                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap ring-2 ring-blue-400",
+                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap",
                                             col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
                                         )}
+                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
                                     </span>
-                                    {createPortal(
-                                        <>
-                                            {/* Backdrop to close on click outside */}
-                                            <div
-                                                className="fixed inset-0 z-[9998]"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onEditCancel();
-                                                }}
-                                            />
-                                            {/* Dropdown menu */}
-                                            <DropdownMenu
-                                                options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
-                                                value={editingValue}
-                                                onSelect={(val: string) => {
-                                                    onEditSave(val);
-                                                }}
-                                                position={dropdownPosition}
-                                            />
-                                        </>,
-                                        document.body
-                                    )}
-                                </>
-                            ) : col.type === 'textarea' || col.type === 'text' ? (
-                                <textarea
-                                    ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                                    value={editingValue}
-                                    onChange={(e) => {
-                                        onEditChange(e.target.value);
-                                        e.target.style.height = 'auto';
-                                        e.target.style.height = `${e.target.scrollHeight}px`;
-                                    }}
-                                    onBlur={() => onEditSave()}
-                                    onKeyDown={handleKeyDown}
-                                    className="data-grid-input border border-blue-300 rounded focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
-                                    rows={1}
-                                />
-                            ) : (
-                                <input
-                                    ref={inputRef as React.RefObject<HTMLInputElement>}
-                                    type="text"
-                                    value={editingValue}
-                                    onChange={(e) => onEditChange(e.target.value)}
-                                    onBlur={() => onEditSave()}
-                                    onKeyDown={handleKeyDown}
-                                    className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                />
-                            )
-                        ) : col.render ? (
-                            // Custom render for display mode only - wrap in clickable div if editable
-                            <div
-                                className={col.editable ? "cursor-pointer" : ""}
-                                onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                            >
-                                {col.render(value, row, isEditing, wrapLines === 'full')}
-                            </div>
-                        ) : (
-                            // Default display mode
-                            col.type === 'badge' || col.type === 'select' ? (
-                                <span
-                                    className={cn(
-                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap",
-                                        col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
-                                    )}
-                                    onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                                >
-                                    {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
-                                </span>
-                            ) : col.type === 'date' ? (
-                                <span className="text-[10px] text-gray-500">
-                                    {value ? new Date(String(value)).toLocaleString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        year: 'numeric',
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                    }) : '-'}
-                                </span>
-                            ) : (
-                                <p
-                                    className={cn(
-                                        "text-xs text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-2",
-                                        wrapLines === '1' && "line-clamp-1",
-                                        wrapLines === '3' && "line-clamp-3",
-                                        wrapLines === 'full' && "whitespace-pre-wrap"
-                                    )}
-                                    onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                                >
-                                    {String(value || '-')}
-                                </p>
-                            )
-                        )}
-                    </td>
-                );
-            })}
+                                ) : col.type === 'date' ? (
+                                    <span className="text-[10px] text-gray-500">
+                                        {value ? new Date(String(value)).toLocaleString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                        }) : '-'}
+                                    </span>
+                                ) : (
+                                    <p
+                                        className={cn(
+                                            "text-xs text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-2",
+                                            wrapLines === '1' && "line-clamp-1",
+                                            wrapLines === '3' && "line-clamp-3",
+                                            wrapLines === 'full' && "whitespace-pre-wrap"
+                                        )}
+                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                    >
+                                        {String(value || '-')}
+                                    </p>
+                                )
+                            )}
+                        </td>
+                    );
+                })}
 
-            {/* Row Actions */}
-            {showRowActions && (
-                <td className="data-grid-td px-2 w-20">
-                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {onDuplicate && (
-                            <button
-                                onClick={() => onDuplicate(row)}
-                                className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-                                title="Duplicate"
-                            >
-                                <Plus className="w-3 h-3" />
-                            </button>
-                        )}
-                        {onCopy && (
-                            <button
-                                onClick={() => onCopy(row)}
-                                className={cn(
-                                    "p-1 rounded transition-colors",
-                                    copiedId === rowId
-                                        ? "text-green-600 bg-green-50"
-                                        : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
-                                )}
-                                title="Copy Text"
-                            >
-                                {copiedId === rowId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                            </button>
-                        )}
-                        {onDelete && (
-                            <button
-                                onClick={() => onDelete(rowId)}
-                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Delete"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </button>
-                        )}
-                    </div>
-                </td>
-            )}
-        </tr>
+                {/* Row Actions */}
+                {showRowActions && (
+                    <td className="data-grid-td px-2 w-20">
+                        <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {onDuplicate && (
+                                <button
+                                    onClick={() => onDuplicate(row)}
+                                    className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                    title="Duplicate"
+                                >
+                                    <Plus className="w-3 h-3" />
+                                </button>
+                            )}
+                            {onCopy && (
+                                <button
+                                    onClick={() => onCopy(row)}
+                                    className={cn(
+                                        "p-1 rounded transition-colors",
+                                        copiedId === rowId
+                                            ? "text-green-600 bg-green-50"
+                                            : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                                    )}
+                                    title="Copy Text"
+                                >
+                                    {copiedId === rowId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                            )}
+                            {onDelete && (
+                                <button
+                                    onClick={() => onDelete(rowId)}
+                                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                    title="Delete"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+                    </td>
+                )}
+            </tr>
+        </>
     );
 }
 
@@ -849,18 +881,30 @@ export function DataTable<T>({
         return ordered;
     }, [columns, columnOrder]);
 
-    // Handle column reorder
-    const handleColumnReorder = useCallback((oldIndex: number, newIndex: number) => {
-        const newOrder = [...columnOrder];
-        const [removed] = newOrder.splice(oldIndex, 1);
-        newOrder.splice(newIndex, 0, removed);
+    // Handle column reorder - now works with orderedColumns to include new columns
+    const handleColumnReorder = useCallback((draggedKey: string, targetKey: string) => {
+        // Build new order from orderedColumns (which includes all columns, even new ones)
+        const currentOrderedKeys = orderedColumns.map(c => c.key);
+        const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
+        const targetIndex = currentOrderedKeys.indexOf(targetKey);
+
+        if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
+
+        const newOrder = [...currentOrderedKeys];
+        const [removed] = newOrder.splice(draggedIndex, 1);
+
+        // Adjust target index: when dragging from left to right, after removing the dragged item,
+        // indices shift down. So if we want to insert at the visual target position, we need to
+        // account for this shift. When dragging right to left, no adjustment needed.
+        const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+        newOrder.splice(adjustedTargetIndex, 0, removed);
 
         if (onColumnOrderChange) {
             onColumnOrderChange(newOrder);
         } else {
             setInternalColumnOrder(newOrder);
         }
-    }, [columnOrder, onColumnOrderChange]);
+    }, [orderedColumns, onColumnOrderChange]);
 
     // Resize tracking
     const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
@@ -876,6 +920,11 @@ export function DataTable<T>({
     // Native row drag state
     const [draggingRowId, setDraggingRowId] = useState<string | null>(null);
     const [dragOverRowId, setDragOverRowId] = useState<string | null>(null);
+
+    // Native column drag state
+    const [draggingColumnKey, setDraggingColumnKey] = useState<string | null>(null);
+    const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
+    const [columnIndicatorRect, setColumnIndicatorRect] = useState<{ top: number; left: number; height: number } | null>(null);
 
     // Collapsed groups state
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -1326,6 +1375,10 @@ export function DataTable<T>({
         onRowDragOver: (e: React.DragEvent<HTMLTableRowElement>) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
+            // Update dragOverRowId on every dragOver event for immediate visual feedback
+            if (draggingRowId && draggingRowId !== rowId && dragOverRowId !== rowId) {
+                setDragOverRowId(rowId);
+            }
         },
         onRowDragLeave: (e: React.DragEvent<HTMLTableRowElement>) => {
             // Only clear if we're leaving to a non-child element
@@ -2021,35 +2074,84 @@ export function DataTable<T>({
                     className="data-grid-table"
                     style={{ width: totalWidth, tableLayout: 'fixed' }}
                 >
+                    {/* Column Drag Indicator - vertical blue line */}
+                    {columnIndicatorRect && createPortal(
+                        <div
+                            style={{
+                                position: 'fixed',
+                                left: columnIndicatorRect.left,
+                                top: columnIndicatorRect.top,
+                                width: '2px',
+                                height: columnIndicatorRect.height,
+                                background: '#3b82f6',
+                                zIndex: 9999,
+                                pointerEvents: 'none',
+                            }}
+                        />,
+                        document.body
+                    )}
+
                     {/* Column Header with native HTML5 drag-and-drop */}
                     <thead className="sticky top-0 z-10 bg-white">
                         <tr>
                             {sortable && <th className="data-grid-th w-10"></th>}
-                            {orderedColumns.map((col, colIndex) => {
+                            {orderedColumns.map((col) => {
                                 const sortRule = sortRules.find(r => r.key === col.key);
+                                const isDraggingThis = draggingColumnKey === col.key;
                                 return (
                                     <th
                                         key={col.key}
-                                        className="data-grid-th relative group/header cursor-grab active:cursor-grabbing"
+                                        className={cn(
+                                            "data-grid-th relative group/header cursor-grab active:cursor-grabbing",
+                                            isDraggingThis && "opacity-50"
+                                        )}
                                         style={{ width: columnWidths[col.key] }}
                                         onContextMenu={(e) => handleHeaderContextMenu(e, col)}
                                         draggable
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData('text/plain', col.key);
                                             e.dataTransfer.effectAllowed = 'move';
+                                            setDraggingColumnKey(col.key);
+                                        }}
+                                        onDragEnd={() => {
+                                            setDraggingColumnKey(null);
+                                            setDragOverColumnKey(null);
+                                            setColumnIndicatorRect(null);
+                                        }}
+                                        onDragEnter={(e) => {
+                                            e.preventDefault();
                                         }}
                                         onDragOver={(e) => {
                                             e.preventDefault();
                                             e.dataTransfer.dropEffect = 'move';
+                                            // Update indicator position while dragging over this column
+                                            // Check dataTransfer for the dragged key to avoid timing issues with state
+                                            const draggedKey = e.dataTransfer.types.includes('text/plain') ? 'pending' : null;
+                                            if (draggedKey && draggingColumnKey !== col.key) {
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                // Show indicator at LEFT edge - where the dragged column's left edge will be
+                                                setDragOverColumnKey(col.key);
+                                                setColumnIndicatorRect({ top: rect.top, left: rect.left, height: rect.height });
+                                            }
+                                        }}
+                                        onDragLeave={(e) => {
+                                            // Only clear if actually leaving the th element (not just moving to a child)
+                                            const relatedTarget = e.relatedTarget as Node | null;
+                                            if (!e.currentTarget.contains(relatedTarget)) {
+                                                if (dragOverColumnKey === col.key) {
+                                                    setDragOverColumnKey(null);
+                                                    setColumnIndicatorRect(null);
+                                                }
+                                            }
                                         }}
                                         onDrop={(e) => {
                                             e.preventDefault();
                                             const draggedKey = e.dataTransfer.getData('text/plain');
-                                            if (draggedKey !== col.key) {
-                                                const oldIndex = columnOrder.findIndex(k => k === draggedKey);
-                                                const newIndex = colIndex;
-                                                handleColumnReorder(oldIndex, newIndex);
+                                            if (draggedKey && draggedKey !== col.key) {
+                                                handleColumnReorder(draggedKey, col.key);
                                             }
+                                            setDragOverColumnKey(null);
+                                            setColumnIndicatorRect(null);
                                         }}
                                     >
                                         <div className="flex items-center gap-1">
@@ -2085,7 +2187,42 @@ export function DataTable<T>({
                                     </th>
                                 );
                             })}
-                            {showRowActions && <th className="data-grid-th w-20">Actions</th>}
+                            {showRowActions && (
+                                <th
+                                    className="data-grid-th w-20"
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'move';
+                                        // Show indicator at the left edge of Actions column
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setColumnIndicatorRect({ top: rect.top, left: rect.left, height: rect.height });
+                                    }}
+                                    onDragLeave={() => {
+                                        setColumnIndicatorRect(null);
+                                    }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        const draggedKey = e.dataTransfer.getData('text/plain');
+                                        if (draggedKey) {
+                                            // Move dragged column to the end
+                                            const currentOrderedKeys = orderedColumns.map(c => c.key);
+                                            const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
+                                            if (draggedIndex !== -1 && draggedIndex !== currentOrderedKeys.length - 1) {
+                                                const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
+                                                newOrder.push(draggedKey); // Add to end
+                                                if (onColumnOrderChange) {
+                                                    onColumnOrderChange(newOrder);
+                                                } else {
+                                                    setInternalColumnOrder(newOrder);
+                                                }
+                                            }
+                                        }
+                                        setColumnIndicatorRect(null);
+                                    }}
+                                >
+                                    Actions
+                                </th>
+                            )}
                         </tr>
                     </thead>
 

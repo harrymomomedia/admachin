@@ -6,12 +6,14 @@ import {
     updateAdCopy,
     deleteAdCopy,
     getProjects,
+    getSubprojects,
     getUsers,
     getUserViewPreferences,
     saveUserViewPreferences,
     saveRowOrder,
     type AdCopy,
     type Project,
+    type Subproject,
     type User
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
@@ -21,6 +23,7 @@ import { DataTable, type ColumnDef } from '../components/DataTable';
 export function AdCopyLibrary() {
     const [copies, setCopies] = useState<AdCopy[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
+    const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -91,9 +94,10 @@ export function AdCopyLibrary() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [copiesData, projectsData, usersData, user] = await Promise.all([
+            const [copiesData, projectsData, subprojectsData, usersData, user] = await Promise.all([
                 getAdCopies(),
                 getProjects(),
+                getSubprojects(),
                 getUsers(),
                 getCurrentUser()
             ]);
@@ -131,6 +135,7 @@ export function AdCopyLibrary() {
                 setCopies(copiesData);
             }
             setProjects(projectsData);
+            setSubprojects(subprojectsData);
             setUsers(usersData);
         } catch (error) {
             console.error('Failed to load data:', error);
@@ -192,6 +197,20 @@ export function AdCopyLibrary() {
             updates.project_id = value ? String(value) : null;
             const proj = projects.find(p => p.id === value);
             updates.project = proj?.name || null;
+            // When project changes, check if current subproject is still valid
+            const currentSubprojectId = original.subproject_id;
+            if (currentSubprojectId && value) {
+                const subBelongsToNewProject = subprojects.some(
+                    s => s.id === currentSubprojectId && s.project_id === value
+                );
+                if (!subBelongsToNewProject) {
+                    updates.subproject_id = null;
+                }
+            } else if (!value) {
+                updates.subproject_id = null;
+            }
+        } else if (field === 'subproject_id') {
+            updates.subproject_id = value ? String(value) : null;
         } else if (field === 'platform') {
             updates.platform = value ? String(value) : null;
         } else if (field === 'user_id') {
@@ -377,6 +396,41 @@ export function AdCopyLibrary() {
             },
         },
         {
+            key: 'subproject_id',
+            header: 'Subproject',
+            width: 140,
+            minWidth: 100,
+            editable: true,
+            type: 'select',
+            options: (row) => {
+                if (!row.project_id) return [];
+                return subprojects
+                    .filter(s => s.project_id === row.project_id)
+                    .map(s => ({
+                        label: s.name,
+                        value: s.id
+                    }));
+            },
+            render: (_value, row, isEditing) => {
+                if (isEditing) return null;
+                const subId = row.subproject_id;
+                let content;
+
+                if (subId) {
+                    const sub = subprojects.find(s => s.id === subId);
+                    content = sub ? sub.name : '-';
+                } else {
+                    content = '-';
+                }
+
+                return (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
+                        {content}
+                    </span>
+                );
+            },
+        },
+        {
             key: 'platform',
             header: 'Traffic',
             width: 80,
@@ -489,10 +543,11 @@ export function AdCopyLibrary() {
 
                         <form onSubmit={handleCreate} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="ad-text" className="block text-sm font-medium text-gray-700 mb-1">
                                     Ad Text <span className="text-red-500">*</span>
                                 </label>
                                 <textarea
+                                    id="ad-text"
                                     required
                                     rows={4}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
@@ -504,8 +559,9 @@ export function AdCopyLibrary() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                    <label htmlFor="ad-type" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
                                     <select
+                                        id="ad-type"
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={formData.type}
                                         onChange={e => setFormData({ ...formData, type: e.target.value })}
@@ -516,8 +572,9 @@ export function AdCopyLibrary() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Platform</label>
+                                    <label htmlFor="ad-platform" className="block text-sm font-medium text-gray-700 mb-1">Platform</label>
                                     <select
+                                        id="ad-platform"
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={formData.platform}
                                         onChange={e => setFormData({ ...formData, platform: e.target.value })}
@@ -530,8 +587,9 @@ export function AdCopyLibrary() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                                <label htmlFor="ad-project" className="block text-sm font-medium text-gray-700 mb-1">Project</label>
                                 <select
+                                    id="ad-project"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.project_id}
                                     onChange={e => setFormData({ ...formData, project_id: e.target.value })}

@@ -1,0 +1,139 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e7]:
+      - img [ref=e8]
+      - generic [ref=e13]: AdMachin
+    - generic [ref=e14]:
+      - link "Dashboard" [ref=e15]:
+        - /url: /
+        - img [ref=e16]
+        - text: Dashboard
+      - link "Launch Ad" [ref=e21]:
+        - /url: /launch
+        - img [ref=e22]
+        - text: Launch Ad
+      - link "Creatives" [ref=e27]:
+        - /url: /creatives
+        - img [ref=e28]
+        - text: Creatives
+      - link "Ad Text" [ref=e32]:
+        - /url: /ad-copies
+        - img [ref=e33]
+        - text: Ad Text
+      - link "Ad Planning" [ref=e35]:
+        - /url: /ad-planning
+        - img [ref=e36]
+        - text: Ad Planning
+      - link "FB Ad Library" [ref=e38]:
+        - /url: /fb-ad-library
+        - img [ref=e39]
+        - text: FB Ad Library
+      - button "Copywriting" [ref=e42] [cursor=pointer]:
+        - generic [ref=e43]:
+          - img [ref=e44]
+          - text: Copywriting
+        - img [ref=e46]
+      - button "Facebook" [ref=e49] [cursor=pointer]:
+        - generic [ref=e50]:
+          - img [ref=e51]
+          - text: Facebook
+        - img [ref=e53]
+      - link "Admin" [ref=e56]:
+        - /url: /admin
+        - img [ref=e57]
+        - text: Admin
+    - button "Collapse" [ref=e63] [cursor=pointer]:
+      - img [ref=e64]
+      - text: Collapse
+  - generic [ref=e67]:
+    - banner [ref=e68]:
+      - generic [ref=e70]:
+        - img [ref=e71]
+        - textbox "Search campaigns..." [ref=e74]
+      - generic [ref=e75]:
+        - button [ref=e76] [cursor=pointer]:
+          - img [ref=e77]
+        - button "test test@example.com T" [ref=e82] [cursor=pointer]:
+          - generic [ref=e83]:
+            - generic [ref=e84]: test
+            - generic [ref=e85]: test@example.com
+          - generic [ref=e86]: T
+          - img [ref=e87]
+    - main [ref=e89]:
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - generic [ref=e92]:
+            - heading "Creative Library" [level=1] [ref=e93]
+            - paragraph [ref=e94]: Manage your images and videos for ad campaigns
+          - button "Upload Media Main" [ref=e95] [cursor=pointer]:
+            - img [ref=e96]
+            - text: Upload Media
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - img [ref=e99]
+            - textbox "Search media" [ref=e102]:
+              - /placeholder: Search media...
+          - button "Filter All" [ref=e104] [cursor=pointer]: All
+          - generic [ref=e105]:
+            - button "Grid View" [ref=e106] [cursor=pointer]:
+              - img [ref=e107]
+            - button "List View" [ref=e109] [cursor=pointer]:
+              - img [ref=e110]
+        - generic [ref=e111]:
+          - generic [ref=e112] [cursor=pointer]:
+            - button [ref=e113]
+            - img [ref=e116]
+            - img "new-image.jpg" [ref=e121]
+            - generic [ref=e122]:
+              - button [ref=e123]:
+                - img [ref=e124]
+              - button [ref=e127]:
+                - img [ref=e128]
+            - generic [ref=e131]:
+              - paragraph [ref=e132]: new-image.jpg
+              - paragraph [ref=e133]: 15 B
+          - generic [ref=e134] [cursor=pointer]:
+            - button [ref=e135]
+            - img [ref=e138]
+            - img "new-image.jpg" [ref=e143]
+            - generic [ref=e144]:
+              - button [ref=e145]:
+                - img [ref=e146]
+              - button [ref=e149]:
+                - img [ref=e150]
+            - generic [ref=e153]:
+              - paragraph [ref=e154]: new-image.jpg
+              - paragraph [ref=e155]: 15 B
+          - generic [ref=e156] [cursor=pointer]:
+            - button [ref=e157]
+            - img [ref=e160]
+            - img "test-image.jpg" [ref=e165]
+            - generic [ref=e166]:
+              - button [ref=e167]:
+                - img [ref=e168]
+              - button [ref=e171]:
+                - img [ref=e172]
+            - generic [ref=e175]:
+              - paragraph [ref=e176]: test-image.jpg
+              - paragraph [ref=e177]: 500.0 KB
+          - generic [ref=e178] [cursor=pointer]:
+            - button [ref=e179]
+            - generic [ref=e181]:
+              - img [ref=e182]
+              - text: 0:15
+            - img [ref=e186]
+            - generic [ref=e188]:
+              - button [ref=e189]:
+                - img [ref=e190]
+              - button [ref=e193]:
+                - img [ref=e194]
+            - generic [ref=e197]:
+              - paragraph [ref=e198]: test-video.mp4
+              - paragraph [ref=e199]: 5.0 MB
+        - generic [ref=e200]:
+          - generic [ref=e201]: 4 items
+          - generic [ref=e202]: "Total size: 5.5 MB"
+```

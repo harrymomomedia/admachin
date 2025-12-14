@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "save": "git add . && git commit -m 'Auto-save changes' && git push",
     "status": "git status",
-    "deploy": "npm run save && vercel --prod"
+    "deploy": "npm run save && vercel --prod",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
