@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
-import { UrlColumn } from '../components/UrlColumn';
-import { PriorityColumn } from '../components/PriorityColumn';
 import {
     getAdPlans,
     createAdPlan,
@@ -306,7 +304,6 @@ export function AdPlanning() {
             editable: true,
             type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
-            getValue: (row) => row.project_id || '',
             fallbackKey: 'project', // Legacy field for old data
             colorMap: { default: 'bg-pink-500 text-white' },
         },
@@ -326,7 +323,6 @@ export function AdPlanning() {
                         value: s.id
                     }));
             },
-            getValue: (row) => row.subproject_id || '',
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
             fallbackKey: 'subproject', // Legacy field for old data
             colorMap: { default: 'bg-orange-500 text-white' },
@@ -371,8 +367,8 @@ export function AdPlanning() {
             width: 50,
             minWidth: 40,
             editable: true,
-            type: 'text',
-            render: (value) => <PriorityColumn value={value} />,
+            type: 'priority',
+            maxPriority: 5,
         },
         {
             key: 'hj_rating',
@@ -417,10 +413,7 @@ export function AdPlanning() {
             width: 180,
             minWidth: 120,
             editable: true,
-            type: 'text',
-            render: (value, _, isEditing) => (
-                <UrlColumn value={value} isEditing={isEditing} />
-            ),
+            type: 'url',
         },
         {
             key: 'description',

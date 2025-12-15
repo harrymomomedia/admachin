@@ -367,7 +367,6 @@ export function AdCopyLibrary() {
             options: projects.map(p => ({ label: p.name, value: p.id })),
             fallbackKey: 'project', // Legacy field for old data
             colorMap: { default: 'bg-pink-500 text-white' },
-            getValue: (copy) => copy.project_id || '',
         },
         {
             key: 'subproject_id',
@@ -426,7 +425,6 @@ export function AdCopyLibrary() {
                 label: u.first_name ? `${u.first_name} ${u.last_name || ''} `.trim() : (u.name || u.email),
                 value: u.id
             })),
-            getValue: (copy) => copy.user_id || '',
         },
     ];
 

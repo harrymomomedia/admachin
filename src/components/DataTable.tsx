@@ -20,6 +20,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../utils/cn';
+import { UrlColumn } from './UrlColumn';
+import { PriorityColumn } from './PriorityColumn';
 
 // ============ Sortable Sort Rule Item ============
 function SortableSortRule({
@@ -90,13 +92,15 @@ export interface ColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'custom';
+    type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'url' | 'priority' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     colorMap?: Record<string, string>;
     render?: (value: unknown, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
     getValue?: (row: T) => unknown;
     fallbackKey?: string; // For legacy data - show this field's value if current value not found in options
+    maxPriority?: number; // For priority type - max value (default: 5)
+    urlMaxLength?: number; // For url type - max characters to show (default: 25)
 }
 
 export interface DataTableProps<T> {
@@ -852,6 +856,20 @@ function SortableRow<T>({
                                             hour12: true
                                         }) : '-'}
                                     </span>
+                                ) : col.type === 'url' ? (
+                                    <div
+                                        className="px-2 py-1"
+                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                    >
+                                        <UrlColumn value={value} maxLength={col.urlMaxLength} />
+                                    </div>
+                                ) : col.type === 'priority' ? (
+                                    <div
+                                        className="px-3 py-2 cursor-pointer"
+                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                    >
+                                        <PriorityColumn value={value} maxPriority={col.maxPriority} />
+                                    </div>
                                 ) : (
                                     <p
                                         className={cn(
@@ -1370,13 +1388,15 @@ export function DataTable<T>({
         const sorted = [...filteredData].sort((a, b) => {
             for (const rule of effectiveSortRules) {
                 const col = columns.find(c => c.key === rule.key);
-                const aVal = col?.getValue ? col.getValue(a) : (a as Record<string, unknown>)[rule.key];
-                const bVal = col?.getValue ? col.getValue(b) : (b as Record<string, unknown>)[rule.key];
+                const aVal = col?.getValue ? col.getValue(a) : ((a as Record<string, unknown>)[rule.key] ?? '');
+                const bVal = col?.getValue ? col.getValue(b) : ((b as Record<string, unknown>)[rule.key] ?? '');
 
-                // Handle null/undefined
-                if (aVal == null && bVal == null) continue;
-                if (aVal == null) return 1;
-                if (bVal == null) return -1;
+                // Handle empty values (null/undefined/empty string)
+                const aEmpty = aVal == null || aVal === '';
+                const bEmpty = bVal == null || bVal === '';
+                if (aEmpty && bEmpty) continue;
+                if (aEmpty) return 1;
+                if (bEmpty) return -1;
 
                 // Compare
                 // Try number comparison first if looks like number
@@ -1746,9 +1766,9 @@ export function DataTable<T>({
             cellHeight: cellRect.height,
         });
 
-        const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[field];
+        const value = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[field] ?? '');
         setEditingCell({ id: getRowId(row), field });
-        setEditingValue(String(value || ''));
+        setEditingValue(String(value));
     }, [columns, getRowId]);
 
     const handleEditSave = useCallback(async (newValue?: string) => {

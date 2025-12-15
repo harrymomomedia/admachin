@@ -31,23 +31,37 @@ test.describe('Creative Library', () => {
             await route.fulfill({ json: [{ id: 'user1', email: 'test@example.com' }] });
         });
 
-        // Mock Creatives GET
+        // Mock Creatives - handle ALL methods to prevent real DB writes
         await page.route('**/rest/v1/creatives*', async route => {
             const method = route.request().method();
             if (method === 'GET') {
                 await route.fulfill({ json: mockCreatives });
             } else if (method === 'DELETE') {
                 await route.fulfill({ status: 204 });
+            } else if (method === 'POST') {
+                // Mock successful insert - NEVER let POST go to real DB
+                await route.fulfill({
+                    status: 201,
+                    json: { id: 'mock-new-id', name: 'new-image.jpg' }
+                });
             } else {
-                await route.continue();
+                // For any other method, also mock instead of continuing to real server
+                await route.fulfill({ status: 200 });
             }
         });
 
-        // Mock Public Url generation (Supabase storage)
-        // The app calls getPublicUrl, which is synchronous usually if using standard client, 
-        // but if it fetches anything we might need to mock.
-        // However, getCreativeUrl likely just constructs a string: 
-        // ${SUPABASE_URL}/storage/v1/object/public/creatives/${path}
+        // Mock Storage uploads - CRITICAL: prevent real file uploads
+        await page.route('**/storage/v1/object/creatives/**', async route => {
+            await route.fulfill({
+                status: 200,
+                json: { Key: 'creatives/mock-upload.jpg', publicURL: 'http://mock/url' }
+            });
+        });
+
+        // Mock Storage list/delete operations
+        await page.route('**/storage/v1/object/**/creatives/**', async route => {
+            await route.fulfill({ status: 200, json: {} });
+        });
 
         // Login and Navigate
         await page.goto('/login');
@@ -79,35 +93,13 @@ test.describe('Creative Library', () => {
         // Verify Modal
         await expect(page.getByRole('heading', { name: 'Upload Creative' })).toBeVisible();
 
-        // Perform Upload
-        // We need to create a dummy file
-        const buffer = Buffer.from('fake image data');
-
-        // Trigger file input
-        // The input is hidden: className="hidden"
-        // We can target it by type="file"
+        // Create a dummy file for testing
+        // Note: Storage and DB routes are mocked in beforeEach, so no real uploads occur
+        const buffer = Buffer.from('fake image data for testing');
         const fileInput = page.locator('input[type="file"]');
 
-        // Mock the upload API call which happens after file selection
-        // The app calls supabase.storage.from('creatives').upload(...)
-        // This is a network request to: **/storage/v1/object/creatives/*
-
-        await page.route('**/storage/v1/object/creatives/*', async route => {
-            // Mock successful storage upload
-            await route.fulfill({
-                json: { Key: 'creatives/new-image.jpg', publicURL: 'http://mock/url' }
-            });
-        });
-
-        // Mock the DB insert after upload
-        await page.route('**/rest/v1/creatives', async route => {
-            if (route.request().method() === 'POST') {
-                await route.fulfill({ status: 201 });
-            }
-        });
-
         await fileInput.setInputFiles({
-            name: 'new-image.jpg',
+            name: 'test-upload.jpg',
             mimeType: 'image/jpeg',
             buffer
         });
@@ -119,10 +111,8 @@ test.describe('Creative Library', () => {
         // Close modal
         await page.getByRole('button').filter({ has: page.locator('.lucide-x') }).first().click();
 
-        // Note: The main list won't update unless we statefully mock the POST to return the new item 
-        // OR the app optimally adds it to local state (which it does: setMedia(prev => ...))
-        // So we should see it.
-        await expect(page.getByText('new-image.jpg')).toBeVisible();
+        // The file should appear in the list (added to local state by the app)
+        await expect(page.getByText('test-upload.jpg')).toBeVisible();
     });
 
     test('should delete creative', async ({ page }) => {
