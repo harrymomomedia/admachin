@@ -306,26 +306,9 @@ export function AdPlanning() {
             editable: true,
             type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
-            render: (_value, row, isEditing) => {
-                if (isEditing) return null; // Use default select in edit mode
-                const project = projects.find(p => p.id === row.project_id);
-                const legacyName = (row as AdPlan & { project?: string }).project;
-
-                // If no project and no legacy name, show empty cell
-                if (!project && !row.project_id && !legacyName) {
-                    return null;
-                }
-
-                const content = (!project && !row.project_id && legacyName)
-                    ? <span className="text-gray-500 italic">{legacyName}</span>
-                    : project?.name;
-
-                return (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-pink-500 text-white">
-                        {content}
-                    </span>
-                );
-            }
+            getValue: (row) => row.project_id || '',
+            fallbackKey: 'project', // Legacy field for old data
+            colorMap: { default: 'bg-pink-500 text-white' },
         },
         {
             key: 'subproject_id',
@@ -343,32 +326,10 @@ export function AdPlanning() {
                         value: s.id
                     }));
             },
+            getValue: (row) => row.subproject_id || '',
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            render: (_value, row, isEditing) => {
-                if (isEditing) return null;
-                const subId = row.subproject_id;
-
-                // If no subproject_id and no legacy subproject name, show empty cell
-                if (!subId && !row.subproject) {
-                    return null;
-                }
-
-                let content;
-                if (subId) {
-                    const sub = subprojects.find(s => s.id === subId);
-                    content = sub ? sub.name : null;
-                    if (!content) return null; // subproject not found
-                } else {
-                    // Fallback to legacy text
-                    content = <span className="text-gray-500 italic">{row.subproject}</span>;
-                }
-
-                return (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-orange-500 text-white">
-                        {content}
-                    </span>
-                );
-            },
+            fallbackKey: 'subproject', // Legacy field for old data
+            colorMap: { default: 'bg-orange-500 text-white' },
         },
         {
             key: 'plan_type',

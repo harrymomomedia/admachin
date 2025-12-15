@@ -21,7 +21,6 @@ import {
     type ViewPreferencesConfig
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
-import { cn } from '../utils/cn';
 import { DataTable, type ColumnDef } from '../components/DataTable';
 
 export function AdCopyLibrary() {
@@ -161,16 +160,6 @@ export function AdCopyLibrary() {
             setIsLoading(false);
         }
     };
-
-    // Helper functions
-    const getProjectName = (copy: AdCopy) => {
-        if (copy.project_id) {
-            const proj = projects.find(p => p.id === copy.project_id);
-            if (proj) return proj.name;
-        }
-        return copy.project || '-';
-    };
-
 
     // Quick inline row creation (no popup, no refresh)
     const handleQuickCreate = async () => {
@@ -376,20 +365,9 @@ export function AdCopyLibrary() {
             editable: true,
             type: 'badge',
             options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: {},
+            fallbackKey: 'project', // Legacy field for old data
+            colorMap: { default: 'bg-pink-500 text-white' },
             getValue: (copy) => copy.project_id || '',
-            render: (_value, copy) => {
-                const hasProject = copy.project_id || copy.project;
-                if (!hasProject) {
-                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
-                }
-                const name = getProjectName(copy);
-                return (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity ml-2 bg-pink-500 text-white">
-                        {name}
-                    </span>
-                );
-            },
         },
         {
             key: 'subproject_id',
@@ -408,27 +386,7 @@ export function AdCopyLibrary() {
                     }));
             },
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            render: (_value, row, isEditing) => {
-                if (isEditing) return null;
-                const subId = row.subproject_id;
-
-                if (!subId) {
-                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
-                }
-
-                const sub = subprojects.find(s => s.id === subId);
-                const name = sub ? sub.name : null;
-
-                if (!name) {
-                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
-                }
-
-                return (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-orange-500 text-white">
-                        {name}
-                    </span>
-                );
-            },
+            colorMap: { default: 'bg-orange-500 text-white' },
         },
         {
             key: 'platform',
@@ -456,22 +414,6 @@ export function AdCopyLibrary() {
             minWidth: 100,
             editable: false,
             type: 'date',
-            render: (value) => {
-                if (!value) return '-';
-                const date = new Date(String(value));
-                return (
-                    <span className="text-[10px] text-gray-500">
-                        {date.toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                        })}
-                    </span>
-                );
-            },
         },
         {
             key: 'user_id',

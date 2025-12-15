@@ -96,6 +96,7 @@ export interface ColumnDef<T> {
     colorMap?: Record<string, string>;
     render?: (value: unknown, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
     getValue?: (row: T) => unknown;
+    fallbackKey?: string; // For legacy data - show this field's value if current value not found in options
 }
 
 export interface DataTableProps<T> {
@@ -622,7 +623,7 @@ function SortableRow<T>({
 
                 {/* Data Columns */}
                 {columns.map((col) => {
-                    const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[col.key];
+                    const value = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
                     const isEditing = editingCell?.id === rowId && editingCell?.field === col.key;
                     const width = columnWidths[col.key] || col.width || 100;
 
@@ -813,31 +814,42 @@ function SortableRow<T>({
                                 </div>
                             ) : (
                                 // Default display mode
-                                col.type === 'badge' || col.type === 'select' ? (
-                                    !value ? (
-                                        <span
-                                            className="cursor-pointer w-full h-full block min-h-[20px]"
-                                            onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                                        />
-                                    ) : (
+                                col.type === 'badge' || col.type === 'select' ? (() => {
+                                    // Check if value exists in options
+                                    const optionLabel = options?.find(o => String(o.value) === String(value))?.label;
+                                    // Use fallback value if value not found in options
+                                    const fallbackValue = col.fallbackKey ? (row as Record<string, unknown>)[col.fallbackKey] : null;
+                                    const displayValue = optionLabel || (value ? String(value) : null) || (fallbackValue ? String(fallbackValue) : null);
+
+                                    if (!displayValue) {
+                                        return (
+                                            <span
+                                                className="cursor-pointer w-full h-full block min-h-[20px]"
+                                                onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                            />
+                                        );
+                                    }
+
+                                    return (
                                         <span
                                             className={cn(
                                                 "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
-                                                col.colorMap?.[String(value)] || "bg-gray-500 text-white"
+                                                col.colorMap?.[String(value)] || col.colorMap?.['default'] || "bg-gray-500 text-white"
                                             )}
                                             onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                         >
-                                            {options?.find(o => String(o.value) === String(value))?.label || String(value)}
+                                            {displayValue}
                                         </span>
-                                    )
-                                ) : col.type === 'date' ? (
-                                    <span className="text-[13px] text-gray-500 px-3 py-2 block">
+                                    );
+                                })() : col.type === 'date' ? (
+                                    <span className="text-[10px] text-gray-500 px-3 py-2 block">
                                         {value ? new Date(String(value)).toLocaleString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
                                             year: 'numeric',
                                             hour: 'numeric',
                                             minute: '2-digit',
+                                            hour12: true
                                         }) : '-'}
                                     </span>
                                 ) : (
@@ -1307,8 +1319,8 @@ export function DataTable<T>({
             for (let i = 0; i < filterRules.length; i++) {
                 const rule = filterRules[i];
                 const col = columns.find(c => c.key === rule.field);
-                const cellValue = col?.getValue ? col.getValue(row) : (row as Record<string, unknown>)[rule.field];
-                const strValue = cellValue == null ? '' : String(cellValue).toLowerCase();
+                const cellValue = col?.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[rule.field] ?? '');
+                const strValue = String(cellValue).toLowerCase();
                 const filterValue = rule.value.toLowerCase();
 
                 let matches = false;

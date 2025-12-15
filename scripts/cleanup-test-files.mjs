@@ -3,7 +3,7 @@ import { config } from 'dotenv';
 import { readFileSync } from 'fs';
 
 // Load env manually
-const envContent = readFileSync('.env.local', 'utf-8');
+const envContent = readFileSync('.env', 'utf-8');
 const envVars = {};
 envContent.split('\n').forEach(line => {
     const match = line.match(/^([^=]+)=(.*)$/);
