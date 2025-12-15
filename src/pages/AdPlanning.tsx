@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Link as LinkIcon } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
+import { UrlColumn } from '../components/UrlColumn';
+import { PriorityColumn } from '../components/PriorityColumn';
 import {
     getAdPlans,
     createAdPlan,
@@ -20,7 +22,6 @@ import {
     type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
-import { cn } from '../utils/cn';
 import { DataTable, type ColumnDef } from '../components/DataTable';
 
 export function AdPlanning() {
@@ -45,7 +46,7 @@ export function AdPlanning() {
         subproject: '',
         plan_type: 'CClone',
         creative_type: 'Video',
-        priority: 5,
+        priority: 3,
         hj_rating: 0,
         spy_url: '',
         description: '',
@@ -273,7 +274,7 @@ export function AdPlanning() {
             setIsCreateModalOpen(false);
             setFormData({
                 project_id: '', user_id: '', subproject: '', plan_type: 'CClone',
-                creative_type: 'Video', priority: 5, hj_rating: 0, spy_url: '',
+                creative_type: 'Video', priority: 3, hj_rating: 0, spy_url: '',
                 description: '', creative_id: '', reference_creative_id: '', status: 'not started'
             });
         } catch (error) {
@@ -410,14 +411,7 @@ export function AdPlanning() {
             minWidth: 40,
             editable: true,
             type: 'text',
-            render: (value) => (
-                <span className={cn(
-                    "text-xs font-medium",
-                    Number(value) >= 8 ? "text-red-600" : Number(value) >= 5 ? "text-orange-500" : "text-gray-600"
-                )}>
-                    {String(value || '-')}
-                </span>
-            ),
+            render: (value) => <PriorityColumn value={value} />,
         },
         {
             key: 'hj_rating',
@@ -463,32 +457,9 @@ export function AdPlanning() {
             minWidth: 120,
             editable: true,
             type: 'text',
-            render: (value, _, isEditing) => {
-                if (isEditing) return null; // Let DataTable handle editing
-                const urlStr = String(value || '');
-                return value ? (
-                    <div className="flex items-center gap-1.5 w-full">
-                        <span
-                            className="text-xs text-gray-700 truncate flex-1 cursor-pointer hover:text-blue-600"
-                            title={urlStr}
-                        >
-                            {urlStr.replace(/^https?:\/\//, '').slice(0, 25)}{urlStr.length > 35 ? '...' : ''}
-                        </span>
-                        <a
-                            href={urlStr}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-500 hover:text-blue-700 flex-shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open URL"
-                        >
-                            <LinkIcon className="w-3.5 h-3.5" />
-                        </a>
-                    </div>
-                ) : (
-                    <span className="text-gray-400 text-xs">-</span>
-                );
-            },
+            render: (value, _, isEditing) => (
+                <UrlColumn value={value} isEditing={isEditing} />
+            ),
         },
         {
             key: 'description',
@@ -616,12 +587,12 @@ export function AdPlanning() {
                             </div>
 
                             <div className="col-span-1">
-                                <label htmlFor="plan-priority" className="block text-sm font-medium text-gray-700 mb-1">Priority (1-10)</label>
+                                <label htmlFor="plan-priority" className="block text-sm font-medium text-gray-700 mb-1">Priority (1-5)</label>
                                 <input
                                     id="plan-priority"
                                     type="number"
                                     min="1"
-                                    max="10"
+                                    max="5"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.priority}
                                     onChange={e => setFormData({ ...formData, priority: parseInt(e.target.value) })}
