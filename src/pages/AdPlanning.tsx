@@ -262,6 +262,7 @@ export function AdPlanning() {
                         value: s.id
                     }));
             },
+            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
             render: (_value, row, isEditing) => {
                 if (isEditing) return null;
                 const subId = row.subproject_id;

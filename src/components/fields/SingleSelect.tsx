@@ -32,22 +32,31 @@ export function SingleSelect({
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Close on click outside
+    // Close on click outside - use setTimeout to allow click events to complete first
     useEffect(() => {
         if (!isOpen) return;
 
         const handleClickOutside = (e: MouseEvent) => {
-            if (
-                buttonRef.current && !buttonRef.current.contains(e.target as Node) &&
-                dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
-            ) {
+            const target = e.target as Node;
+            // Check if click is inside button or dropdown
+            const isInsideButton = buttonRef.current?.contains(target);
+            const isInsideDropdown = dropdownRef.current?.contains(target);
+
+            if (!isInsideButton && !isInsideDropdown) {
                 setIsOpen(false);
                 setSearch('');
             }
         };
 
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        // Use setTimeout to add listener after current event loop
+        const timeoutId = setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+        }, 0);
+
+        return () => {
+            clearTimeout(timeoutId);
+            document.removeEventListener('click', handleClickOutside);
+        };
     }, [isOpen]);
 
     const selectedOption = options.find(opt => String(opt.value) === String(value));
@@ -64,7 +73,7 @@ export function SingleSelect({
             setDropdownPosition({
                 top: rect.bottom + 4,
                 left: rect.left,
-                width: Math.max(rect.width, 180)
+                width: Math.max(rect.width, 200)
             });
         }
     }, [isOpen]);
@@ -85,13 +94,13 @@ export function SingleSelect({
             >
                 {selectedOption ? (
                     <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border",
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap",
                         colorMap[String(selectedOption.value)] || "bg-gray-100 text-gray-700 border-gray-200"
                     )}>
                         {selectedOption.label}
                     </span>
                 ) : (
-                    <span className="text-gray-400">{placeholder}</span>
+                    <span className="text-gray-400 whitespace-nowrap">{placeholder}</span>
                 )}
                 <ChevronDown className="w-3 h-3 text-gray-400 ml-auto" />
             </button>
@@ -99,12 +108,14 @@ export function SingleSelect({
             {isOpen && createPortal(
                 <div
                     ref={dropdownRef}
+                    data-single-select-dropdown="true"
                     className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] overflow-hidden"
                     style={{
                         top: dropdownPosition.top,
                         left: dropdownPosition.left,
                         minWidth: dropdownPosition.width
                     }}
+                    onClick={(e) => e.stopPropagation()}
                 >
                     {/* Search Input */}
                     <div className="p-2 border-b border-gray-100">
@@ -143,7 +154,7 @@ export function SingleSelect({
                                         )}
                                     >
                                         <span className={cn(
-                                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap",
                                             colorMap[String(opt.value)] || "bg-gray-100 text-gray-700 border-gray-200"
                                         )}>
                                             {opt.label}

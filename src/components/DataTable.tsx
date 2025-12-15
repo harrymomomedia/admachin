@@ -92,6 +92,7 @@ export interface ColumnDef<T> {
     editable?: boolean;
     type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
+    filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     colorMap?: Record<string, string>;
     render?: (value: unknown, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
     getValue?: (row: T) => unknown;
@@ -127,8 +128,8 @@ export interface DataTableProps<T> {
     resizable?: boolean;
 
     // Wrap - per-column line wrapping
-    wrapRules?: { columnKey: string; lines: '1' | '3' | 'full' }[];
-    onWrapRulesChange?: (rules: { columnKey: string; lines: '1' | '3' | 'full' }[]) => void;
+    wrapRules?: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[];
+    onWrapRulesChange?: (rules: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[]) => void;
 
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;
@@ -398,7 +399,7 @@ interface SortableRowProps<T> {
     showRowActions: boolean;
     editingCell: { id: string; field: string } | null;
     editingValue: string;
-    wrapRules: { columnKey: string; lines: '1' | '3' | 'full' }[];
+    wrapRules: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[];
     dropdownPosition: { top: number; left: number };
     onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
@@ -561,7 +562,7 @@ function SortableRow<T>({
                             style={{
                                 width,
                                 maxWidth: width,
-                                ...(wrapLines === '1' && { maxHeight: '24px' }),
+                                ...((!wrapLines || wrapLines === '1') && { maxHeight: '24px' }),
                                 ...(wrapLines === '3' && { maxHeight: '60px' })
                             }}
                         >
@@ -660,7 +661,7 @@ function SortableRow<T>({
                                     <p
                                         className={cn(
                                             "text-xs text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-2",
-                                            wrapLines === '1' && "line-clamp-1",
+                                            (!wrapLines || wrapLines === '1') && "line-clamp-1",
                                             wrapLines === '3' && "line-clamp-3",
                                             wrapLines === 'full' && "whitespace-pre-wrap"
                                         )}
@@ -749,9 +750,9 @@ export function DataTable<T>({
     onColumnWidthsChange
 }: DataTableProps<T>) {
     // Wrap state (per-column line wrapping, managed internally if not provided externally)
-    const [internalWrapRules, setInternalWrapRules] = useState<Array<{ columnKey: string; lines: '1' | '3' | 'full' }>>([]);
+    const [internalWrapRules, setInternalWrapRules] = useState<Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>>([]);
     const wrapRules = externalWrapRules || internalWrapRules;
-    const setWrapRules = (newRules: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>) => {
+    const setWrapRules = (newRules: Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>) => {
         if (onWrapRulesChange) {
             onWrapRulesChange(newRules);
         } else {
@@ -970,6 +971,7 @@ export function DataTable<T>({
     }
     const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
+    const [filterSearch, setFilterSearch] = useState('');
     const filterPanelRef = useRef<HTMLDivElement>(null);
 
     // Context menu state
@@ -1191,20 +1193,37 @@ export function DataTable<T>({
     }, []);
 
     // Close sort/group panel when clicking outside
+    // Helper to close all toolbar panels
+    const closeAllPanels = useCallback(() => {
+        setShowSortPanel(false);
+        setShowFilterPanel(false);
+        setShowGroupPanel(false);
+        setShowWrapPanel(false);
+    }, []);
+
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            if (sortPanelRef.current && !sortPanelRef.current.contains(event.target as Node)) {
-                setShowSortPanel(false);
-            }
-            if (groupPanelRef.current && !groupPanelRef.current.contains(event.target as Node)) {
-                setShowGroupPanel(false);
+            const target = event.target as Node;
+
+            // Check if click is inside a portaled SingleSelect dropdown
+            const singleSelectDropdown = (target as Element).closest?.('[data-single-select-dropdown="true"]');
+            if (singleSelectDropdown) return;
+
+            const clickedInsideAnyPanel =
+                (sortPanelRef.current && sortPanelRef.current.contains(target)) ||
+                (filterPanelRef.current && filterPanelRef.current.contains(target)) ||
+                (groupPanelRef.current && groupPanelRef.current.contains(target)) ||
+                (wrapPanelRef.current && wrapPanelRef.current.contains(target));
+
+            if (!clickedInsideAnyPanel) {
+                closeAllPanels();
             }
         }
-        if (showSortPanel || showGroupPanel) {
+        if (showSortPanel || showFilterPanel || showGroupPanel || showWrapPanel) {
             document.addEventListener('mousedown', handleClickOutside);
             return () => document.removeEventListener('mousedown', handleClickOutside);
         }
-    }, [showSortPanel, showGroupPanel]);
+    }, [showSortPanel, showFilterPanel, showGroupPanel, showWrapPanel, closeAllPanels]);
 
     // Handle sort from context menu (adds/replaces sort rule)
     const handleSort = useCallback((columnKey: string, direction: 'asc' | 'desc') => {
@@ -1447,7 +1466,11 @@ export function DataTable<T>({
                 {/* Sort Button */}
                 <div className="relative">
                     <button
-                        onClick={() => setShowSortPanel(!showSortPanel)}
+                        onClick={() => {
+                            const wasOpen = showSortPanel;
+                            closeAllPanels();
+                            if (!wasOpen) setShowSortPanel(true);
+                        }}
                         className={cn(
                             "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
                             sortRules.length > 0
@@ -1456,7 +1479,11 @@ export function DataTable<T>({
                         )}
                     >
                         <ArrowUpDown className="w-3.5 h-3.5" />
-                        {sortRules.length > 0 ? `Sorted by ${sortRules.length} field${sortRules.length > 1 ? 's' : ''}` : 'Sort'}
+                        {sortRules.length === 0
+                            ? 'Sort'
+                            : sortRules.length === 1
+                                ? `Sorted by ${columns.find(c => c.key === sortRules[0].key)?.header || sortRules[0].key}`
+                                : `Sorted by ${sortRules.length} fields`}
                     </button>
 
                     {/* Sort Panel Popup */}
@@ -1590,7 +1617,11 @@ export function DataTable<T>({
                 {/* Filter Button */}
                 <div ref={filterPanelRef} className="relative">
                     <button
-                        onClick={() => setShowFilterPanel(!showFilterPanel)}
+                        onClick={() => {
+                            const wasOpen = showFilterPanel;
+                            closeAllPanels();
+                            if (!wasOpen) setShowFilterPanel(true);
+                        }}
                         className={cn(
                             "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
                             filterRules.length > 0
@@ -1599,7 +1630,11 @@ export function DataTable<T>({
                         )}
                     >
                         <Filter className="w-3.5 h-3.5" />
-                        {filterRules.length > 0 ? `Filtered by ${filterRules.length} rule${filterRules.length > 1 ? 's' : ''}` : 'Filter'}
+                        {filterRules.length === 0
+                            ? 'Filter'
+                            : filterRules.length === 1
+                                ? `Filtered by ${columns.find(c => c.key === filterRules[0].field)?.header || filterRules[0].field}`
+                                : `Filtered by ${filterRules.length} rules`}
                         {filterRules.length > 0 && (
                             <span
                                 className="ml-1 p-0.5 hover:bg-green-200 rounded-full"
@@ -1615,126 +1650,224 @@ export function DataTable<T>({
 
                     {/* Filter Panel Popup */}
                     {showFilterPanel && (
-                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[450px] z-50">
+                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50">
                             <div className="text-xs font-medium text-gray-500 mb-2">
-                                In this view, show records
+                                {filterRules.length > 0 ? 'In this view, show records' : 'Filter by'}
                             </div>
 
-                            {/* Filter Rules */}
                             {filterRules.length > 0 ? (
-                                <div className="space-y-2 mb-3">
-                                    {filterRules.map((rule, index) => (
-                                        <div key={rule.id} className="flex items-center gap-2">
-                                            {/* Conjunction (and/or) */}
-                                            {index === 0 ? (
-                                                <div className="w-14 text-xs text-gray-500 text-right">Where</div>
-                                            ) : (
+                                <div className="space-y-2">
+                                    {/* Filter Rules */}
+                                    <div className="space-y-2">
+                                        {filterRules.map((rule, index) => (
+                                            <div key={rule.id} className="flex items-center gap-2">
+                                                {/* Conjunction (and/or) */}
+                                                {index === 0 ? (
+                                                    <div className="w-14 text-xs text-gray-500 text-right">Where</div>
+                                                ) : (
+                                                    <select
+                                                        value={rule.conjunction}
+                                                        onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                            r.id === rule.id ? { ...r, conjunction: e.target.value as 'and' | 'or' } : r
+                                                        ))}
+                                                        className="w-14 text-xs px-1 py-1 border border-gray-200 rounded bg-gray-50"
+                                                    >
+                                                        <option value="and">and</option>
+                                                        <option value="or">or</option>
+                                                    </select>
+                                                )}
+
+                                                {/* Field */}
                                                 <select
-                                                    value={rule.conjunction}
+                                                    value={rule.field}
                                                     onChange={(e) => setFilterRules(prev => prev.map(r =>
-                                                        r.id === rule.id ? { ...r, conjunction: e.target.value as 'and' | 'or' } : r
+                                                        r.id === rule.id ? { ...r, field: e.target.value } : r
                                                     ))}
-                                                    className="w-14 text-xs px-1 py-1 border border-gray-200 rounded bg-gray-50"
+                                                    className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
                                                 >
-                                                    <option value="and">and</option>
-                                                    <option value="or">or</option>
+                                                    {columns.map(col => (
+                                                        <option key={col.key} value={col.key}>{col.header}</option>
+                                                    ))}
                                                 </select>
-                                            )}
 
-                                            {/* Field */}
-                                            <select
-                                                value={rule.field}
-                                                onChange={(e) => setFilterRules(prev => prev.map(r =>
-                                                    r.id === rule.id ? { ...r, field: e.target.value } : r
-                                                ))}
-                                                className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
-                                            >
-                                                {columns.map(col => (
-                                                    <option key={col.key} value={col.key}>{col.header}</option>
-                                                ))}
-                                            </select>
+                                                {/* Operator - show different options for select vs text fields */}
+                                                {(() => {
+                                                    const col = columns.find(c => c.key === rule.field);
+                                                    const rawOptions = col?.options;
+                                                    const hasOptions = col?.filterOptions || Array.isArray(rawOptions);
 
-                                            {/* Operator */}
-                                            <select
-                                                value={rule.operator}
-                                                onChange={(e) => setFilterRules(prev => prev.map(r =>
-                                                    r.id === rule.id ? { ...r, operator: e.target.value as FilterRule['operator'] } : r
-                                                ))}
-                                                className="w-32 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
-                                            >
-                                                <option value="contains">contains</option>
-                                                <option value="does_not_contain">does not contain</option>
-                                                <option value="is">is</option>
-                                                <option value="is_not">is not</option>
-                                                <option value="is_empty">is empty</option>
-                                                <option value="is_not_empty">is not empty</option>
-                                            </select>
-
-                                            {/* Value - smart input based on column type */}
-                                            {rule.operator !== 'is_empty' && rule.operator !== 'is_not_empty' && (() => {
-                                                const col = columns.find(c => c.key === rule.field);
-                                                const rawOptions = col?.options;
-                                                // Only use options if they're an array (not a function)
-                                                const colOptions = Array.isArray(rawOptions) ? rawOptions : undefined;
-
-                                                if (colOptions && colOptions.length > 0) {
-                                                    // Column has options - use SingleSelect component
                                                     return (
-                                                        <SingleSelect
-                                                            value={rule.value}
-                                                            options={colOptions}
-                                                            onChange={(val) => setFilterRules(prev => prev.map(r =>
-                                                                r.id === rule.id ? { ...r, value: String(val) } : r
-                                                            ))}
-                                                            colorMap={col?.colorMap}
-                                                            placeholder="Select..."
-                                                            className="flex-1 border-gray-200"
-                                                        />
-                                                    );
-                                                } else {
-                                                    // Regular text input
-                                                    return (
-                                                        <input
-                                                            type="text"
-                                                            value={rule.value}
+                                                        <select
+                                                            value={rule.operator}
                                                             onChange={(e) => setFilterRules(prev => prev.map(r =>
-                                                                r.id === rule.id ? { ...r, value: e.target.value } : r
+                                                                r.id === rule.id ? { ...r, operator: e.target.value as FilterRule['operator'] } : r
                                                             ))}
-                                                            placeholder="Enter a value"
-                                                            className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-                                                        />
+                                                            className="w-32 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white"
+                                                        >
+                                                            {hasOptions ? (
+                                                                <>
+                                                                    <option value="is">is</option>
+                                                                    <option value="is_not">is not</option>
+                                                                    <option value="is_empty">is empty</option>
+                                                                    <option value="is_not_empty">is not empty</option>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <option value="contains">contains</option>
+                                                                    <option value="does_not_contain">does not contain</option>
+                                                                    <option value="is">is</option>
+                                                                    <option value="is_not">is not</option>
+                                                                    <option value="is_empty">is empty</option>
+                                                                    <option value="is_not_empty">is not empty</option>
+                                                                </>
+                                                            )}
+                                                        </select>
                                                     );
-                                                }
-                                            })()}
+                                                })()}
 
-                                            {/* Delete */}
-                                            <button
-                                                onClick={() => setFilterRules(prev => prev.filter(r => r.id !== rule.id))}
-                                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                                {/* Value - smart input based on column type */}
+                                                {rule.operator !== 'is_empty' && rule.operator !== 'is_not_empty' && (() => {
+                                                    const col = columns.find(c => c.key === rule.field);
+                                                    const rawOptions = col?.options;
+                                                    // Use filterOptions if available, otherwise use options if it's an array (not a function)
+                                                    const colOptions = col?.filterOptions || (Array.isArray(rawOptions) ? rawOptions : undefined);
+
+                                                    if (colOptions && colOptions.length > 0) {
+                                                        // Column has options - use SingleSelect component
+                                                        return (
+                                                            <SingleSelect
+                                                                value={rule.value}
+                                                                options={colOptions}
+                                                                onChange={(val) => setFilterRules(prev => prev.map(r =>
+                                                                    r.id === rule.id ? { ...r, value: String(val) } : r
+                                                                ))}
+                                                                colorMap={col?.colorMap}
+                                                                placeholder="Select..."
+                                                                className="flex-1 border-gray-200"
+                                                            />
+                                                        );
+                                                    } else {
+                                                        // Regular text input
+                                                        return (
+                                                            <input
+                                                                type="text"
+                                                                value={rule.value}
+                                                                onChange={(e) => setFilterRules(prev => prev.map(r =>
+                                                                    r.id === rule.id ? { ...r, value: e.target.value } : r
+                                                                ))}
+                                                                placeholder="Enter a value"
+                                                                className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                                                            />
+                                                        );
+                                                    }
+                                                })()}
+
+                                                {/* Delete */}
+                                                <button
+                                                    onClick={() => setFilterRules(prev => prev.filter(r => r.id !== rule.id))}
+                                                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Add another filter button */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setFilterSearch(filterSearch === '' ? ' ' : '')}
+                                            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 py-1"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                            Add condition
+                                        </button>
+
+                                        {/* Filter field picker (shows when expanded) */}
+                                        {filterSearch !== '' && (
+                                            <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-2">
+                                                <div className="mb-2">
+                                                    <SearchInput
+                                                        value={filterSearch.trim()}
+                                                        onChange={(v) => setFilterSearch(v || ' ')}
+                                                        placeholder="Find a field"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                                <div className="max-h-[150px] overflow-y-auto">
+                                                    {columns
+                                                        .filter(col => col.header.toLowerCase().includes(filterSearch.trim().toLowerCase()))
+                                                        .map(col => (
+                                                            <button
+                                                                key={col.key}
+                                                                onClick={() => {
+                                                                    const hasOptions = col.filterOptions || Array.isArray(col.options);
+                                                                    setFilterRules([...filterRules, {
+                                                                        id: Math.random().toString(36).substring(2, 11),
+                                                                        field: col.key,
+                                                                        operator: hasOptions ? 'is' : 'contains',
+                                                                        value: '',
+                                                                        conjunction: 'and'
+                                                                    }]);
+                                                                    setFilterSearch('');
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-white rounded text-left transition-colors text-gray-700 hover:text-green-600"
+                                                            >
+                                                                <span className="flex-1">{col.header}</span>
+                                                            </button>
+                                                        ))
+                                                    }
+                                                    {columns.filter(col => col.header.toLowerCase().includes(filterSearch.trim().toLowerCase())).length === 0 && (
+                                                        <div className="px-2 py-1.5 text-xs text-gray-400 text-center">No fields found</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="text-xs text-gray-400 py-2 mb-2">No filters applied</div>
+                                /* Initial field list when no filters selected */
+                                <>
+                                    <div className="mb-2">
+                                        <SearchInput
+                                            value={filterSearch}
+                                            onChange={setFilterSearch}
+                                            placeholder="Find a field"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="max-h-[200px] overflow-y-auto">
+                                        {columns
+                                            .filter(col => col.header.toLowerCase().includes(filterSearch.toLowerCase()))
+                                            .map(col => (
+                                                <button
+                                                    key={col.key}
+                                                    onClick={() => {
+                                                        const hasOptions = col.filterOptions || Array.isArray(col.options);
+                                                        setFilterRules([{
+                                                            id: Math.random().toString(36).substring(2, 11),
+                                                            field: col.key,
+                                                            operator: hasOptions ? 'is' : 'contains',
+                                                            value: '',
+                                                            conjunction: 'and'
+                                                        }]);
+                                                        setFilterSearch('');
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 rounded text-left transition-colors text-gray-700 hover:text-green-600"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center text-gray-400">
+                                                        <Filter className="w-3.5 h-3.5" />
+                                                    </div>
+                                                    <span className="flex-1">{col.header}</span>
+                                                </button>
+                                            ))
+                                        }
+                                        {columns.filter(col => col.header.toLowerCase().includes(filterSearch.toLowerCase())).length === 0 && (
+                                            <div className="px-4 py-2 text-xs text-gray-400 text-center">No fields found</div>
+                                        )}
+                                    </div>
+                                </>
                             )}
-
-                            {/* Add Condition */}
-                            <button
-                                onClick={() => setFilterRules([...filterRules, {
-                                    id: Math.random().toString(36).substr(2, 9),
-                                    field: columns[0]?.key || '',
-                                    operator: 'contains',
-                                    value: '',
-                                    conjunction: 'and'
-                                }])}
-                                className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700"
-                            >
-                                <Plus className="w-3.5 h-3.5" />
-                                Add condition
-                            </button>
                         </div>
                     )}
                 </div>
@@ -1748,10 +1881,18 @@ export function DataTable<T>({
                                 ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                         )}
-                        onClick={() => setShowGroupPanel(!showGroupPanel)}
+                        onClick={() => {
+                            const wasOpen = showGroupPanel;
+                            closeAllPanels();
+                            if (!wasOpen) setShowGroupPanel(true);
+                        }}
                     >
                         <LayoutGrid className="w-3.5 h-3.5" />
-                        {groupRules.length > 0 ? `Grouped by ${groupRules.length} rule${groupRules.length > 1 ? 's' : ''}` : 'Group'}
+                        {groupRules.length === 0
+                            ? 'Group'
+                            : groupRules.length === 1
+                                ? `Grouped by ${columns.find(c => c.key === groupRules[0].key)?.header || groupRules[0].key}`
+                                : `Grouped by ${groupRules.length} fields`}
                         {groupRules.length > 0 && (
                             <span
                                 className="ml-1 p-0.5 hover:bg-purple-200 rounded-full"
@@ -1772,9 +1913,8 @@ export function DataTable<T>({
                         >
                             {/* Header with Collapse/Expand */}
                             <div className="flex items-center justify-between">
-                                <div className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                                <div className="text-xs font-medium text-gray-500">
                                     Group by
-                                    <span className="text-gray-400 cursor-help" title="Group rows by field values">ⓘ</span>
                                 </div>
                                 {groupRules.length > 0 && groupedData && (
                                     <div className="flex items-center gap-2 text-xs">
@@ -1917,7 +2057,11 @@ export function DataTable<T>({
                 {/* Wrap Button and Panel */}
                 <div className="relative" ref={wrapPanelRef}>
                     <button
-                        onClick={() => setShowWrapPanel(!showWrapPanel)}
+                        onClick={() => {
+                            const wasOpen = showWrapPanel;
+                            closeAllPanels();
+                            if (!wasOpen) setShowWrapPanel(true);
+                        }}
                         className={cn(
                             "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
                             wrapRules.length > 0
@@ -1926,7 +2070,7 @@ export function DataTable<T>({
                         )}
                     >
                         <Maximize2 className="w-3.5 h-3.5" />
-                        Wrap
+                        Expand
                         {wrapRules.length > 0 && (
                             <span className="text-[10px] bg-blue-200 text-blue-700 px-1.5 rounded-full">
                                 {wrapRules.length}
@@ -1942,7 +2086,7 @@ export function DataTable<T>({
                             >
                                 {/* Panel Header */}
                                 <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
-                                    <span className="text-xs font-medium text-gray-600">Wrap columns</span>
+                                    <span className="text-xs font-medium text-gray-600">Expand columns</span>
                                     <div className="flex-1" />
                                     {wrapRules.length > 0 && (
                                         <button
@@ -1971,7 +2115,7 @@ export function DataTable<T>({
                                             const wrapRule = wrapRules.find(r => r.columnKey === col.key);
                                             const currentLines = wrapRule?.lines || null;
 
-                                            const handleLineClick = (lines: '1' | '3' | 'full') => {
+                                            const handleLineClick = (lines: '1' | '2' | '3' | 'full') => {
                                                 if (currentLines === lines) {
                                                     // Remove wrap rule
                                                     setWrapRules(wrapRules.filter(r => r.columnKey !== col.key));
@@ -1994,15 +2138,15 @@ export function DataTable<T>({
                                                     {/* Line Options */}
                                                     <div className="flex items-center gap-0.5 text-[9px]">
                                                         <button
-                                                            onClick={() => handleLineClick('1')}
+                                                            onClick={() => handleLineClick('2')}
                                                             className={cn(
                                                                 "px-1.5 py-0.5 rounded transition-colors",
-                                                                currentLines === '1'
+                                                                currentLines === '2'
                                                                     ? "bg-blue-100 text-blue-700"
                                                                     : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                                                             )}
                                                         >
-                                                            1
+                                                            2 lines
                                                         </button>
                                                         <button
                                                             onClick={() => handleLineClick('3')}
@@ -2013,7 +2157,7 @@ export function DataTable<T>({
                                                                     : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                                                             )}
                                                         >
-                                                            3
+                                                            3 lines
                                                         </button>
                                                         <button
                                                             onClick={() => handleLineClick('full')}
@@ -2385,12 +2529,14 @@ export function DataTable<T>({
                         onSort={handleSort}
                         onFilter={(colKey) => {
                             // Add a filter rule for this column and open filter panel
+                            const col = columns.find(c => c.key === colKey);
+                            const hasOptions = col?.filterOptions || Array.isArray(col?.options);
                             setFilterRules(prev => [
                                 ...prev,
                                 {
                                     id: Math.random().toString(36).substr(2, 9),
                                     field: colKey,
-                                    operator: 'contains',
+                                    operator: hasOptions ? 'is' : 'contains',
                                     value: '',
                                     conjunction: prev.length > 0 ? 'and' : 'and'
                                 }

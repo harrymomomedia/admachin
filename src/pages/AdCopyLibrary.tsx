@@ -351,12 +351,14 @@ export function AdCopyLibrary() {
             options: [
                 { label: 'Primary', value: 'primary_text' },
                 { label: 'Headline', value: 'headline' },
-                { label: 'Desc', value: 'description' },
+                { label: 'Description', value: 'description' },
+                { label: 'Video Ad', value: 'video_ad_script' },
             ],
             colorMap: {
                 'primary_text': 'bg-blue-50 text-blue-700 border-blue-200',
                 'headline': 'bg-purple-50 text-purple-700 border-purple-200',
                 'description': 'bg-gray-50 text-gray-700 border-gray-200',
+                'video_ad_script': 'bg-green-50 text-green-700 border-green-200',
             },
         },
         {
@@ -401,6 +403,7 @@ export function AdCopyLibrary() {
                         value: s.id
                     }));
             },
+            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
             render: (_value, row, isEditing) => {
                 if (isEditing) return null;
                 const subId = row.subproject_id;
@@ -559,6 +562,7 @@ export function AdCopyLibrary() {
                                         <option value="primary_text">Primary Text</option>
                                         <option value="headline">Headline</option>
                                         <option value="description">Description</option>
+                                        <option value="video_ad_script">Video Ad</option>
                                     </select>
                                 </div>
                                 <div>
