@@ -1052,6 +1052,8 @@ export interface ViewPreferencesConfig {
     group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
     wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
     row_order?: string[];
+    column_widths?: Record<string, number>;
+    column_order?: string[];
 }
 
 export interface UserViewPreferences extends ViewPreferencesConfig {
@@ -1059,8 +1061,6 @@ export interface UserViewPreferences extends ViewPreferencesConfig {
     user_id: string;
     view_id: string;
     group_by?: string | null; // Legacy field
-    column_order?: string[];
-    column_widths?: Record<string, number>;
     created_at?: string;
     updated_at?: string;
 }

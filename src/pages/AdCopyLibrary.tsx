@@ -45,37 +45,9 @@ export function AdCopyLibrary() {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Column settings state (persisted per user)
-    const [columnOrder, setColumnOrder] = useState<string[] | undefined>();
-    const [columnWidths, setColumnWidths] = useState<Record<string, number> | undefined>();
-
-    // View preferences state (sort, filter, group, wrap)
+    // View preferences state (sort, filter, group, wrap, column_widths, column_order)
     const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
     const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
-
-    // Handle column order change (persist to Supabase)
-    const handleColumnOrderChange = async (order: string[]) => {
-        setColumnOrder(order);
-        if (currentUserId) {
-            try {
-                await saveUserViewPreferences(currentUserId, 'ad_copies', { column_order: order });
-            } catch (error) {
-                console.error('Failed to save column order:', error);
-            }
-        }
-    };
-
-    // Handle column widths change (persist to Supabase)
-    const handleColumnWidthsChange = async (widths: Record<string, number>) => {
-        setColumnWidths(widths);
-        if (currentUserId) {
-            try {
-                await saveUserViewPreferences(currentUserId, 'ad_copies', { column_widths: widths });
-            } catch (error) {
-                console.error('Failed to save column widths:', error);
-            }
-        }
-    };
 
     // Handle view preferences change (auto-save per user)
     const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
@@ -132,14 +104,16 @@ export function AdCopyLibrary() {
                 getSharedViewPreferences('ad_copies')
             ]);
 
-            // Store shared preferences
+            // Store shared preferences (including column_widths and column_order)
             if (sharedPrefs) {
                 setSharedPreferences({
                     sort_config: sharedPrefs.sort_config,
                     filter_config: sharedPrefs.filter_config,
                     group_config: sharedPrefs.group_config,
                     wrap_config: sharedPrefs.wrap_config,
-                    row_order: sharedPrefs.row_order
+                    row_order: sharedPrefs.row_order,
+                    column_widths: sharedPrefs.column_widths,
+                    column_order: sharedPrefs.column_order
                 });
             }
 
@@ -148,23 +122,17 @@ export function AdCopyLibrary() {
                 // Load saved user preferences
                 const prefs = await getUserViewPreferences(user.id, 'ad_copies');
 
-                // Store user view preferences
+                // Store user view preferences (including column_widths and column_order)
                 if (prefs) {
                     setUserPreferences({
                         sort_config: prefs.sort_config,
                         filter_config: prefs.filter_config,
                         group_config: prefs.group_config,
                         wrap_config: prefs.wrap_config,
-                        row_order: prefs.row_order
+                        row_order: prefs.row_order,
+                        column_widths: prefs.column_widths,
+                        column_order: prefs.column_order
                     });
-                }
-
-                // Load column order/widths
-                if (prefs?.column_order) {
-                    setColumnOrder(prefs.column_order);
-                }
-                if (prefs?.column_widths) {
-                    setColumnWidths(prefs.column_widths);
                 }
 
                 // Load row order (user's or shared)
@@ -270,7 +238,6 @@ export function AdCopyLibrary() {
 
         try {
             await updateAdCopy(id, updates);
-            console.log('Update successful');
         } catch (error) {
             console.error('Failed to update ad copy:', error);
             setCopies(prev => prev.map(c =>
@@ -301,14 +268,6 @@ export function AdCopyLibrary() {
     // Duplicate Handler (create new row with empty text but same type/project/platform)
     const handleDuplicate = async (copy: AdCopy) => {
         try {
-            console.log('Duplicating ad copy:', {
-                user_id: currentUserId,
-                text: '(new copy)',
-                type: copy.type,
-                project_id: copy.project_id,
-                subproject_id: copy.subproject_id,
-                platform: copy.platform
-            });
             await createAdCopy({
                 user_id: currentUserId, // Set to current user who clicked duplicate
                 text: '(new copy)', // Placeholder text - can be edited inline
@@ -565,11 +524,7 @@ export function AdCopyLibrary() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
-                columnOrder={columnOrder}
-                onColumnOrderChange={handleColumnOrderChange}
-                savedColumnWidths={columnWidths}
-                onColumnWidthsChange={handleColumnWidthsChange}
-                // View persistence
+                // View persistence (includes sort, filter, group, wrap, column_widths, column_order)
                 viewId="ad_copies"
                 userId={currentUserId || undefined}
                 initialPreferences={userPreferences || undefined}

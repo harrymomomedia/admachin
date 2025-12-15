@@ -155,6 +155,8 @@ export interface DataTableProps<T> {
         group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
         row_order?: string[];
+        column_widths?: Record<string, number>;
+        column_order?: string[];
     };
     sharedPreferences?: {
         sort_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
@@ -162,6 +164,8 @@ export interface DataTableProps<T> {
         group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
         row_order?: string[];
+        column_widths?: Record<string, number>;
+        column_order?: string[];
     };
     onPreferencesChange?: (preferences: {
         sort_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
@@ -169,6 +173,8 @@ export interface DataTableProps<T> {
         group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
         row_order?: string[];
+        column_widths?: Record<string, number>;
+        column_order?: string[];
     }) => void;
     onSaveForEveryone?: (preferences: {
         sort_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
@@ -176,6 +182,8 @@ export interface DataTableProps<T> {
         group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
         row_order?: string[];
+        column_widths?: Record<string, number>;
+        column_order?: string[];
     }) => void;
     onResetPreferences?: () => void;
 }
@@ -473,7 +481,7 @@ interface SortableRowProps<T> {
     editingCell: { id: string; field: string } | null;
     editingValue: string;
     wrapRules: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[];
-    dropdownPosition: { top: number; left: number; width: number };
+    dropdownPosition: { top: number; left: number; width: number; cellHeight: number };
     onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
     onEditSave: (value?: string) => void;
@@ -697,46 +705,58 @@ function SortableRow<T>({
                                                         onEditSave();
                                                     }}
                                                 />
-                                                {/* Popup Editor - Notion style */}
-                                                <textarea
-                                                    ref={(el) => {
-                                                        // Assign to inputRef
-                                                        (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
-                                                        // Auto-resize on mount
-                                                        if (el) {
-                                                            el.style.height = 'auto';
-                                                            const maxH = window.innerHeight - dropdownPosition.top - 50;
-                                                            const newHeight = Math.min(el.scrollHeight, maxH);
-                                                            el.style.height = `${Math.max(34, newHeight)}px`;
-                                                            el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
-                                                        }
-                                                    }}
-                                                    value={editingValue}
-                                                    onChange={(e) => {
-                                                        onEditChange(e.target.value);
-                                                        // Auto-resize on change
-                                                        const el = e.target;
-                                                        el.style.height = 'auto';
-                                                        const maxH = window.innerHeight - dropdownPosition.top - 50;
-                                                        const newHeight = Math.min(el.scrollHeight, maxH);
-                                                        el.style.height = `${Math.max(34, newHeight)}px`;
-                                                        el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Escape') {
-                                                            onEditCancel();
-                                                        }
-                                                    }}
-                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize-none focus:outline-none focus:border-blue-400"
-                                                    style={{
-                                                        top: dropdownPosition.top,
-                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
-                                                        width: dropdownPosition.width,
-                                                        padding: '8px 12px',
-                                                    }}
-                                                    placeholder="Enter text..."
-                                                    autoFocus
-                                                />
+                                                {/* Popup Editor - Notion style with smart positioning */}
+                                                {(() => {
+                                                    const spaceBelow = window.innerHeight - dropdownPosition.top - 50;
+                                                    const spaceAbove = dropdownPosition.top - 50;
+                                                    const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
+                                                    const maxH = showAbove ? spaceAbove : spaceBelow;
+
+                                                    return (
+                                                        <textarea
+                                                            ref={(el) => {
+                                                                (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                                                                if (el) {
+                                                                    el.style.height = 'auto';
+                                                                    const newHeight = Math.min(el.scrollHeight, maxH);
+                                                                    el.style.height = `${Math.max(34, newHeight)}px`;
+                                                                    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+                                                                    // If showing above, adjust position after height is calculated
+                                                                    if (showAbove) {
+                                                                        el.style.top = `${dropdownPosition.top - Math.max(34, newHeight)}px`;
+                                                                    }
+                                                                }
+                                                            }}
+                                                            value={editingValue}
+                                                            onChange={(e) => {
+                                                                onEditChange(e.target.value);
+                                                                const el = e.target;
+                                                                el.style.height = 'auto';
+                                                                const newHeight = Math.min(el.scrollHeight, maxH);
+                                                                el.style.height = `${Math.max(34, newHeight)}px`;
+                                                                el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+                                                                if (showAbove) {
+                                                                    el.style.top = `${dropdownPosition.top - Math.max(34, newHeight)}px`;
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Escape') {
+                                                                    onEditCancel();
+                                                                }
+                                                            }}
+                                                            className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize-none focus:outline-none focus:border-blue-400"
+                                                            style={{
+                                                                top: showAbove ? undefined : dropdownPosition.top,
+                                                                bottom: showAbove ? `${window.innerHeight - dropdownPosition.top}px` : undefined,
+                                                                left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
+                                                                width: dropdownPosition.width,
+                                                                padding: '8px 12px',
+                                                            }}
+                                                            placeholder="Enter text..."
+                                                            autoFocus
+                                                        />
+                                                    );
+                                                })()}
                                             </>,
                                             document.body
                                         )}
@@ -794,15 +814,22 @@ function SortableRow<T>({
                             ) : (
                                 // Default display mode
                                 col.type === 'badge' || col.type === 'select' ? (
-                                    <span
-                                        className={cn(
-                                            "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
-                                            col.colorMap?.[String(value)] || "bg-gray-500 text-white"
-                                        )}
-                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                                    >
-                                        {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
-                                    </span>
+                                    !value ? (
+                                        <span
+                                            className="cursor-pointer w-full h-full block min-h-[20px]"
+                                            onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                        />
+                                    ) : (
+                                        <span
+                                            className={cn(
+                                                "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
+                                                col.colorMap?.[String(value)] || "bg-gray-500 text-white"
+                                            )}
+                                            onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                        >
+                                            {options?.find(o => String(o.value) === String(value))?.label || String(value)}
+                                        </span>
+                                    )
                                 ) : col.type === 'date' ? (
                                     <span className="text-[13px] text-gray-500 px-3 py-2 block">
                                         {value ? new Date(String(value)).toLocaleString('en-US', {
@@ -997,22 +1024,24 @@ export function DataTable<T>({
     };
 
 
-    // Column widths state
+    // Column widths state - prefer initialPreferences over savedColumnWidths
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
         const widths: Record<string, number> = {};
+        const preferenceWidths = initialPreferences?.column_widths || savedColumnWidths;
         columns.forEach((col) => {
             // Use saved width if available, otherwise use column default or 120px
-            widths[col.key] = savedColumnWidths?.[col.key] || col.width || 120;
+            widths[col.key] = preferenceWidths?.[col.key] || col.width || 120;
         });
         return widths;
     });
 
-    // Sync columnWidths when savedColumnWidths prop changes (async load from DB)
+    // Sync columnWidths when savedColumnWidths or initialPreferences.column_widths changes
     useEffect(() => {
-        if (savedColumnWidths && Object.keys(savedColumnWidths).length > 0) {
+        const preferenceWidths = initialPreferences?.column_widths || savedColumnWidths;
+        if (preferenceWidths && Object.keys(preferenceWidths).length > 0) {
             setColumnWidths(prev => {
                 const updated = { ...prev };
-                for (const [key, width] of Object.entries(savedColumnWidths)) {
+                for (const [key, width] of Object.entries(preferenceWidths)) {
                     if (typeof width === 'number') {
                         updated[key] = width;
                     }
@@ -1020,7 +1049,7 @@ export function DataTable<T>({
                 return updated;
             });
         }
-    }, [savedColumnWidths]);
+    }, [savedColumnWidths, initialPreferences?.column_widths]);
 
     // Notify parent when column widths change (for persistence)
     const _handleColumnResize = useCallback((key: string, width: number) => {
@@ -1100,7 +1129,7 @@ export function DataTable<T>({
     // Editing state
     const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState<string>('');
-    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 200 });
+    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number; cellHeight: number }>({ top: 0, left: 0, width: 200, cellHeight: 34 });
 
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1208,6 +1237,11 @@ export function DataTable<T>({
             if (!externalWrapRules && initialPreferences.wrap_config?.length) {
                 setInternalWrapRules(initialPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
             }
+            // Apply column widths from user preferences (handled in separate useEffect above)
+            // Apply column order from user preferences
+            if (initialPreferences.column_order?.length) {
+                setInternalColumnOrder(initialPreferences.column_order);
+            }
             return;
         }
 
@@ -1228,6 +1262,10 @@ export function DataTable<T>({
         }
         if (!externalWrapRules && sharedPreferences.wrap_config?.length) {
             setInternalWrapRules(sharedPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        }
+        // Apply column order from shared preferences
+        if (sharedPreferences.column_order?.length) {
+            setInternalColumnOrder(sharedPreferences.column_order);
         }
     }, [initialPreferences, sharedPreferences, externalGroupRules, externalWrapRules]);
 
@@ -1477,8 +1515,10 @@ export function DataTable<T>({
         sort_config: sortRules,
         filter_config: filterRules as Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>,
         group_config: groupRules,
-        wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>
-    }), [sortRules, filterRules, groupRules, wrapRules]);
+        wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>,
+        column_widths: columnWidths,
+        column_order: columnOrder
+    }), [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder]);
 
     // Check if current preferences differ from shared preferences (or if any rules exist when no shared prefs)
     const hasUnsavedChanges = useMemo(() => {
@@ -1541,7 +1581,7 @@ export function DataTable<T>({
                 clearTimeout(preferencesChangeTimeoutRef.current);
             }
         };
-    }, [sortRules, filterRules, groupRules, wrapRules, getCurrentPreferences]);
+    }, [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, getCurrentPreferences]);
 
     // Handle reset to shared preferences
     const handleReset = useCallback(() => {
@@ -1550,14 +1590,35 @@ export function DataTable<T>({
             setFilterRules((sharedPreferences.filter_config || []) as FilterRule[]);
             setGroupRules(sharedPreferences.group_config || []);
             setWrapRules((sharedPreferences.wrap_config || []) as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+            // Reset column widths to shared or default
+            if (sharedPreferences.column_widths) {
+                setColumnWidths(sharedPreferences.column_widths);
+            } else {
+                // Reset to column defaults
+                const defaults: Record<string, number> = {};
+                columns.forEach(col => { defaults[col.key] = col.width || 120; });
+                setColumnWidths(defaults);
+            }
+            // Reset column order to shared or default
+            if (sharedPreferences.column_order) {
+                setInternalColumnOrder(sharedPreferences.column_order);
+            } else {
+                setInternalColumnOrder(columns.map(c => c.key));
+            }
         } else {
             setSortRules([]);
             setFilterRules([]);
             setGroupRules([]);
             setWrapRules([]);
+            // Reset column widths to defaults
+            const defaults: Record<string, number> = {};
+            columns.forEach(col => { defaults[col.key] = col.width || 120; });
+            setColumnWidths(defaults);
+            // Reset column order to default
+            setInternalColumnOrder(columns.map(c => c.key));
         }
         onResetPreferences?.();
-    }, [sharedPreferences, setGroupRules, setWrapRules, onResetPreferences]);
+    }, [sharedPreferences, setGroupRules, setWrapRules, onResetPreferences, columns]);
 
     // Handle save for everyone
     const handleSaveForEveryone = useCallback(() => {
@@ -1644,12 +1705,10 @@ export function DataTable<T>({
     }, [columns]);
 
     const handleResizeEnd = useCallback(() => {
-        console.log('[DataTable] handleResizeEnd called, resizingRef:', resizingRef.current, 'onColumnWidthsChange:', !!onColumnWidthsChange);
         // Notify parent of final widths for persistence
         if (onColumnWidthsChange && resizingRef.current) {
             // Get current columnWidths state (closure captures the latest via setColumnWidths callback)
             setColumnWidths(currentWidths => {
-                console.log('[DataTable] Calling onColumnWidthsChange with:', currentWidths);
                 onColumnWidthsChange(currentWidths);
                 return currentWidths; // Don't modify, just access
             });
@@ -1672,6 +1731,7 @@ export function DataTable<T>({
             top: cellRect.top,
             left: cellRect.left,
             width: Math.max(cellRect.width, 300), // minimum 300px width
+            cellHeight: cellRect.height,
         });
 
         const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[field];
@@ -1686,7 +1746,6 @@ export function DataTable<T>({
         }
 
         const valueToSave = newValue !== undefined ? newValue : editingValue;
-        console.log('DataTable saving:', { id: editingCell.id, field: editingCell.field, value: valueToSave });
 
         try {
             await onUpdate(editingCell.id, editingCell.field, valueToSave);
@@ -1742,20 +1801,17 @@ export function DataTable<T>({
     // Create native drag handlers for a specific row
     const createRowDragHandlers = useCallback((rowId: string) => ({
         onRowDragStart: (e: React.DragEvent<HTMLTableRowElement>) => {
-            console.log('[DataTable] Drag started:', rowId);
             setDraggingRowId(rowId);
             e.dataTransfer.setData('text/plain', rowId);
             e.dataTransfer.effectAllowed = 'move';
         },
         onRowDragEnd: () => {
-            console.log('[DataTable] Drag ended');
             setDraggingRowId(null);
             setDragOverRowId(null);
         },
         onRowDragEnter: (e: React.DragEvent<HTMLTableRowElement>) => {
             e.preventDefault();
             if (draggingRowId && draggingRowId !== rowId) {
-                console.log('[DataTable] Drag enter:', rowId, 'from:', draggingRowId);
                 setDragOverRowId(rowId);
             }
         },
@@ -1779,14 +1835,11 @@ export function DataTable<T>({
         onRowDrop: (e: React.DragEvent<HTMLTableRowElement>) => {
             e.preventDefault();
             const draggedId = e.dataTransfer.getData('text/plain');
-            console.log('[DataTable] Drop on:', rowId, 'data:', draggedId, 'onReorder:', !!onReorder);
             if (draggedId !== rowId && onReorder) {
                 const oldIndex = data.findIndex(row => getRowId(row) === draggedId);
                 const newIndex = data.findIndex(row => getRowId(row) === rowId);
-                console.log('[DataTable] Reorder - oldIndex:', oldIndex, 'newIndex:', newIndex);
                 if (oldIndex !== -1 && newIndex !== -1) {
                     const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
-                    console.log('[DataTable] Calling onReorder with:', newOrder);
                     onReorder(newOrder);
                 }
             }

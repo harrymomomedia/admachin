@@ -71,14 +71,16 @@ export function AdPlanning() {
                 getSharedViewPreferences('ad_planning')
             ]);
 
-            // Store shared preferences
+            // Store shared preferences (including column_widths and column_order)
             if (sharedPrefs) {
                 setSharedPreferences({
                     sort_config: sharedPrefs.sort_config,
                     filter_config: sharedPrefs.filter_config,
                     group_config: sharedPrefs.group_config,
                     wrap_config: sharedPrefs.wrap_config,
-                    row_order: sharedPrefs.row_order
+                    row_order: sharedPrefs.row_order,
+                    column_widths: sharedPrefs.column_widths,
+                    column_order: sharedPrefs.column_order
                 });
             }
 
@@ -87,14 +89,16 @@ export function AdPlanning() {
                 // Load saved user preferences
                 const prefs = await getUserViewPreferences(user.id, 'ad_planning');
 
-                // Store user view preferences
+                // Store user view preferences (including column_widths and column_order)
                 if (prefs) {
                     setUserPreferences({
                         sort_config: prefs.sort_config,
                         filter_config: prefs.filter_config,
                         group_config: prefs.group_config,
                         wrap_config: prefs.wrap_config,
-                        row_order: prefs.row_order
+                        row_order: prefs.row_order,
+                        column_widths: prefs.column_widths,
+                        column_order: prefs.column_order
                     });
                 }
 
@@ -130,7 +134,6 @@ export function AdPlanning() {
 
         try {
             await saveUserViewPreferences(currentUserId, 'ad_planning', preferences);
-            console.log('[AdPlanning] View preferences saved');
         } catch (error) {
             console.error('Failed to save view preferences:', error);
         }
@@ -148,7 +151,6 @@ export function AdPlanning() {
                 ...preferences,
                 row_order: rowOrder
             });
-            console.log('[AdPlanning] Saved preferences for everyone');
         } catch (error) {
             console.error('Failed to save shared preferences:', error);
         }
@@ -161,7 +163,6 @@ export function AdPlanning() {
         try {
             await deleteUserViewPreferences(currentUserId, 'ad_planning');
             setUserPreferences(null);
-            console.log('[AdPlanning] Reset to shared preferences');
         } catch (error) {
             console.error('Failed to reset preferences:', error);
         }
@@ -222,14 +223,11 @@ export function AdPlanning() {
 
         const updates: Partial<AdPlan> = { [field]: convertedValue, ...extraUpdates };
 
-        console.log('Updating ad plan:', { id, field, value: convertedValue, updates });
-
         // Optimistic update
         setPlans(plans.map(p => p.id === id ? { ...p, ...updates } : p));
 
         try {
-            const result = await updateAdPlan(id, updates);
-            console.log('Update result:', result);
+            await updateAdPlan(id, updates);
         } catch (error) {
             console.error('Failed to update plan:', error);
             // Revert on error
@@ -312,9 +310,14 @@ export function AdPlanning() {
                 const project = projects.find(p => p.id === row.project_id);
                 const legacyName = (row as AdPlan & { project?: string }).project;
 
+                // If no project and no legacy name, show empty cell
+                if (!project && !row.project_id && !legacyName) {
+                    return null;
+                }
+
                 const content = (!project && !row.project_id && legacyName)
                     ? <span className="text-gray-500 italic">{legacyName}</span>
-                    : project?.name || '-';
+                    : project?.name;
 
                 return (
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-pink-500 text-white">
@@ -343,14 +346,20 @@ export function AdPlanning() {
             render: (_value, row, isEditing) => {
                 if (isEditing) return null;
                 const subId = row.subproject_id;
-                let content;
 
+                // If no subproject_id and no legacy subproject name, show empty cell
+                if (!subId && !row.subproject) {
+                    return null;
+                }
+
+                let content;
                 if (subId) {
                     const sub = subprojects.find(s => s.id === subId);
-                    content = sub ? sub.name : '-';
+                    content = sub ? sub.name : null;
+                    if (!content) return null; // subproject not found
                 } else {
                     // Fallback to legacy text
-                    content = row.subproject ? <span className="text-gray-500 italic">{row.subproject}</span> : '-';
+                    content = <span className="text-gray-500 italic">{row.subproject}</span>;
                 }
 
                 return (
