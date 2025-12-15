@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
     getAdCopies,
@@ -10,11 +10,15 @@ import {
     getUsers,
     getUserViewPreferences,
     saveUserViewPreferences,
+    deleteUserViewPreferences,
+    getSharedViewPreferences,
+    saveSharedViewPreferences,
     saveRowOrder,
     type AdCopy,
     type Project,
     type Subproject,
-    type User
+    type User,
+    type ViewPreferencesConfig
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
@@ -30,12 +34,6 @@ export function AdCopyLibrary() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-    const currentUserIdRef = useRef<string | null>(null);
-
-    // Keep ref in sync with state
-    useEffect(() => {
-        currentUserIdRef.current = currentUserId;
-    }, [currentUserId]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -51,77 +49,129 @@ export function AdCopyLibrary() {
     const [columnOrder, setColumnOrder] = useState<string[] | undefined>();
     const [columnWidths, setColumnWidths] = useState<Record<string, number> | undefined>();
 
+    // View preferences state (sort, filter, group, wrap)
+    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
+
     // Handle column order change (persist to Supabase)
     const handleColumnOrderChange = async (order: string[]) => {
-        const userId = currentUserIdRef.current;
-        console.log('[AdCopyLibrary] Saving column order:', order, 'userId:', userId);
         setColumnOrder(order);
-        if (userId) {
+        if (currentUserId) {
             try {
-                await saveUserViewPreferences(userId, 'ad_copies', { column_order: order });
-                console.log('[AdCopyLibrary] Column order saved successfully');
+                await saveUserViewPreferences(currentUserId, 'ad_copies', { column_order: order });
             } catch (error) {
                 console.error('Failed to save column order:', error);
             }
-        } else {
-            console.warn('[AdCopyLibrary] No currentUserId, cannot save column order');
         }
     };
 
     // Handle column widths change (persist to Supabase)
     const handleColumnWidthsChange = async (widths: Record<string, number>) => {
-        const userId = currentUserIdRef.current;
-        console.log('[AdCopyLibrary] Saving column widths:', widths, 'userId:', userId);
         setColumnWidths(widths);
-        if (userId) {
+        if (currentUserId) {
             try {
-                await saveUserViewPreferences(userId, 'ad_copies', { column_widths: widths });
-                console.log('[AdCopyLibrary] Column widths saved successfully');
+                await saveUserViewPreferences(currentUserId, 'ad_copies', { column_widths: widths });
             } catch (error) {
                 console.error('Failed to save column widths:', error);
             }
-        } else {
-            console.warn('[AdCopyLibrary] No currentUserId, cannot save column widths');
+        }
+    };
+
+    // Handle view preferences change (auto-save per user)
+    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad_copies', preferences);
+        } catch (error) {
+            console.error('Failed to save view preferences:', error);
+        }
+    };
+
+    // Handle save for everyone
+    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
+        try {
+            const rowOrder = copies.map(c => c.id);
+            await saveSharedViewPreferences('ad_copies', {
+                ...preferences,
+                row_order: rowOrder
+            });
+            setSharedPreferences({
+                ...preferences,
+                row_order: rowOrder
+            });
+        } catch (error) {
+            console.error('Failed to save shared preferences:', error);
+        }
+    };
+
+    // Handle reset to shared preferences
+    const handleResetPreferences = async () => {
+        if (!currentUserId) return;
+        try {
+            await deleteUserViewPreferences(currentUserId, 'ad_copies');
+            setUserPreferences(null);
+        } catch (error) {
+            console.error('Failed to reset preferences:', error);
         }
     };
 
     // Load Data
     useEffect(() => {
         loadData();
-        getCurrentUser().then(user => setCurrentUserId(user?.id || null));
     }, []);
 
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [copiesData, projectsData, subprojectsData, usersData, user] = await Promise.all([
+            const [copiesData, projectsData, subprojectsData, usersData, user, sharedPrefs] = await Promise.all([
                 getAdCopies(),
                 getProjects(),
                 getSubprojects(),
                 getUsers(),
-                getCurrentUser()
+                getCurrentUser(),
+                getSharedViewPreferences('ad_copies')
             ]);
+
+            // Store shared preferences
+            if (sharedPrefs) {
+                setSharedPreferences({
+                    sort_config: sharedPrefs.sort_config,
+                    filter_config: sharedPrefs.filter_config,
+                    group_config: sharedPrefs.group_config,
+                    wrap_config: sharedPrefs.wrap_config,
+                    row_order: sharedPrefs.row_order
+                });
+            }
 
             if (user?.id) {
                 setCurrentUserId(user.id);
-                // Load saved preferences
+                // Load saved user preferences
                 const prefs = await getUserViewPreferences(user.id, 'ad_copies');
-                console.log('[AdCopyLibrary] Loaded prefs:', prefs);
+
+                // Store user view preferences
+                if (prefs) {
+                    setUserPreferences({
+                        sort_config: prefs.sort_config,
+                        filter_config: prefs.filter_config,
+                        group_config: prefs.group_config,
+                        wrap_config: prefs.wrap_config,
+                        row_order: prefs.row_order
+                    });
+                }
 
                 // Load column order/widths
                 if (prefs?.column_order) {
-                    console.log('[AdCopyLibrary] Setting column order from prefs:', prefs.column_order);
                     setColumnOrder(prefs.column_order);
                 }
                 if (prefs?.column_widths) {
-                    console.log('[AdCopyLibrary] Setting column widths from prefs:', prefs.column_widths);
                     setColumnWidths(prefs.column_widths);
                 }
 
-                // Load row order
-                if (prefs?.row_order && prefs.row_order.length > 0) {
+                // Load row order (user's or shared)
+                const rowOrder = prefs?.row_order || sharedPrefs?.row_order;
+                if (rowOrder && rowOrder.length > 0) {
                     // Sort copies based on saved order
-                    const orderMap = new Map(prefs.row_order.map((id, index) => [id, index]));
+                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
                     const ordered = [...copiesData].sort((a, b) => {
                         const aIndex = orderMap.get(a.id) ?? Infinity;
                         const bIndex = orderMap.get(b.id) ?? Infinity;
@@ -206,8 +256,6 @@ export function AdCopyLibrary() {
         } else if (field === 'user_id') {
             updates.user_id = value ? String(value) : null;
         }
-
-        console.log('AdCopyLibrary updating:', { id, field, value, updates });
 
         // Check if we have any updates
         if (Object.keys(updates).length === 0) {
@@ -355,10 +403,10 @@ export function AdCopyLibrary() {
                 { label: 'Video Ad', value: 'video_ad_script' },
             ],
             colorMap: {
-                'primary_text': 'bg-blue-50 text-blue-700 border-blue-200',
-                'headline': 'bg-purple-50 text-purple-700 border-purple-200',
-                'description': 'bg-gray-50 text-gray-700 border-gray-200',
-                'video_ad_script': 'bg-green-50 text-green-700 border-green-200',
+                'primary_text': 'bg-blue-500 text-white',
+                'headline': 'bg-purple-500 text-white',
+                'description': 'bg-gray-500 text-white',
+                'video_ad_script': 'bg-emerald-500 text-white',
             },
         },
         {
@@ -368,20 +416,17 @@ export function AdCopyLibrary() {
             minWidth: 100,
             editable: true,
             type: 'badge',
-            options: [
-                { label: 'No Project', value: '' },
-                ...projects.map(p => ({ label: p.name, value: p.id })),
-            ],
+            options: projects.map(p => ({ label: p.name, value: p.id })),
             colorMap: {},
             getValue: (copy) => copy.project_id || '',
             render: (_value, copy) => {
-                const name = getProjectName(copy);
                 const hasProject = copy.project_id || copy.project;
+                if (!hasProject) {
+                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
+                }
+                const name = getProjectName(copy);
                 return (
-                    <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-blue-300",
-                        hasProject ? "bg-pink-50 text-pink-700 border border-pink-200" : "text-gray-400"
-                    )}>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity ml-2 bg-pink-500 text-white">
                         {name}
                     </span>
                 );
@@ -407,18 +452,21 @@ export function AdCopyLibrary() {
             render: (_value, row, isEditing) => {
                 if (isEditing) return null;
                 const subId = row.subproject_id;
-                let content;
 
-                if (subId) {
-                    const sub = subprojects.find(s => s.id === subId);
-                    content = sub ? sub.name : '-';
-                } else {
-                    content = '-';
+                if (!subId) {
+                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
+                }
+
+                const sub = subprojects.find(s => s.id === subId);
+                const name = sub ? sub.name : null;
+
+                if (!name) {
+                    return <span className="cursor-pointer w-full h-full block min-h-[20px]" />;
                 }
 
                 return (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
-                        {content}
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-orange-500 text-white">
+                        {name}
                     </span>
                 );
             },
@@ -437,9 +485,9 @@ export function AdCopyLibrary() {
                 { label: 'All', value: 'All' },
             ],
             colorMap: {
-                'FB': 'bg-green-50 text-green-700 border-green-200',
-                'IG': 'bg-green-50 text-green-700 border-green-200',
-                'All': 'bg-green-50 text-green-700 border-green-200',
+                'FB': 'bg-teal-500 text-white',
+                'IG': 'bg-rose-500 text-white',
+                'All': 'bg-indigo-500 text-white',
             },
         },
         {
@@ -521,6 +569,14 @@ export function AdCopyLibrary() {
                 onColumnOrderChange={handleColumnOrderChange}
                 savedColumnWidths={columnWidths}
                 onColumnWidthsChange={handleColumnWidthsChange}
+                // View persistence
+                viewId="ad_copies"
+                userId={currentUserId || undefined}
+                initialPreferences={userPreferences || undefined}
+                sharedPreferences={sharedPreferences || undefined}
+                onPreferencesChange={handlePreferencesChange}
+                onSaveForEveryone={handleSaveForEveryone}
+                onResetPreferences={handleResetPreferences}
             />
 
             {/* Create Modal */}

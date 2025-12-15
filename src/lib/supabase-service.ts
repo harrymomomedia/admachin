@@ -1046,15 +1046,29 @@ export async function deleteAICopywritingPreset(id: string): Promise<void> {
 // USER VIEW PREFERENCES (Row Order, Sort, Group)
 // ============================================
 
-export interface UserViewPreferences {
+export interface ViewPreferencesConfig {
+    sort_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+    filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
+    group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+    wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+    row_order?: string[];
+}
+
+export interface UserViewPreferences extends ViewPreferencesConfig {
     id?: string;
     user_id: string;
     view_id: string;
-    group_by?: string | null;
-    sort_config?: Array<{ key: string; direction: 'asc' | 'desc' }>;
-    row_order?: string[];
+    group_by?: string | null; // Legacy field
     column_order?: string[];
     column_widths?: Record<string, number>;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface SharedViewPreferences extends ViewPreferencesConfig {
+    id?: string;
+    view_id: string;
+    group_by?: string | null; // Legacy field
     created_at?: string;
     updated_at?: string;
 }
@@ -1120,6 +1134,67 @@ export async function saveUserViewPreferences(
 
     if (error) {
         console.error('[Supabase] Error saving view preferences:', error);
+        throw error;
+    }
+}
+
+/**
+ * Delete user's view preferences (reset to shared/default)
+ */
+export async function deleteUserViewPreferences(userId: string, viewId: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('user_view_preferences')
+        .delete()
+        .eq('user_id', userId)
+        .eq('view_id', viewId);
+
+    if (error) {
+        console.error('[Supabase] Error deleting view preferences:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// SHARED VIEW PREFERENCES (Save for Everyone)
+// ============================================
+
+/**
+ * Get shared view preferences (default for everyone)
+ */
+export async function getSharedViewPreferences(viewId: string): Promise<SharedViewPreferences | null> {
+    const { data, error } = await supabaseUntyped
+        .from('shared_view_preferences')
+        .select('*')
+        .eq('view_id', viewId)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('[Supabase] Error fetching shared view preferences:', error);
+        throw error;
+    }
+
+    return data || null;
+}
+
+/**
+ * Save shared view preferences (save for everyone)
+ */
+export async function saveSharedViewPreferences(
+    viewId: string,
+    preferences: Partial<Omit<SharedViewPreferences, 'id' | 'view_id' | 'created_at' | 'updated_at'>>
+): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('shared_view_preferences')
+        .upsert({
+            view_id: viewId,
+            ...preferences,
+            updated_at: new Date().toISOString()
+        }, {
+            onConflict: 'view_id'
+        });
+
+    if (error) {
+        console.error('[Supabase] Error saving shared view preferences:', error);
         throw error;
     }
 }

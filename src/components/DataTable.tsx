@@ -145,6 +145,39 @@ export interface DataTableProps<T> {
     // Column widths persistence
     savedColumnWidths?: Record<string, number>;
     onColumnWidthsChange?: (widths: Record<string, number>) => void;
+
+    // View persistence (per-user and shared settings)
+    viewId?: string;
+    userId?: string;
+    initialPreferences?: {
+        sort_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
+        group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        row_order?: string[];
+    };
+    sharedPreferences?: {
+        sort_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
+        group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        row_order?: string[];
+    };
+    onPreferencesChange?: (preferences: {
+        sort_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        filter_config: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
+        group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        row_order?: string[];
+    }) => void;
+    onSaveForEveryone?: (preferences: {
+        sort_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        filter_config: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
+        group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+        wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        row_order?: string[];
+    }) => void;
+    onResetPreferences?: () => void;
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -153,10 +186,12 @@ interface DropdownMenuProps {
     options: { label: string; value: string }[];
     value: string;
     onSelect: (value: string) => void;
+    onClear?: () => void;
     position: { top: number; left: number };
+    colorMap?: Record<string, string>;
 }
 
-function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps) {
+function DropdownMenu({ options, value, onSelect, onClear, position, colorMap }: DropdownMenuProps) {
     const [search, setSearch] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -169,11 +204,37 @@ function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps)
         opt.label.toLowerCase().includes(search.toLowerCase())
     );
 
+    // Find current selected option
+    const selectedOption = options.find(o => String(o.value) === String(value));
+
     return (
         <div
             className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] overflow-hidden"
             style={{ top: position.top, left: position.left }}
         >
+            {/* Selected value with X to clear (Notion-style) */}
+            {selectedOption && value && (
+                <div className="p-2 border-b border-gray-100">
+                    <span
+                        className={cn(
+                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+                            colorMap?.[String(value)] || "bg-gray-100 text-gray-700"
+                        )}
+                    >
+                        {selectedOption.label}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onClear?.();
+                            }}
+                            className="ml-0.5 hover:bg-black/10 rounded-full p-0.5 transition-colors"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                    </span>
+                </div>
+            )}
+
             {/* Search Input */}
             <div className="p-2 border-b border-gray-100">
                 <div className="relative">
@@ -187,6 +248,11 @@ function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps)
                         className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white"
                     />
                 </div>
+            </div>
+
+            {/* Hint text */}
+            <div className="px-3 py-1.5 text-[10px] text-gray-400">
+                Select an option
             </div>
 
             {/* Options List */}
@@ -208,9 +274,16 @@ function DropdownMenu({ options, value, onSelect, position }: DropdownMenuProps)
                                 opt.value === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
                             )}
                         >
-                            <span className="flex-1">{opt.label}</span>
+                            <span
+                                className={cn(
+                                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                    colorMap?.[String(opt.value)] || "bg-gray-100 text-gray-700"
+                                )}
+                            >
+                                {opt.label}
+                            </span>
                             {opt.value === value && (
-                                <Check className="w-3.5 h-3.5 text-blue-600" />
+                                <Check className="w-3.5 h-3.5 text-blue-600 ml-auto" />
                             )}
                         </div>
                     ))
@@ -374,8 +447,8 @@ function GroupHeader({ groupValue, count, isCollapsed, onToggle, colSpan, colorC
                         <ChevronDown className="w-4 h-4 text-gray-400" />
                     )}
                     <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
-                        colorClass || "bg-gray-100 text-gray-700 border-gray-200"
+                        "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium",
+                        colorClass || "bg-gray-500 text-white"
                     )}>
                         {groupValue}
                     </span>
@@ -400,7 +473,7 @@ interface SortableRowProps<T> {
     editingCell: { id: string; field: string } | null;
     editingValue: string;
     wrapRules: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[];
-    dropdownPosition: { top: number; left: number };
+    dropdownPosition: { top: number; left: number; width: number };
     onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
     onEditSave: (value?: string) => void;
@@ -562,23 +635,28 @@ function SortableRow<T>({
                             style={{
                                 width,
                                 maxWidth: width,
-                                ...((!wrapLines || wrapLines === '1') && { maxHeight: '24px' }),
-                                ...(wrapLines === '3' && { maxHeight: '60px' })
+                                ...((!wrapLines || wrapLines === '1') && { maxHeight: '34px' }),
+                                ...(wrapLines === '2' && { maxHeight: '56px' }),
+                                ...(wrapLines === '3' && { maxHeight: '76px' })
                             }}
                         >
                             {/* Check for editing FIRST - takes priority over custom render */}
                             {isEditing && col.editable ? (
                                 col.type === 'select' || col.type === 'badge' ? (
                                     <>
-                                        {/* Still show the selected value in the cell */}
-                                        <span
-                                            className={cn(
-                                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap ring-2 ring-blue-400",
-                                                col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
-                                            )}
-                                        >
-                                            {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
-                                        </span>
+                                        {/* Show blank placeholder when empty, otherwise show value with ring */}
+                                        {value ? (
+                                            <span
+                                                className={cn(
+                                                    "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium whitespace-nowrap ring-2 ring-blue-400 ml-2",
+                                                    col.colorMap?.[String(value)] || "bg-gray-100 text-gray-700"
+                                                )}
+                                            >
+                                                {options?.find(o => String(o.value) === String(value))?.label || String(value)}
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center h-6 px-2 rounded ring-2 ring-blue-400 bg-gray-50 min-w-[60px]" />
+                                        )}
                                         {createPortal(
                                             <>
                                                 {/* Backdrop to close on click outside */}
@@ -596,36 +674,114 @@ function SortableRow<T>({
                                                     onSelect={(val: string) => {
                                                         onEditSave(val);
                                                     }}
+                                                    onClear={() => {
+                                                        onEditSave('');
+                                                    }}
                                                     position={dropdownPosition}
+                                                    colorMap={col.colorMap}
                                                 />
                                             </>,
                                             document.body
                                         )}
                                     </>
                                 ) : col.type === 'textarea' || col.type === 'text' ? (
-                                    <textarea
-                                        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                                        value={editingValue}
-                                        onChange={(e) => {
-                                            onEditChange(e.target.value);
-                                            e.target.style.height = 'auto';
-                                            e.target.style.height = `${e.target.scrollHeight}px`;
-                                        }}
-                                        onBlur={() => onEditSave()}
-                                        onKeyDown={handleKeyDown}
-                                        className="data-grid-input border border-blue-300 rounded focus:ring-1 focus:ring-blue-200 resize-none overflow-hidden"
-                                        rows={1}
-                                    />
+                                    <>
+                                        {/* Popup editor via portal - overlays the cell */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditSave();
+                                                    }}
+                                                />
+                                                {/* Popup Editor - Notion style */}
+                                                <textarea
+                                                    ref={(el) => {
+                                                        // Assign to inputRef
+                                                        (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                                                        // Auto-resize on mount
+                                                        if (el) {
+                                                            el.style.height = 'auto';
+                                                            const maxH = window.innerHeight - dropdownPosition.top - 50;
+                                                            const newHeight = Math.min(el.scrollHeight, maxH);
+                                                            el.style.height = `${Math.max(34, newHeight)}px`;
+                                                            el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+                                                        }
+                                                    }}
+                                                    value={editingValue}
+                                                    onChange={(e) => {
+                                                        onEditChange(e.target.value);
+                                                        // Auto-resize on change
+                                                        const el = e.target;
+                                                        el.style.height = 'auto';
+                                                        const maxH = window.innerHeight - dropdownPosition.top - 50;
+                                                        const newHeight = Math.min(el.scrollHeight, maxH);
+                                                        el.style.height = `${Math.max(34, newHeight)}px`;
+                                                        el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize-none focus:outline-none focus:border-blue-400"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
+                                                        width: dropdownPosition.width,
+                                                        padding: '8px 12px',
+                                                    }}
+                                                    placeholder="Enter text..."
+                                                    autoFocus
+                                                />
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
                                 ) : (
-                                    <input
-                                        ref={inputRef as React.RefObject<HTMLInputElement>}
-                                        type="text"
-                                        value={editingValue}
-                                        onChange={(e) => onEditChange(e.target.value)}
-                                        onBlur={() => onEditSave()}
-                                        onKeyDown={handleKeyDown}
-                                        className="w-full p-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
-                                    />
+                                    <>
+                                        {/* Popup editor via portal - overlays the cell */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditSave();
+                                                    }}
+                                                />
+                                                {/* Input Editor - Notion style */}
+                                                <input
+                                                    ref={inputRef as React.RefObject<HTMLInputElement>}
+                                                    type="text"
+                                                    value={editingValue}
+                                                    onChange={(e) => onEditChange(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            onEditSave();
+                                                        } else if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:border-blue-400"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
+                                                        width: dropdownPosition.width,
+                                                        height: '34px',
+                                                        padding: '8px 12px',
+                                                    }}
+                                                    placeholder="Enter text..."
+                                                    autoFocus
+                                                />
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
                                 )
                             ) : col.render ? (
                                 // Custom render for display mode only - wrap in clickable div if editable
@@ -640,15 +796,15 @@ function SortableRow<T>({
                                 col.type === 'badge' || col.type === 'select' ? (
                                     <span
                                         className={cn(
-                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap",
-                                            col.colorMap?.[String(value)] || "bg-gray-50 text-gray-700 border-gray-200"
+                                            "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
+                                            col.colorMap?.[String(value)] || "bg-gray-500 text-white"
                                         )}
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         {options?.find(o => String(o.value) === String(value))?.label || String(value || '-')}
                                     </span>
                                 ) : col.type === 'date' ? (
-                                    <span className="text-[10px] text-gray-500">
+                                    <span className="text-[13px] text-gray-500 px-3 py-2 block">
                                         {value ? new Date(String(value)).toLocaleString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
@@ -660,10 +816,11 @@ function SortableRow<T>({
                                 ) : (
                                     <p
                                         className={cn(
-                                            "text-xs text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-2",
-                                            (!wrapLines || wrapLines === '1') && "line-clamp-1",
-                                            wrapLines === '3' && "line-clamp-3",
-                                            wrapLines === 'full' && "whitespace-pre-wrap"
+                                            "text-[13px] text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-3 overflow-hidden",
+                                            (!wrapLines || wrapLines === '1') && "line-clamp-1 leading-[34px]",
+                                            wrapLines === '2' && "line-clamp-2 py-2 leading-[20px]",
+                                            wrapLines === '3' && "line-clamp-3 py-2 leading-[20px]",
+                                            wrapLines === 'full' && "whitespace-pre-wrap py-2 leading-relaxed"
                                         )}
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
@@ -747,10 +904,29 @@ export function DataTable<T>({
     columnOrder: externalColumnOrder,
     onColumnOrderChange,
     savedColumnWidths,
-    onColumnWidthsChange
+    onColumnWidthsChange,
+    // View persistence props
+    viewId,
+    userId,
+    initialPreferences,
+    sharedPreferences,
+    onPreferencesChange,
+    onSaveForEveryone,
+    onResetPreferences
 }: DataTableProps<T>) {
+    // Initialize wrap rules from preferences
+    const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
+        if (initialPreferences?.wrap_config && initialPreferences.wrap_config.length > 0) {
+            return initialPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>;
+        }
+        if (sharedPreferences?.wrap_config && sharedPreferences.wrap_config.length > 0) {
+            return sharedPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>;
+        }
+        return [];
+    };
+
     // Wrap state (per-column line wrapping, managed internally if not provided externally)
-    const [internalWrapRules, setInternalWrapRules] = useState<Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>>([]);
+    const [internalWrapRules, setInternalWrapRules] = useState<Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>>(getInitialWrapRules);
     const wrapRules = externalWrapRules || internalWrapRules;
     const setWrapRules = (newRules: Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>) => {
         if (onWrapRulesChange) {
@@ -760,8 +936,19 @@ export function DataTable<T>({
         }
     };
 
+    // Initialize group rules from preferences
+    const getInitialGroupRules = (): Array<{ id: string; key: string; direction: 'asc' | 'desc' }> => {
+        if (initialPreferences?.group_config && initialPreferences.group_config.length > 0) {
+            return initialPreferences.group_config;
+        }
+        if (sharedPreferences?.group_config && sharedPreferences.group_config.length > 0) {
+            return sharedPreferences.group_config;
+        }
+        return [];
+    };
+
     // Grouping state (managed internally if not provided externally)
-    const [internalGroupRules, setInternalGroupRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>([]);
+    const [internalGroupRules, setInternalGroupRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>(getInitialGroupRules);
 
     const groupRules = externalGroupRules || internalGroupRules;
     const setGroupRules = useMemo(() => {
@@ -913,7 +1100,7 @@ export function DataTable<T>({
     // Editing state
     const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState<string>('');
-    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 200 });
 
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -931,7 +1118,17 @@ export function DataTable<T>({
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
     // Multi-sort state (managed by DataTable)
-    const [sortRules, setSortRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>([]);
+    // Initialize from user preferences, fall back to shared preferences
+    const getInitialSortRules = () => {
+        if (initialPreferences?.sort_config && initialPreferences.sort_config.length > 0) {
+            return initialPreferences.sort_config;
+        }
+        if (sharedPreferences?.sort_config && sharedPreferences.sort_config.length > 0) {
+            return sharedPreferences.sort_config;
+        }
+        return [];
+    };
+    const [sortRules, setSortRules] = useState<Array<{ id: string; key: string; direction: 'asc' | 'desc' }>>(getInitialSortRules);
 
     // Grouping state
     // Grouping state is managed above (lines 588+)
@@ -969,10 +1166,84 @@ export function DataTable<T>({
         value: string;
         conjunction: 'and' | 'or';
     }
-    const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+    const getInitialFilterRules = (): FilterRule[] => {
+        if (initialPreferences?.filter_config && initialPreferences.filter_config.length > 0) {
+            return initialPreferences.filter_config as FilterRule[];
+        }
+        if (sharedPreferences?.filter_config && sharedPreferences.filter_config.length > 0) {
+            return sharedPreferences.filter_config as FilterRule[];
+        }
+        return [];
+    };
+    const [filterRules, setFilterRules] = useState<FilterRule[]>(getInitialFilterRules);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
     const [filterSearch, setFilterSearch] = useState('');
     const filterPanelRef = useRef<HTMLDivElement>(null);
+
+    // Track if preferences have been loaded (to avoid resetting after user makes changes)
+    const preferencesLoadedRef = useRef(false);
+    // Track if we've applied user-specific preferences (not just shared)
+    const userPrefsAppliedRef = useRef(false);
+
+    // Sync state when preferences are loaded after initial mount
+    // User preferences take priority over shared preferences
+    useEffect(() => {
+        // User preferences take priority - always apply them if they arrive
+        if (initialPreferences) {
+            if (userPrefsAppliedRef.current) return;
+
+            userPrefsAppliedRef.current = true;
+            preferencesLoadedRef.current = true;
+
+            // Apply user preferences
+            if (initialPreferences.sort_config?.length) {
+                setSortRules(initialPreferences.sort_config);
+            }
+            if (initialPreferences.filter_config?.length) {
+                setFilterRules(initialPreferences.filter_config as FilterRule[]);
+            }
+            if (!externalGroupRules && initialPreferences.group_config?.length) {
+                setInternalGroupRules(initialPreferences.group_config);
+            }
+            if (!externalWrapRules && initialPreferences.wrap_config?.length) {
+                setInternalWrapRules(initialPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+            }
+            return;
+        }
+
+        // Fall back to shared preferences if no user preferences
+        if (preferencesLoadedRef.current || !sharedPreferences) return;
+
+        preferencesLoadedRef.current = true;
+
+        // Apply shared preferences
+        if (sharedPreferences.sort_config?.length) {
+            setSortRules(sharedPreferences.sort_config);
+        }
+        if (sharedPreferences.filter_config?.length) {
+            setFilterRules(sharedPreferences.filter_config as FilterRule[]);
+        }
+        if (!externalGroupRules && sharedPreferences.group_config?.length) {
+            setInternalGroupRules(sharedPreferences.group_config);
+        }
+        if (!externalWrapRules && sharedPreferences.wrap_config?.length) {
+            setInternalWrapRules(sharedPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        }
+    }, [initialPreferences, sharedPreferences, externalGroupRules, externalWrapRules]);
+
+    // Fallback: Enable auto-save after 1 second if no preferences arrive
+    // This ensures auto-save works for new users with no saved preferences
+    useEffect(() => {
+        if (preferencesLoadedRef.current) return;
+
+        const timeout = setTimeout(() => {
+            if (!preferencesLoadedRef.current) {
+                preferencesLoadedRef.current = true;
+            }
+        }, 1000);
+
+        return () => clearTimeout(timeout);
+    }, []);
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -1201,6 +1472,101 @@ export function DataTable<T>({
         setShowWrapPanel(false);
     }, []);
 
+    // Track if preferences have changed from initial/shared
+    const getCurrentPreferences = useCallback(() => ({
+        sort_config: sortRules,
+        filter_config: filterRules as Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>,
+        group_config: groupRules,
+        wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>
+    }), [sortRules, filterRules, groupRules, wrapRules]);
+
+    // Check if current preferences differ from shared preferences (or if any rules exist when no shared prefs)
+    const hasUnsavedChanges = useMemo(() => {
+        const current = getCurrentPreferences();
+
+        // If no shared preferences, show Reset when ANY rules are active
+        if (!sharedPreferences) {
+            return (
+                (current.sort_config?.length || 0) > 0 ||
+                (current.filter_config?.length || 0) > 0 ||
+                (current.group_config?.length || 0) > 0 ||
+                (current.wrap_config?.length || 0) > 0
+            );
+        }
+
+        // Compare with shared preferences
+        const shared = sharedPreferences;
+        const sortChanged = JSON.stringify(current.sort_config) !== JSON.stringify(shared.sort_config || []);
+        const filterChanged = JSON.stringify(current.filter_config) !== JSON.stringify(shared.filter_config || []);
+        const groupChanged = JSON.stringify(current.group_config) !== JSON.stringify(shared.group_config || []);
+        const wrapChanged = JSON.stringify(current.wrap_config) !== JSON.stringify(shared.wrap_config || []);
+
+        return sortChanged || filterChanged || groupChanged || wrapChanged;
+    }, [getCurrentPreferences, sharedPreferences]);
+
+    // Auto-save preferences when they change (debounced)
+    const preferencesChangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isFirstRenderRef = useRef(true);
+
+    // Use a ref for the callback to avoid triggering effect when callback identity changes
+    const onPreferencesChangeRef = useRef(onPreferencesChange);
+    useEffect(() => {
+        onPreferencesChangeRef.current = onPreferencesChange;
+    }, [onPreferencesChange]);
+
+    useEffect(() => {
+        // Skip the first render to avoid saving empty preferences on mount
+        if (isFirstRenderRef.current) {
+            isFirstRenderRef.current = false;
+            return;
+        }
+
+        // Don't auto-save until initial preferences have been loaded
+        // This prevents overwriting saved preferences with empty state during initial load
+        if (!preferencesLoadedRef.current) return;
+        if (!onPreferencesChangeRef.current) return;
+
+        // Clear any pending timeout
+        if (preferencesChangeTimeoutRef.current) {
+            clearTimeout(preferencesChangeTimeoutRef.current);
+        }
+
+        // Debounce the save - wait 500ms after last change
+        preferencesChangeTimeoutRef.current = setTimeout(() => {
+            onPreferencesChangeRef.current?.(getCurrentPreferences());
+        }, 500);
+
+        return () => {
+            if (preferencesChangeTimeoutRef.current) {
+                clearTimeout(preferencesChangeTimeoutRef.current);
+            }
+        };
+    }, [sortRules, filterRules, groupRules, wrapRules, getCurrentPreferences]);
+
+    // Handle reset to shared preferences
+    const handleReset = useCallback(() => {
+        if (sharedPreferences) {
+            setSortRules(sharedPreferences.sort_config || []);
+            setFilterRules((sharedPreferences.filter_config || []) as FilterRule[]);
+            setGroupRules(sharedPreferences.group_config || []);
+            setWrapRules((sharedPreferences.wrap_config || []) as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        } else {
+            setSortRules([]);
+            setFilterRules([]);
+            setGroupRules([]);
+            setWrapRules([]);
+        }
+        onResetPreferences?.();
+    }, [sharedPreferences, setGroupRules, setWrapRules, onResetPreferences]);
+
+    // Handle save for everyone
+    const handleSaveForEveryone = useCallback(() => {
+        if (onSaveForEveryone) {
+            const preferences = getCurrentPreferences();
+            onSaveForEveryone(preferences);
+        }
+    }, [getCurrentPreferences, onSaveForEveryone]);
+
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             const target = event.target as Node;
@@ -1298,12 +1664,14 @@ export function DataTable<T>({
         const col = columns.find(c => c.key === field);
         if (!col?.editable) return;
 
-        // Calculate position from the clicked element
+        // Calculate position from the clicked element (cell)
         const target = event.currentTarget as HTMLElement;
-        const rect = target.getBoundingClientRect();
+        const cellElement = target.closest('td');
+        const cellRect = cellElement ? cellElement.getBoundingClientRect() : target.getBoundingClientRect();
         setDropdownPosition({
-            top: rect.bottom + 4,
-            left: rect.left,
+            top: cellRect.top,
+            left: cellRect.left,
+            width: Math.max(cellRect.width, 300), // minimum 300px width
         });
 
         const value = col.getValue ? col.getValue(row) : (row as Record<string, unknown>)[field];
@@ -2182,7 +2550,7 @@ export function DataTable<T>({
 
                 {/* Collapse/Expand buttons for groups */}
                 {groupRules.length > 0 && groupedData && (
-                    <div className="flex items-center gap-2 ml-auto text-xs">
+                    <div className="flex items-center gap-2 text-xs">
                         <button
                             type="button"
                             onClick={() => {
@@ -2207,6 +2575,33 @@ export function DataTable<T>({
                         >
                             Expand all
                         </button>
+                    </div>
+                )}
+
+                {/* Spacer to push Reset/Save buttons to the right */}
+                <div className="flex-1" />
+
+                {/* Reset and Save for Everyone buttons */}
+                {(onResetPreferences || onSaveForEveryone) && (
+                    <div className="flex items-center gap-2">
+                        {onResetPreferences && hasUnsavedChanges && (
+                            <button
+                                type="button"
+                                onClick={handleReset}
+                                className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                            >
+                                Reset
+                            </button>
+                        )}
+                        {onSaveForEveryone && (
+                            <button
+                                type="button"
+                                onClick={handleSaveForEveryone}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors"
+                            >
+                                Save for everyone
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -2555,38 +2950,14 @@ export function DataTable<T>({
                 groupRules.length === 0 && totalRows > 0 && (
                     <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-600">
                         {/* Left: Total count */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center">
                             <span className="text-gray-500">
                                 {totalRows} {totalRows === 1 ? 'row' : 'rows'}
                             </span>
                         </div>
 
-                        {/* Center: Rows per page */}
-                        <div className="flex items-center gap-2">
-                            <span className="text-gray-500">Rows per page:</span>
-                            <div className="flex items-center gap-1">
-                                {rowsPerPageOptions.map(option => (
-                                    <button
-                                        key={option}
-                                        onClick={() => {
-                                            setRowsPerPage(option);
-                                            setCurrentPage(1);
-                                        }}
-                                        className={cn(
-                                            "px-2 py-1 rounded text-xs transition-colors",
-                                            rowsPerPage === option
-                                                ? "bg-blue-100 text-blue-700 font-medium"
-                                                : "text-gray-500 hover:bg-gray-200"
-                                        )}
-                                    >
-                                        {option}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Right: Page navigation */}
-                        <div className="flex items-center gap-2">
+                        {/* Right: Page navigation with rows per page dropdown */}
+                        <div className="flex items-center gap-3">
                             <span className="text-gray-500">
                                 {Math.min((currentPage - 1) * rowsPerPage + 1, totalRows)}-{Math.min(currentPage * rowsPerPage, totalRows)} of {totalRows}
                             </span>
@@ -2615,6 +2986,22 @@ export function DataTable<T>({
                                 >
                                     <ChevronRight className="w-4 h-4" />
                                 </button>
+                            </div>
+                            <div className="border-l border-gray-200 pl-3">
+                                <select
+                                    value={rowsPerPage}
+                                    onChange={(e) => {
+                                        setRowsPerPage(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="text-xs text-gray-600 bg-transparent border border-gray-200 rounded px-2 py-1 cursor-pointer hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                >
+                                    {rowsPerPageOptions.map(option => (
+                                        <option key={option} value={option}>
+                                            {option} / page
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     </div>

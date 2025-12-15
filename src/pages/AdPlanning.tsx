@@ -8,11 +8,16 @@ import {
     getUsers,
     getSubprojects,
     getUserViewPreferences,
+    saveUserViewPreferences,
+    deleteUserViewPreferences,
+    getSharedViewPreferences,
+    saveSharedViewPreferences,
     saveRowOrder,
     type AdPlan,
     type Project,
     type User,
     type Subproject,
+    type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
@@ -29,6 +34,9 @@ export function AdPlanning() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+    // View preferences state (sort, filter, group, wrap)
+    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -54,20 +62,46 @@ export function AdPlanning() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [plansData, projectsData, usersData, subprojectsData, user] = await Promise.all([
+            const [plansData, projectsData, usersData, subprojectsData, user, sharedPrefs] = await Promise.all([
                 getAdPlans(),
                 getProjects(),
                 getUsers(),
                 getSubprojects(),
-                getCurrentUser()
+                getCurrentUser(),
+                getSharedViewPreferences('ad_planning')
             ]);
+
+            // Store shared preferences
+            if (sharedPrefs) {
+                setSharedPreferences({
+                    sort_config: sharedPrefs.sort_config,
+                    filter_config: sharedPrefs.filter_config,
+                    group_config: sharedPrefs.group_config,
+                    wrap_config: sharedPrefs.wrap_config,
+                    row_order: sharedPrefs.row_order
+                });
+            }
 
             if (user?.id) {
                 setCurrentUserId(user.id);
-                // Load saved row order
+                // Load saved user preferences
                 const prefs = await getUserViewPreferences(user.id, 'ad_planning');
-                if (prefs?.row_order && prefs.row_order.length > 0) {
-                    const orderMap = new Map(prefs.row_order.map((id, index) => [id, index]));
+
+                // Store user view preferences
+                if (prefs) {
+                    setUserPreferences({
+                        sort_config: prefs.sort_config,
+                        filter_config: prefs.filter_config,
+                        group_config: prefs.group_config,
+                        wrap_config: prefs.wrap_config,
+                        row_order: prefs.row_order
+                    });
+                }
+
+                // Load row order (user's or shared)
+                const rowOrder = prefs?.row_order || sharedPrefs?.row_order;
+                if (rowOrder && rowOrder.length > 0) {
+                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
                     const ordered = [...plansData].sort((a, b) => {
                         const aIndex = orderMap.get(a.id) ?? Infinity;
                         const bIndex = orderMap.get(b.id) ?? Infinity;
@@ -87,6 +121,49 @@ export function AdPlanning() {
             console.error('Failed to load data:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Handle view preferences change (auto-save per user)
+    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad_planning', preferences);
+            console.log('[AdPlanning] View preferences saved');
+        } catch (error) {
+            console.error('Failed to save view preferences:', error);
+        }
+    };
+
+    // Handle save for everyone
+    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
+        try {
+            const rowOrder = plans.map(p => p.id);
+            await saveSharedViewPreferences('ad_planning', {
+                ...preferences,
+                row_order: rowOrder
+            });
+            setSharedPreferences({
+                ...preferences,
+                row_order: rowOrder
+            });
+            console.log('[AdPlanning] Saved preferences for everyone');
+        } catch (error) {
+            console.error('Failed to save shared preferences:', error);
+        }
+    };
+
+    // Handle reset to shared preferences
+    const handleResetPreferences = async () => {
+        if (!currentUserId) return;
+
+        try {
+            await deleteUserViewPreferences(currentUserId, 'ad_planning');
+            setUserPreferences(null);
+            console.log('[AdPlanning] Reset to shared preferences');
+        } catch (error) {
+            console.error('Failed to reset preferences:', error);
         }
     };
 
@@ -240,7 +317,7 @@ export function AdPlanning() {
                     : project?.name || '-';
 
                 return (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-pink-500 text-white">
                         {content}
                     </span>
                 );
@@ -277,7 +354,7 @@ export function AdPlanning() {
                 }
 
                 return (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:ring-1 hover:ring-blue-300 whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ml-2 bg-orange-500 text-white">
                         {content}
                     </span>
                 );
@@ -296,9 +373,9 @@ export function AdPlanning() {
                 { label: 'Variation', value: 'Variation' },
             ],
             colorMap: {
-                'CClone': 'bg-purple-50 text-purple-700 border-purple-200',
-                'Full Ad': 'bg-blue-50 text-blue-700 border-blue-200',
-                'Variation': 'bg-amber-50 text-amber-700 border-amber-200',
+                'CClone': 'bg-purple-500 text-white',
+                'Full Ad': 'bg-blue-500 text-white',
+                'Variation': 'bg-amber-500 text-white',
             },
         },
         {
@@ -313,8 +390,8 @@ export function AdPlanning() {
                 { label: 'Image', value: 'Image' },
             ],
             colorMap: {
-                'Video': 'bg-rose-50 text-rose-700 border-rose-200',
-                'Image': 'bg-teal-50 text-teal-700 border-teal-200',
+                'Video': 'bg-rose-500 text-white',
+                'Image': 'bg-teal-500 text-white',
             },
         },
         {
@@ -452,6 +529,14 @@ export function AdPlanning() {
                 resizable={true}
                 showRowActions={false}
                 fullscreen={true}
+                // View persistence
+                viewId="ad_planning"
+                userId={currentUserId || undefined}
+                initialPreferences={userPreferences || undefined}
+                sharedPreferences={sharedPreferences || undefined}
+                onPreferencesChange={handlePreferencesChange}
+                onSaveForEveryone={handleSaveForEveryone}
+                onResetPreferences={handleResetPreferences}
             />
 
             {/* Create Modal */}
