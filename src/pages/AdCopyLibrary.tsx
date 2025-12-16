@@ -482,16 +482,11 @@ export function AdCopyLibrary() {
         {
             key: 'user_id',
             header: 'Created By',
-            width: 120,
-            minWidth: 80,
+            width: 130,
+            minWidth: 100,
             editable: true,
-            type: 'select',
-            options: users.map(u => ({
-                label: u.first_name ? `${u.first_name} ${u.last_name || ''} `.trim() : (u.name || u.email),
-                value: u.id
-            })),
-            optionsEditable: false, // Options managed by users table
-            colorMap: columnConfigs['user_id']?.colorMap,
+            type: 'people',
+            users: users,
         },
     ];
 

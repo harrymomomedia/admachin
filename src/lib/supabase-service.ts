@@ -534,6 +534,7 @@ export interface User {
     email: string;
     password?: string;
     role: string;
+    avatar_url?: string | null; // Profile image URL
     created_at: string;
 }
 

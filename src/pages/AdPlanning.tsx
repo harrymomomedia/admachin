@@ -416,11 +416,11 @@ export function AdPlanning() {
         {
             key: 'user_id',
             header: 'Owner',
-            width: 100,
-            minWidth: 80,
+            width: 120,
+            minWidth: 100,
             editable: true,
-            type: 'select',
-            options: users.map(u => ({ label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email, value: u.id })),
+            type: 'people',
+            users: users,
         },
         {
             key: 'status',
