@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { LayoutDashboard, Rocket, BarChart3, Image, Users, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen } from "lucide-react";
+import { createPortal } from "react-dom";
+import { LayoutDashboard, Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
+import { UserProfileDropdown } from "./UserProfileDropdown";
 
 // Facebook icon component
 const FacebookIcon = () => (
@@ -29,9 +31,6 @@ const facebookSubNav = [
     { name: "Ad Accounts", href: "/facebook/ad-accounts", icon: Database },
 ];
 
-const bottomNavigation = [
-    { name: "Admin", href: "/admin", icon: Users },
-];
 
 interface SidebarProps {
     onClose?: () => void;
@@ -50,13 +49,29 @@ interface FlyoutMenuProps {
 
 function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const buttonRef = useRef<HTMLButtonElement>(null);
     const flyoutRef = useRef<HTMLDivElement>(null);
     const location = useLocation();
+    const [position, setPosition] = useState({ top: 0, left: 0 });
+
+    // Calculate position when opening
+    useEffect(() => {
+        if (isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setPosition({
+                top: rect.top,
+                left: rect.right + 8 // 8px gap from button
+            });
+        }
+    }, [isOpen]);
 
     // Close on click outside
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            if (flyoutRef.current && !flyoutRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            const isInsideButton = buttonRef.current?.contains(target);
+            const isInsideFlyout = flyoutRef.current?.contains(target);
+            if (!isInsideButton && !isInsideFlyout) {
                 setIsOpen(false);
             }
         }
@@ -67,8 +82,9 @@ function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProp
     }, [isOpen]);
 
     return (
-        <div className="relative" ref={flyoutRef}>
+        <>
             <button
+                ref={buttonRef}
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(
                     "flex items-center justify-center p-3 rounded-md text-sm font-medium transition-colors w-full",
@@ -81,9 +97,13 @@ function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProp
                 {icon}
             </button>
 
-            {/* Flyout Popover */}
-            {isOpen && (
-                <div className="absolute left-full top-0 ml-2 z-50 min-w-[180px] bg-card border border-border rounded-lg shadow-lg py-2">
+            {/* Flyout Popover - rendered via portal */}
+            {isOpen && createPortal(
+                <div
+                    ref={flyoutRef}
+                    className="fixed z-[9999] min-w-[180px] bg-card border border-border rounded-lg shadow-xl py-2"
+                    style={{ top: position.top, left: position.left }}
+                >
                     {/* Header */}
                     <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1">
                         {title}
@@ -108,9 +128,10 @@ function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProp
                             </Link>
                         );
                     })}
-                </div>
+                </div>,
+                document.body
             )}
-        </div>
+        </>
     );
 }
 
@@ -140,7 +161,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
         )}>
             <div className={cn(
                 "flex h-16 items-center border-b border-border",
-                isCollapsed ? "justify-center px-2" : "justify-between px-6"
+                isCollapsed ? "justify-center px-2" : "px-4"
             )}>
                 <div className="flex items-center">
                     <Rocket className="h-6 w-6 text-primary" />
@@ -148,11 +169,11 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         <span className="text-xl font-bold text-foreground ml-2">AdMachin</span>
                     )}
                 </div>
-                {/* Close button for mobile */}
+                {/* Close button for mobile only */}
                 {onClose && (
                     <button
                         onClick={onClose}
-                        className="md:hidden p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        className="md:hidden ml-auto p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     >
                         <X className="h-5 w-5" />
                     </button>
@@ -302,51 +323,36 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                     </div>
                 )}
 
-                {/* Bottom Navigation */}
-                <div className="mt-auto pt-4 border-t border-border">
-                    {bottomNavigation.map((item) => {
-                        const isActive = location.pathname === item.href;
-                        return (
-                            <Link
-                                key={item.name}
-                                to={item.href}
-                                onClick={handleNavClick}
-                                title={isCollapsed ? item.name : undefined}
-                                className={cn(
-                                    "flex items-center gap-3 rounded-md text-sm font-medium transition-colors",
-                                    isCollapsed ? "justify-center p-3" : "px-3 py-2",
-                                    isActive
-                                        ? "bg-primary/10 text-primary"
-                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                )}
-                            >
-                                <item.icon className="h-5 w-5 flex-shrink-0" />
-                                {!isCollapsed && item.name}
-                            </Link>
-                        );
-                    })}
-                </div>
             </div>
 
-            {/* Collapse Toggle Button - Only on desktop */}
-            {onToggleCollapse && (
-                <div className="p-2 border-t border-border">
+            {/* Bottom section: User Profile + Collapse toggle */}
+            <div className={cn(
+                "border-t border-border",
+                isCollapsed ? "p-2" : "p-2 flex items-center gap-2"
+            )}>
+                <div className="flex-1 min-w-0">
+                    <UserProfileDropdown isCollapsed={isCollapsed} />
+                </div>
+                {/* Collapse toggle - Desktop only */}
+                {onToggleCollapse && !onClose && !isCollapsed && (
                     <button
                         onClick={onToggleCollapse}
-                        className={cn(
-                            "flex items-center gap-3 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors w-full",
-                            isCollapsed ? "justify-center p-3" : "px-3 py-2"
-                        )}
-                        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className="hidden md:flex p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex-shrink-0"
+                        title="Collapse sidebar"
                     >
-                        {isCollapsed ? (
-                            <PanelLeft className="h-5 w-5" />
-                        ) : (
-                            <>
-                                <PanelLeftClose className="h-5 w-5" />
-                                Collapse
-                            </>
-                        )}
+                        <PanelLeftClose className="h-4 w-4" />
+                    </button>
+                )}
+            </div>
+            {/* Expand button when collapsed - centered at bottom */}
+            {isCollapsed && onToggleCollapse && !onClose && (
+                <div className="p-2 border-t border-border flex justify-center">
+                    <button
+                        onClick={onToggleCollapse}
+                        className="hidden md:flex p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        title="Expand sidebar"
+                    >
+                        <PanelLeft className="h-4 w-4" />
                     </button>
                 </div>
             )}

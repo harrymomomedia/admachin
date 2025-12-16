@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Settings, LogOut, ChevronDown, User } from 'lucide-react';
+import { Settings, LogOut, ChevronUp, User } from 'lucide-react';
+import { cn } from '../utils/cn';
 
-export function UserProfileDropdown() {
+interface UserProfileDropdownProps {
+    isCollapsed?: boolean;
+}
+
+export function UserProfileDropdown({ isCollapsed = false }: UserProfileDropdownProps) {
     const { user, signOut } = useAuth();
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
@@ -23,6 +28,7 @@ export function UserProfileDropdown() {
     if (!user) return null;
 
     // Get display info from user
+    const firstName = user.first_name || user.email.split('@')[0];
     const displayName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email.split('@')[0];
     const email = user.email;
     const role = user.role || 'member';
@@ -46,63 +52,76 @@ export function UserProfileDropdown() {
             {/* Trigger Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-border hover:bg-muted/50 px-2 py-1 rounded-lg transition-colors"
+                className={cn(
+                    "flex items-center gap-3 rounded-md text-sm font-medium transition-colors w-full",
+                    isCollapsed ? "justify-center p-2" : "px-3 py-2",
+                    "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                title={isCollapsed ? displayName : undefined}
             >
-                <div className="text-right hidden md:block">
-                    <div className="text-sm font-semibold text-foreground">
-                        {displayName}
-                    </div>
-                    <div className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                        {email.length > 20 ? email.slice(0, 20) + '...' : email}
-                        {role === 'admin' && (
-                            <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase">
-                                {role}
-                            </span>
-                        )}
-                    </div>
-                </div>
-
                 {/* Avatar */}
-                <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium shadow-sm text-sm">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium shadow-sm text-sm flex-shrink-0">
                     {initials}
                 </div>
 
-                <ChevronDown className={`h-4 w-4 text-muted-foreground hidden md:block transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                {!isCollapsed && (
+                    <>
+                        <div className="flex-1 text-left min-w-0">
+                            <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
+                                {firstName}
+                                {role === 'admin' && (
+                                    <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-semibold uppercase">
+                                        {role}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <ChevronUp className={cn(
+                            "h-4 w-4 text-muted-foreground transition-transform flex-shrink-0",
+                            isOpen && "rotate-180"
+                        )} />
+                    </>
+                )}
             </button>
 
-            {/* Dropdown Menu */}
+            {/* Dropdown Menu - Opens upward */}
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
-                    {/* User Info (Mobile) */}
-                    <div className="md:hidden px-4 py-2 border-b border-gray-100 mb-2">
-                        <div className="font-medium text-gray-900">{displayName}</div>
-                        <div className="text-xs text-gray-500 truncate">{email}</div>
-                    </div>
+                <div className={cn(
+                    "absolute bottom-full mb-2 bg-card rounded-lg shadow-lg border border-border py-2 z-50",
+                    isCollapsed ? "left-full ml-2 bottom-0 mb-0 w-56" : "left-0 right-0 min-w-[200px]"
+                )}>
+                    {/* User Info (when collapsed) */}
+                    {isCollapsed && (
+                        <div className="px-4 py-2 border-b border-border mb-2">
+                            <div className="font-medium text-foreground">{displayName}</div>
+                            <div className="text-xs text-muted-foreground truncate">{email}</div>
+                        </div>
+                    )}
 
                     {/* Menu Items */}
                     <Link
                         to="/admin"
                         onClick={() => setIsOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
                     >
-                        <Settings className="h-4 w-4 text-gray-400" />
+                        <Settings className="h-4 w-4 text-muted-foreground" />
                         Admin
                     </Link>
 
                     <Link
                         to="/settings"
                         onClick={() => setIsOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
                     >
-                        <User className="h-4 w-4 text-gray-400" />
+                        <User className="h-4 w-4 text-muted-foreground" />
                         Profile
                     </Link>
 
-                    <div className="border-t border-gray-100 my-2" />
+                    <div className="border-t border-border my-2" />
 
                     <button
                         onClick={handleSignOut}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors w-full"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors w-full"
                     >
                         <LogOut className="h-4 w-4" />
                         Sign out

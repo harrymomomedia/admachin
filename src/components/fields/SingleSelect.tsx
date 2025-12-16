@@ -64,14 +64,22 @@ export function SingleSelect({
         opt.label.toLowerCase().includes(search.toLowerCase())
     );
 
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 200 });
+    const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 200 });
 
     // Update dropdown position when button ref changes or dropdown opens
     useEffect(() => {
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
+            const dropdownHeight = 250; // Approximate max height (search + options list)
+            const spaceBelow = window.innerHeight - rect.bottom - 10;
+            const spaceAbove = rect.top - 10;
+
+            // Open upward if not enough space below and more space above
+            const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+
             setDropdownPosition({
-                top: rect.bottom + 4,
+                top: openUpward ? undefined : rect.bottom + 4,
+                bottom: openUpward ? window.innerHeight - rect.top + 4 : undefined,
                 left: rect.left,
                 width: Math.max(rect.width, 200)
             });
@@ -112,8 +120,12 @@ export function SingleSelect({
                     className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] overflow-hidden"
                     style={{
                         top: dropdownPosition.top,
+                        bottom: dropdownPosition.bottom,
                         left: dropdownPosition.left,
-                        minWidth: dropdownPosition.width
+                        minWidth: dropdownPosition.width,
+                        maxHeight: Math.min(250, dropdownPosition.top !== undefined
+                            ? window.innerHeight - (dropdownPosition.top || 0) - 10
+                            : (dropdownPosition.bottom !== undefined ? window.innerHeight - dropdownPosition.bottom - 10 : 250))
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >

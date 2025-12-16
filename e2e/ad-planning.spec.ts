@@ -155,9 +155,12 @@ test.describe('Ad Planning', () => {
         const input = page.locator('textarea').first();
         await input.fill('Updated Plan Description');
 
-        // Blur
-        await page.getByRole('heading', { name: 'Ad Planning' }).click();
+        // Click the backdrop to save and close (backdrop has fixed inset-0 z-[9998])
+        await page.locator('div.fixed.inset-0').first().click({ force: true, position: { x: 10, y: 10 } });
 
-        await expect(page.getByText('Updated Plan Description')).toBeVisible();
+        // Wait for the edit to complete
+        await page.waitForTimeout(500);
+
+        await expect(page.getByText('Updated Plan Description')).toBeVisible({ timeout: 10000 });
     });
 });

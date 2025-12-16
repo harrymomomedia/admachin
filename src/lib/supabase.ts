@@ -14,6 +14,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Browser client (uses anon key, respects RLS)
+// Single instance to avoid "Multiple GoTrueClient instances" warning
 export const supabase: SupabaseClient<Database> = createClient<Database>(
     supabaseUrl || '',
     supabaseAnonKey || '',
@@ -24,6 +25,10 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
         },
     }
 );
+
+// Untyped client for tables not yet in database.types.ts
+// Uses the same instance to avoid multiple GoTrueClient warnings
+export const supabaseUntyped = supabase as unknown as SupabaseClient;
 
 // Helper to get the current user
 // In development, defaults to Harry Jung if no Supabase auth session

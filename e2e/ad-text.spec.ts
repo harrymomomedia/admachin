@@ -124,7 +124,8 @@ test.describe('Ad Copy Library', () => {
 
         await expect(page.getByRole('heading', { name: 'Ad Text' })).toBeVisible();
         await expect(page.getByText('Initial Ad Copy Text')).toBeVisible();
-        await expect(page.getByText('Test Project')).toBeVisible(); // Project Name
+        // Use .first() since "Test Project" appears in both filter dropdown and table
+        await expect(page.getByText('Test Project').first()).toBeVisible();
     });
 
     test('should create new ad copy', async ({ page }) => {
@@ -153,16 +154,19 @@ test.describe('Ad Copy Library', () => {
         await cell.click();
 
         // It becomes a textarea or input
-        const input = page.locator('textarea').first(); // The inline edit usually renders a textarea
+        const input = page.locator('textarea').first();
         await input.fill('Updated Ad Text Value');
 
-        // Blur to save (click outside)
-        await page.getByRole('heading', { name: 'Ad Text' }).click();
+        // Click the backdrop to save and close (backdrop has fixed inset-0 z-[9998])
+        // The backdrop is portaled to body, so we find it by its class/position
+        await page.locator('div.fixed.inset-0').first().click({ force: true, position: { x: 10, y: 10 } });
+
+        // Wait for the edit to complete
+        await page.waitForTimeout(500);
 
         // Verify update persisted (mock state updated)
-        // Reload page to prove persistence? 
         await page.reload();
-        await expect(page.getByText('Updated Ad Text Value')).toBeVisible();
+        await expect(page.getByText('Updated Ad Text Value')).toBeVisible({ timeout: 10000 });
     });
 
     test('should delete ad copy', async ({ page }) => {

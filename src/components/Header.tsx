@@ -1,5 +1,4 @@
 import { Bell, Search, Menu } from "lucide-react";
-import { UserProfileDropdown } from "./UserProfileDropdown";
 
 interface HeaderProps {
     onMenuClick?: () => void;
@@ -34,9 +33,6 @@ export function Header({ onMenuClick }: HeaderProps) {
                     <Bell className="h-5 w-5" />
                     <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full"></span>
                 </button>
-
-                {/* User Profile Dropdown */}
-                <UserProfileDropdown />
             </div>
         </header>
     );

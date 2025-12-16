@@ -1,15 +1,8 @@
 // Supabase Service Layer for AdMachin
 // Provides typed functions for database operations
 
-import { supabase } from './supabase';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, supabaseUntyped } from './supabase';
 import type { Database } from './database.types';
-
-// Untyped client for new tables not yet in database.types.ts
-const supabaseUntyped = createClient(
-    import.meta.env.VITE_SUPABASE_URL || '',
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''
-);
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdAccount = Database['public']['Tables']['ad_accounts']['Row'];
@@ -304,6 +297,28 @@ export async function deleteCreative(creativeId: string): Promise<void> {
         console.error('[Supabase] Error deleting creative:', error);
         throw error;
     }
+}
+
+/**
+ * Update a creative
+ */
+export async function updateCreative(
+    creativeId: string,
+    updates: Partial<Pick<Creative, 'name' | 'project_id' | 'subproject_id'>>
+): Promise<Creative> {
+    const { data, error } = await supabase
+        .from('creatives')
+        .update(updates)
+        .eq('id', creativeId)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating creative:', error);
+        throw error;
+    }
+
+    return data;
 }
 
 /**
@@ -1160,42 +1175,55 @@ export async function deleteUserViewPreferences(userId: string, viewId: string):
 
 /**
  * Get shared view preferences (default for everyone)
+ * Returns null gracefully on any error (table may not exist in all environments)
  */
 export async function getSharedViewPreferences(viewId: string): Promise<SharedViewPreferences | null> {
-    const { data, error } = await supabaseUntyped
-        .from('shared_view_preferences')
-        .select('*')
-        .eq('view_id', viewId)
-        .single();
+    try {
+        const { data, error } = await supabaseUntyped
+            .from('shared_view_preferences')
+            .select('*')
+            .eq('view_id', viewId)
+            .single();
 
-    if (error && error.code !== 'PGRST116') {
-        console.error('[Supabase] Error fetching shared view preferences:', error);
-        throw error;
+        // PGRST116 = no rows found, which is fine
+        if (error && error.code !== 'PGRST116') {
+            console.warn('[Supabase] Shared view preferences unavailable:', error.message);
+            return null;
+        }
+
+        return data || null;
+    } catch (err) {
+        // Table might not exist - fail gracefully
+        console.warn('[Supabase] Shared view preferences table may not exist');
+        return null;
     }
-
-    return data || null;
 }
 
 /**
  * Save shared view preferences (save for everyone)
+ * Fails silently if table doesn't exist
  */
 export async function saveSharedViewPreferences(
     viewId: string,
     preferences: Partial<Omit<SharedViewPreferences, 'id' | 'view_id' | 'created_at' | 'updated_at'>>
 ): Promise<void> {
-    const { error } = await supabaseUntyped
-        .from('shared_view_preferences')
-        .upsert({
-            view_id: viewId,
-            ...preferences,
-            updated_at: new Date().toISOString()
-        }, {
-            onConflict: 'view_id'
-        });
+    try {
+        const { error } = await supabaseUntyped
+            .from('shared_view_preferences')
+            .upsert({
+                view_id: viewId,
+                ...preferences,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'view_id'
+            });
 
-    if (error) {
-        console.error('[Supabase] Error saving shared view preferences:', error);
-        throw error;
+        if (error) {
+            console.warn('[Supabase] Could not save shared view preferences:', error.message);
+        }
+    } catch (err) {
+        // Table might not exist - fail gracefully
+        console.warn('[Supabase] Shared view preferences table may not exist');
     }
 }
 

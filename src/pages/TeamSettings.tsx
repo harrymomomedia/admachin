@@ -246,6 +246,9 @@ export function TeamSettings() {
     };
 
     const getUserDisplayName = (user: User) => {
+        if (user.first_name || user.last_name) {
+            return `${user.first_name || ''} ${user.last_name || ''}`.trim();
+        }
         return user.name || user.email;
     };
 
@@ -312,7 +315,8 @@ export function TeamSettings() {
                         <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">First Name</th>
+                                    <th className="px-6 py-3 font-medium text-gray-500">Last Name</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">Email</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">Role</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">Created</th>
@@ -322,13 +326,13 @@ export function TeamSettings() {
                             <tbody className="divide-y divide-gray-200">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                                             Loading users...
                                         </td>
                                     </tr>
                                 ) : users.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                                             No users yet. Add your first user.
                                         </td>
                                     </tr>
@@ -336,7 +340,10 @@ export function TeamSettings() {
                                     users.map(user => (
                                         <tr key={user.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 font-medium text-gray-900">
-                                                {getUserDisplayName(user)}
+                                                {user.first_name || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-900">
+                                                {user.last_name || '-'}
                                             </td>
                                             <td className="px-6 py-4 text-gray-600">{user.email}</td>
                                             <td className="px-6 py-4">

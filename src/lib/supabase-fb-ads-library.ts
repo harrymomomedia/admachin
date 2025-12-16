@@ -1,12 +1,6 @@
-// FB Ads Library Service Functions - appending to supabase-service.ts
+// FB Ads Library Service Functions
 
-import { createClient } from '@supabase/supabase-js';
-
-// Untyped client for new tables not yet in database.types.ts
-const supabaseUntyped = createClient(
-    import.meta.env.VITE_SUPABASE_URL || '',
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''
-);
+import { supabaseUntyped } from './supabase';
 
 // ============================================
 // FB ADS LIBRARY

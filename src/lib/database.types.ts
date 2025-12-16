@@ -170,6 +170,8 @@ export interface Database {
                     fb_hash: string | null
                     fb_video_id: string | null
                     created_at: string
+                    project_id: string | null
+                    subproject_id: string | null
                 }
                 Insert: {
                     id?: string
@@ -184,6 +186,8 @@ export interface Database {
                     fb_hash?: string | null
                     fb_video_id?: string | null
                     created_at?: string
+                    project_id?: string | null
+                    subproject_id?: string | null
                 }
                 Update: {
                     id?: string
@@ -198,6 +202,8 @@ export interface Database {
                     fb_hash?: string | null
                     fb_video_id?: string | null
                     created_at?: string
+                    project_id?: string | null
+                    subproject_id?: string | null
                 }
                 Relationships: [
                     {
@@ -205,6 +211,20 @@ export interface Database {
                         columns: ["user_id"]
                         isOneToOne: false
                         referencedRelation: "users"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "creatives_project_id_fkey"
+                        columns: ["project_id"]
+                        isOneToOne: false
+                        referencedRelation: "projects"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "creatives_subproject_id_fkey"
+                        columns: ["subproject_id"]
+                        isOneToOne: false
+                        referencedRelation: "subprojects"
                         referencedColumns: ["id"]
                     }
                 ]
