@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
     getAdCopies,
     createAdCopy,
@@ -48,6 +49,9 @@ export function AdCopyLibrary() {
     const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
     const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
 
+    // Column config overrides (for field editor changes - options, colorMaps)
+    const [columnConfigs, setColumnConfigs] = useState<Record<string, { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }>>({});
+
     // Handle view preferences change (auto-save per user)
     const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
         if (!currentUserId) return;
@@ -84,6 +88,17 @@ export function AdCopyLibrary() {
         } catch (error) {
             console.error('Failed to reset preferences:', error);
         }
+    };
+
+    // Handle column config changes (from field editor)
+    const handleColumnConfigChange = (columnKey: string, updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }) => {
+        setColumnConfigs(prev => ({
+            ...prev,
+            [columnKey]: {
+                ...prev[columnKey],
+                ...updates
+            }
+        }));
     };
 
     // Load Data
@@ -162,19 +177,28 @@ export function AdCopyLibrary() {
     };
 
     // Quick inline row creation (no popup, no refresh)
-    const handleQuickCreate = async () => {
-        // Create empty row with defaults
+    // defaults: pre-populated values from active filters
+    const handleQuickCreate = async (defaults?: Record<string, unknown>) => {
+        // Get project name if project_id is provided in defaults
+        let projectName: string | null = null;
+        if (defaults?.project_id) {
+            const proj = projects.find(p => p.id === defaults.project_id);
+            projectName = proj?.name || null;
+        }
+
+        // Create row with filter defaults applied
         const newCopy = await createAdCopy({
             text: '',
-            type: 'primary_text',
-            project_id: null,
-            project: null,
-            platform: 'FB',
+            type: (defaults?.type as string) || 'primary_text',
+            project_id: (defaults?.project_id as string) || null,
+            project: projectName,
+            subproject_id: (defaults?.subproject_id as string) || null,
+            platform: (defaults?.platform as string) || 'FB',
             user_id: currentUserId
         });
 
-        // Optimistic update - add to top of list
-        setCopies(prev => [newCopy, ...prev]);
+        // Optimistic update - add to BOTTOM of list so user can see it
+        setCopies(prev => [...prev, newCopy]);
 
         return newCopy;
     };
@@ -208,6 +232,15 @@ export function AdCopyLibrary() {
             }
         } else if (field === 'subproject_id') {
             updates.subproject_id = value ? String(value) : null;
+            // Auto-set project if subproject's project differs from current
+            if (value) {
+                const sub = subprojects.find(s => s.id === value);
+                if (sub && sub.project_id !== original.project_id) {
+                    updates.project_id = sub.project_id;
+                    const proj = projects.find(p => p.id === sub.project_id);
+                    updates.project = proj?.name || null;
+                }
+            }
         } else if (field === 'platform') {
             updates.platform = value ? String(value) : null;
         } else if (field === 'user_id') {
@@ -317,6 +350,32 @@ export function AdCopyLibrary() {
         }
     };
 
+    // Color palette for dynamic colorMaps
+    const colorPalette = [
+        'bg-pink-500 text-white',
+        'bg-indigo-500 text-white',
+        'bg-cyan-500 text-white',
+        'bg-amber-500 text-white',
+        'bg-rose-500 text-white',
+        'bg-violet-500 text-white',
+        'bg-teal-500 text-white',
+        'bg-orange-500 text-white',
+        'bg-lime-500 text-white',
+        'bg-fuchsia-500 text-white',
+    ];
+
+    // Generate colorMap for projects
+    const projectColorMap = projects.reduce((map, project, index) => {
+        map[project.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
+
+    // Generate colorMap for subprojects
+    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
+        map[subproject.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
+
     // Column Definitions
     const columns: ColumnDef<AdCopy>[] = [
         {
@@ -325,9 +384,7 @@ export function AdCopyLibrary() {
             width: 50,
             minWidth: 40,
             editable: false,
-            render: (value) => (
-                <span className="text-[10px] text-gray-400">{String(value || '-')}</span>
-            ),
+            type: 'id',
         },
         {
             key: 'text',
@@ -343,14 +400,14 @@ export function AdCopyLibrary() {
             width: 100,
             minWidth: 80,
             editable: true,
-            type: 'badge',
-            options: [
+            type: 'select',
+            options: columnConfigs['type']?.options || [
                 { label: 'Primary', value: 'primary_text' },
                 { label: 'Headline', value: 'headline' },
                 { label: 'Description', value: 'description' },
                 { label: 'Video Ad', value: 'video_ad_script' },
             ],
-            colorMap: {
+            colorMap: columnConfigs['type']?.colorMap || {
                 'primary_text': 'bg-blue-500 text-white',
                 'headline': 'bg-purple-500 text-white',
                 'description': 'bg-gray-500 text-white',
@@ -363,10 +420,11 @@ export function AdCopyLibrary() {
             width: 140,
             minWidth: 100,
             editable: true,
-            type: 'badge',
+            type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
+            optionsEditable: false, // Options managed by projects table
             fallbackKey: 'project', // Legacy field for old data
-            colorMap: { default: 'bg-pink-500 text-white' },
+            colorMap: columnConfigs['project_id']?.colorMap || projectColorMap,
         },
         {
             key: 'subproject_id',
@@ -385,7 +443,14 @@ export function AdCopyLibrary() {
                     }));
             },
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            colorMap: { default: 'bg-orange-500 text-white' },
+            colorMap: columnConfigs['subproject_id']?.colorMap || subprojectColorMap,
+            dependsOn: {
+                parentKey: 'project_id',
+                getParentValue: (subprojectId) => {
+                    const sub = subprojects.find(s => s.id === subprojectId);
+                    return sub?.project_id ?? null;
+                },
+            },
         },
         {
             key: 'platform',
@@ -393,14 +458,14 @@ export function AdCopyLibrary() {
             width: 80,
             minWidth: 60,
             editable: true,
-            type: 'badge',
-            options: [
+            type: 'select',
+            options: columnConfigs['platform']?.options || [
                 { label: 'None', value: '' },
                 { label: 'FB', value: 'FB' },
                 { label: 'IG', value: 'IG' },
                 { label: 'All', value: 'All' },
             ],
-            colorMap: {
+            colorMap: columnConfigs['platform']?.colorMap || {
                 'FB': 'bg-teal-500 text-white',
                 'IG': 'bg-rose-500 text-white',
                 'All': 'bg-indigo-500 text-white',
@@ -425,29 +490,17 @@ export function AdCopyLibrary() {
                 label: u.first_name ? `${u.first_name} ${u.last_name || ''} `.trim() : (u.name || u.email),
                 value: u.id
             })),
+            optionsEditable: false, // Options managed by users table
+            colorMap: columnConfigs['user_id']?.colorMap,
         },
     ];
 
     return (
-        <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
-            <div className="flex items-center justify-between flex-shrink-0">
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900">Ad Text</h1>
-                    <p className="text-xs text-gray-500">
-                        Manage your ad headlines and primary text library.
-                    </p>
-                </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                    <Plus className="w-4 h-4" />
-                    New
-                </button>
-            </div>
-
-
-
+        <DataTablePageLayout
+            title="Ad Text"
+            onNewClick={() => setIsCreateModalOpen(true)}
+            newButtonLabel="New"
+        >
             {/* Data Table */}
             <DataTable
                 columns={columns}
@@ -464,6 +517,7 @@ export function AdCopyLibrary() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                quickFilters={['project_id', 'subproject_id', 'type']}
                 // View persistence (includes sort, filter, group, wrap, column_widths, column_order)
                 viewId="ad_copies"
                 userId={currentUserId || undefined}
@@ -472,6 +526,8 @@ export function AdCopyLibrary() {
                 onPreferencesChange={handlePreferencesChange}
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
+                // Column config editing (field editor)
+                onColumnConfigChange={handleColumnConfigChange}
             />
 
             {/* Create Modal */}
@@ -568,6 +624,6 @@ export function AdCopyLibrary() {
                     </div>
                 </div>
             )}
-        </div>
+        </DataTablePageLayout>
     );
 }

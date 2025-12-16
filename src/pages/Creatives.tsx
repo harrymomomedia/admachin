@@ -1,39 +1,42 @@
 import { useState, useCallback, useEffect } from "react";
-import {
-    Upload,
-    Image as ImageIcon,
-    Film,
-    Trash2,
-    Search,
-    Grid,
-    List,
-    Download,
-    Eye,
-    Plus,
-    CheckCircle,
-    X,
-} from "lucide-react";
+import { X, Film } from "lucide-react";
 import { CreativeUploader } from "../components/CreativeUploader";
+import { DataTable } from "../components/DataTable";
+import type { ColumnDef } from "../components/DataTable";
+import { DataTablePageLayout } from "../components/DataTablePageLayout";
 import {
     getCreatives,
     deleteCreative as deleteCreativeFromDb,
+    updateCreative as updateCreativeInDb,
     getCreativeUrl,
+    getProjects,
+    getSubprojects,
+    getUserViewPreferences,
+    saveUserViewPreferences,
+    getSharedViewPreferences,
+    saveSharedViewPreferences,
+    deleteUserViewPreferences,
 } from "../lib/supabase-service";
+import type { ViewPreferencesConfig, Project, Subproject } from "../lib/supabase-service";
+import { useAuth } from "../contexts/AuthContext";
 
-interface MediaItem {
+interface Creative {
     id: string;
     name: string;
     type: "image" | "video";
     preview: string;
-    url?: string; // Actual media URL
+    url?: string;
     size: number;
-    uploadedAt: Date;
-    uploadedBy?: string; // Who uploaded this creative
+    sizeFormatted: string;
+    uploadedAt: string;
+    uploadedBy: string;
     hash?: string;
-    videoId?: string; // Facebook video ID for video ads
-    dimensions?: { width: number; height: number };
-    duration?: number; // for videos
-    dbId?: string; // Supabase ID for deletion
+    videoId?: string;
+    dimensions?: string;
+    duration?: number;
+    dbId?: string;
+    project_id?: string | null;
+    subproject_id?: string | null;
 }
 
 interface UploadedFile {
@@ -48,47 +51,18 @@ interface UploadedFile {
     error?: string;
 }
 
-// Sample data for demonstration (used as fallback)
-const SAMPLE_MEDIA: MediaItem[] = [
-    {
-        id: "1",
-        name: "summer-sale-banner.jpg",
-        type: "image",
-        preview: "https://picsum.photos/seed/1/400/400",
-        size: 245000,
-        uploadedAt: new Date("2024-01-15"),
-        uploadedBy: "Harry Jung",
-        dimensions: { width: 1080, height: 1080 },
-    },
-    {
-        id: "2",
-        name: "product-demo.mp4",
-        type: "video",
-        preview: "https://picsum.photos/seed/2/400/400",
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        size: 12500000,
-        uploadedAt: new Date("2024-01-10"),
-        uploadedBy: "Marketing Team",
-        dimensions: { width: 1920, height: 1080 },
-        duration: 30,
-    },
-    {
-        id: "3",
-        name: "brand-story.jpg",
-        type: "image",
-        preview: "https://picsum.photos/seed/3/400/400",
-        size: 189000,
-        uploadedAt: new Date("2024-01-08"),
-        uploadedBy: "Creative Team",
-        dimensions: { width: 1080, height: 1920 },
-    },
-];
-
 // Storage key for sharing with Launch page (session cache)
 const STORAGE_KEY = "admachin_creative_library";
 
+// Format file size
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // Save media to localStorage for quick access on Launch page
-function saveMediaToCache(items: MediaItem[]): void {
+function saveMediaToCache(items: Creative[]): void {
     try {
         const simplified = items.map(m => ({
             id: m.id,
@@ -105,13 +79,12 @@ function saveMediaToCache(items: MediaItem[]): void {
 }
 
 // Load media from Supabase
-async function loadMediaFromDb(): Promise<MediaItem[]> {
+async function loadMediaFromDb(): Promise<Creative[]> {
     try {
         const creatives = await getCreatives();
         return creatives.map(c => {
             const dims = c.dimensions as { width?: number; height?: number; thumbnail?: string } | null;
             const videoUrl = getCreativeUrl(c.storage_path);
-            // Use thumbnail if available, otherwise use video URL (which will fallback to icon in UI)
             const previewUrl = (c.type === 'video' && dims?.thumbnail)
                 ? getCreativeUrl(dims.thumbnail)
                 : getCreativeUrl(c.storage_path);
@@ -120,131 +93,350 @@ async function loadMediaFromDb(): Promise<MediaItem[]> {
                 id: c.id,
                 dbId: c.id,
                 name: c.name,
-                type: c.type,
+                type: c.type as "image" | "video",
                 preview: previewUrl,
                 url: videoUrl,
                 size: c.file_size,
-                uploadedAt: new Date(c.created_at),
-                uploadedBy: c.uploaded_by,
+                sizeFormatted: formatFileSize(c.file_size),
+                uploadedAt: c.created_at,
+                uploadedBy: c.uploaded_by || 'Unknown',
                 hash: c.fb_hash || undefined,
                 videoId: (c as unknown as { fb_video_id: string | null }).fb_video_id || undefined,
-                dimensions: typeof dims?.width === 'number' ? { width: dims.width!, height: dims.height! } : undefined,
+                dimensions: dims?.width ? `${dims.width} × ${dims.height}` : undefined,
                 duration: c.duration || undefined,
+                project_id: c.project_id,
+                subproject_id: c.subproject_id,
             };
         });
     } catch (error) {
         console.error('[Creatives] Failed to load from Supabase:', error);
-        return SAMPLE_MEDIA; // Fallback to sample data
+        return [];
     }
 }
 
 export function Creatives() {
-    const [media, setMedia] = useState<MediaItem[]>([]);
+    const { user } = useAuth();
+    const currentUserId = user?.id;
+
+    const [creatives, setCreatives] = useState<Creative[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-    const [filterType, setFilterType] = useState<"all" | "image" | "video">("all");
-    const [searchQuery, setSearchQuery] = useState("");
     const [showUploader, setShowUploader] = useState(false);
-    const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-    const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
+    const [previewItem, setPreviewItem] = useState<Creative | null>(null);
 
-    // Load from Supabase on mount
-    useEffect(() => {
-        loadMediaFromDb().then(items => {
-            setMedia(items);
-            saveMediaToCache(items); // Cache for Launch page
-            setIsLoading(false);
-        });
-    }, []);
+    // Projects and subprojects
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [subprojects, setSubprojects] = useState<Subproject[]>([]);
 
-    // Update cache whenever media changes
+    // View preferences
+    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
+
+    // Load data and preferences
     useEffect(() => {
-        if (media.length > 0) {
-            saveMediaToCache(media);
+        async function loadData() {
+            setIsLoading(true);
+            try {
+                const [items, projectsData, subprojectsData, userPrefs, sharedPrefs] = await Promise.all([
+                    loadMediaFromDb(),
+                    getProjects(),
+                    getSubprojects(),
+                    currentUserId ? getUserViewPreferences(currentUserId, 'creatives') : null,
+                    getSharedViewPreferences('creatives'),
+                ]);
+                setCreatives(items);
+                setProjects(projectsData);
+                setSubprojects(subprojectsData);
+                saveMediaToCache(items);
+                setUserPreferences(userPrefs);
+                setSharedPreferences(sharedPrefs);
+            } catch (error) {
+                console.error('[Creatives] Failed to load:', error);
+            } finally {
+                setIsLoading(false);
+            }
         }
-    }, [media]);
+        loadData();
+    }, [currentUserId]);
 
+    // View persistence handlers
+    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'creatives', preferences);
+        } catch (error) {
+            console.error('Failed to save view preferences:', error);
+        }
+    };
 
-    const filteredMedia = media.filter((item) => {
-        const matchesType = filterType === "all" || item.type === filterType;
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesType && matchesSearch;
-    });
+    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
+        try {
+            await saveSharedViewPreferences('creatives', preferences);
+        } catch (error) {
+            console.error('Failed to save shared preferences:', error);
+        }
+    };
+
+    const handleResetPreferences = async () => {
+        if (!currentUserId) return;
+        try {
+            await deleteUserViewPreferences(currentUserId, 'creatives');
+            setUserPreferences(null);
+        } catch (error) {
+            console.error('Failed to reset preferences:', error);
+        }
+    };
 
     const handleUploadComplete = useCallback((files: UploadedFile[]) => {
-        const newMedia: MediaItem[] = files.map((f, i) => ({
+        const newCreatives: Creative[] = files.map((f, i) => ({
             id: `new-${Date.now()}-${i}`,
             name: f.file.name,
             type: f.type,
             preview: f.preview || f.url || "",
             url: f.type === 'video' ? URL.createObjectURL(f.file) : (f.url || f.preview),
             size: f.file.size,
-            uploadedAt: new Date(),
-            uploadedBy: "You", // TODO: Get from active FB profile
+            sizeFormatted: formatFileSize(f.file.size),
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: user?.first_name || "You",
             hash: f.hash,
         }));
-        setMedia((prev) => [...newMedia, ...prev]);
-    }, []);
+        setCreatives((prev) => [...newCreatives, ...prev]);
+    }, [user]);
 
-    const toggleSelection = (id: string) => {
-        setSelectedItems((prev) => {
-            const newSet = new Set(prev);
-            if (newSet.has(id)) {
-                newSet.delete(id);
-            } else {
-                newSet.add(id);
+    const handleDelete = useCallback(async (id: string) => {
+        const item = creatives.find(c => c.id === id);
+        setCreatives((prev) => prev.filter((c) => c.id !== id));
+
+        if (item?.dbId) {
+            try {
+                await deleteCreativeFromDb(item.dbId);
+            } catch (err) {
+                console.error('[Creatives] Failed to delete from DB:', err);
             }
-            return newSet;
-        });
-    };
+        }
+    }, [creatives]);
 
-    const deleteSelected = useCallback(() => {
-        // Delete from local state
-        const itemsToDelete = media.filter(item => selectedItems.has(item.id));
-        setMedia((prev) => prev.filter((item) => !selectedItems.has(item.id)));
-        setSelectedItems(new Set());
+    const handleUpdate = useCallback(async (id: string, field: string, value: unknown) => {
+        const item = creatives.find(c => c.id === id);
+        if (!item) return;
 
-        // Delete from Supabase asynchronously
-        itemsToDelete.forEach(item => {
-            if (item.dbId) {
-                deleteCreativeFromDb(item.dbId).catch(err =>
-                    console.error('[Creatives] Failed to delete from DB:', err)
+        const updates: Record<string, unknown> = { [field]: value };
+
+        // Handle subproject -> project dependency
+        if (field === 'subproject_id' && value) {
+            const sub = subprojects.find(s => s.id === value);
+            if (sub && sub.project_id !== item.project_id) {
+                updates.project_id = sub.project_id;
+            }
+        }
+        // Handle project change -> clear invalid subproject
+        else if (field === 'project_id') {
+            const currentSubprojectId = item.subproject_id;
+            if (currentSubprojectId && value) {
+                const subBelongsToNewProject = subprojects.some(
+                    s => s.id === currentSubprojectId && s.project_id === value
                 );
+                if (!subBelongsToNewProject) {
+                    updates.subproject_id = null;
+                }
+            } else if (!value) {
+                updates.subproject_id = null;
             }
-        });
-    }, [media, selectedItems]);
+        }
 
-    const formatFileSize = (bytes: number) => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
+        // Update local state
+        setCreatives((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+        );
 
-    const formatDuration = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, "0")}`;
-    };
+        // Update in database
+        if (item.dbId) {
+            const dbUpdates: Record<string, string | null> = {};
+            for (const [key, val] of Object.entries(updates)) {
+                if (key === 'project_id' || key === 'subproject_id' || key === 'name') {
+                    dbUpdates[key] = val as string | null;
+                }
+            }
+            if (Object.keys(dbUpdates).length > 0) {
+                try {
+                    await updateCreativeInDb(item.dbId, dbUpdates);
+                } catch (err) {
+                    console.error('[Creatives] Failed to update in DB:', err);
+                }
+            }
+        }
+    }, [creatives, subprojects]);
+
+    // Color palette for dynamic colorMaps
+    const colorPalette = [
+        'bg-pink-500 text-white',
+        'bg-indigo-500 text-white',
+        'bg-cyan-500 text-white',
+        'bg-amber-500 text-white',
+        'bg-rose-500 text-white',
+        'bg-violet-500 text-white',
+        'bg-teal-500 text-white',
+        'bg-orange-500 text-white',
+        'bg-lime-500 text-white',
+        'bg-fuchsia-500 text-white',
+    ];
+
+    // Generate colorMaps for projects and subprojects
+    const projectColorMap = projects.reduce((map, project, index) => {
+        map[project.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
+
+    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
+        map[subproject.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
+
+    // Column definitions
+    const columns: ColumnDef<Creative>[] = [
+        {
+            key: 'preview',
+            header: 'Preview',
+            width: 80,
+            minWidth: 60,
+            editable: false,
+            render: (_, row) => (
+                <div
+                    className="h-12 w-12 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setPreviewItem(row)}
+                >
+                    {row.type === "video" && row.preview === row.url ? (
+                        <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                            <Film className="h-5 w-5 text-gray-400" />
+                        </div>
+                    ) : (
+                        <img
+                            src={row.preview}
+                            alt={row.name}
+                            className="w-full h-full object-cover"
+                        />
+                    )}
+                </div>
+            ),
+        },
+        {
+            key: 'name',
+            header: 'Name',
+            width: 250,
+            minWidth: 150,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'project_id',
+            header: 'Project',
+            width: 140,
+            minWidth: 100,
+            editable: true,
+            type: 'select',
+            options: projects.map(p => ({ label: p.name, value: p.id })),
+            colorMap: projectColorMap,
+        },
+        {
+            key: 'subproject_id',
+            header: 'Subproject',
+            width: 140,
+            minWidth: 100,
+            editable: true,
+            type: 'select',
+            options: (row) => {
+                if (!row.project_id) return [];
+                return subprojects
+                    .filter(s => s.project_id === row.project_id)
+                    .map(s => ({ label: s.name, value: s.id }));
+            },
+            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
+            colorMap: subprojectColorMap,
+            dependsOn: {
+                parentKey: 'project_id',
+                getParentValue: (subprojectId) => {
+                    const sub = subprojects.find(s => s.id === subprojectId);
+                    return sub?.project_id ?? null;
+                },
+            },
+        },
+        {
+            key: 'type',
+            header: 'Type',
+            width: 100,
+            minWidth: 80,
+            editable: false,
+            type: 'select',
+            options: [
+                { label: 'Image', value: 'image' },
+                { label: 'Video', value: 'video' },
+            ],
+            colorMap: {
+                'image': 'bg-blue-500 text-white',
+                'video': 'bg-purple-500 text-white',
+            },
+        },
+        {
+            key: 'sizeFormatted',
+            header: 'Size',
+            width: 100,
+            minWidth: 80,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'dimensions',
+            header: 'Dimensions',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'uploadedBy',
+            header: 'Uploaded By',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'uploadedAt',
+            header: 'Date',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'date',
+        },
+    ];
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold">Creative Library</h1>
-                    <p className="text-muted-foreground">
-                        Manage your images and videos for ad campaigns
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowUploader(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                    aria-label="Upload Media Main"
-                >
-                    <Plus className="h-4 w-4" />
-                    Upload Media
-                </button>
-            </div>
+        <DataTablePageLayout
+            title="Creatives"
+            onNewClick={() => setShowUploader(true)}
+            newButtonLabel="Upload"
+        >
+            {/* Data Table */}
+            <DataTable
+                columns={columns}
+                data={creatives}
+                isLoading={isLoading}
+                emptyMessage="No creatives found. Upload your first media to get started!"
+                getRowId={(creative) => creative.id}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                resizable={true}
+                fullscreen={true}
+                quickFilters={['project_id', 'subproject_id', 'type']}
+                showRowActions={true}
+                // View persistence
+                viewId="creatives"
+                userId={currentUserId || undefined}
+                initialPreferences={userPreferences || undefined}
+                sharedPreferences={sharedPreferences || undefined}
+                onPreferencesChange={handlePreferencesChange}
+                onSaveForEveryone={handleSaveForEveryone}
+                onResetPreferences={handleResetPreferences}
+            />
 
             {/* Upload Modal */}
             {showUploader && (
@@ -310,14 +502,12 @@ export function Creatives() {
                             <div className="p-4 border-t border-border">
                                 <h3 className="font-medium truncate">{previewItem.name}</h3>
                                 <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                                    <span>{formatFileSize(previewItem.size)}</span>
+                                    <span>{previewItem.sizeFormatted}</span>
                                     {previewItem.dimensions && (
-                                        <span>
-                                            {previewItem.dimensions.width} × {previewItem.dimensions.height}
-                                        </span>
+                                        <span>{previewItem.dimensions}</span>
                                     )}
                                     {previewItem.duration && (
-                                        <span>{formatDuration(previewItem.duration)}</span>
+                                        <span>{Math.floor(previewItem.duration / 60)}:{(previewItem.duration % 60).toString().padStart(2, "0")}</span>
                                     )}
                                 </div>
                             </div>
@@ -325,359 +515,6 @@ export function Creatives() {
                     </div>
                 </div>
             )}
-
-            {/* Toolbar */}
-            <div className="flex items-center gap-4 flex-wrap">
-                {/* Search */}
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                        type="text"
-                        placeholder="Search media..."
-                        aria-label="Search media"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                </div>
-
-                {/* Filter */}
-                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                    <button
-                        onClick={() => setFilterType("all")}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${filterType === "all"
-                            ? "bg-background shadow text-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                            }`}
-                        aria-label="Filter All"
-                    >
-                        All
-                    </button>
-                    {/* ... other filters ... */}
-                </div>
-
-                {/* View Mode */}
-                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                    <button
-                        onClick={() => setViewMode("grid")}
-                        className={`p-1.5 rounded-md transition-colors ${viewMode === "grid"
-                            ? "bg-background shadow text-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                            }`}
-                        aria-label="Grid View"
-                    >
-                        <Grid className="h-4 w-4" />
-                    </button>
-                    <button
-                        onClick={() => setViewMode("list")}
-                        className={`p-1.5 rounded-md transition-colors ${viewMode === "list"
-                            ? "bg-background shadow text-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                            }`}
-                        aria-label="List View"
-                    >
-                        <List className="h-4 w-4" />
-                    </button>
-                </div>
-                {/* Bulk Actions */}
-                {selectedItems.size > 0 && (
-                    <div className="flex items-center gap-2 ml-auto">
-                        <span className="text-sm text-muted-foreground">
-                            {selectedItems.size} selected
-                        </span>
-                        <button
-                            onClick={deleteSelected}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                        </button>
-                    </div>
-                )}
-            </div>
-            {/* Media Grid/List */}
-            {
-                isLoading ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-                            <div key={i} className="aspect-square bg-muted/30 rounded-xl border border-border animate-pulse" />
-                        ))}
-                    </div>
-                ) : filteredMedia.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <div className="p-4 bg-muted/50 rounded-full mb-4">
-                            <Upload className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <h3 className="font-medium mb-1">No media found</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            {searchQuery || filterType !== "all"
-                                ? "Try adjusting your filters"
-                                : "Upload your first creative to get started"}
-                        </p>
-                        {!searchQuery && filterType === "all" && (
-                            <button
-                                onClick={() => setShowUploader(true)}
-                                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                            >
-                                <Upload className="h-4 w-4" />
-                                Upload Media
-                            </button>
-                        )}
-                    </div>
-                ) : viewMode === "grid" ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {filteredMedia.map((item) => (
-                            <div
-                                key={item.id}
-                                className={`group relative bg-muted/30 rounded-xl overflow-hidden border transition-all cursor-pointer ${selectedItems.has(item.id)
-                                    ? "border-primary ring-2 ring-primary/50"
-                                    : "border-border hover:border-primary/50"
-                                    }`}
-                            >
-                                {/* Selection Checkbox */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleSelection(item.id);
-                                    }}
-                                    className={`absolute top-2 left-2 z-10 h-5 w-5 rounded border-2 flex items-center justify-center transition-all ${selectedItems.has(item.id)
-                                        ? "bg-primary border-primary"
-                                        : "bg-black/30 border-white/50 opacity-0 group-hover:opacity-100"
-                                        }`}
-                                >
-                                    {selectedItems.has(item.id) && (
-                                        <CheckCircle className="h-3 w-3 text-white" />
-                                    )}
-                                </button>
-
-                                {/* Media Type Badge */}
-                                <div className="absolute top-2 right-2 z-10">
-                                    <div className="px-2 py-0.5 bg-black/60 text-white text-xs rounded-full flex items-center gap-1">
-                                        {item.type === "image" ? (
-                                            <ImageIcon className="h-3 w-3" />
-                                        ) : (
-                                            <>
-                                                <Film className="h-3 w-3" />
-                                                {item.duration && formatDuration(item.duration)}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Preview */}
-                                <div
-                                    className="aspect-square"
-                                    onClick={() => setPreviewItem(item)}
-                                >
-                                    {item.type === "video" && item.preview === item.url ? (
-                                        <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                                            <Film className="h-12 w-12 text-gray-400" />
-                                        </div>
-                                    ) : (
-                                        <img
-                                            src={item.preview}
-                                            alt={item.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    )}
-                                </div>
-
-                                {/* Hover Actions */}
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <button
-                                        onClick={() => setPreviewItem(item)}
-                                        className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
-                                    >
-                                        <Eye className="h-5 w-5 text-white" />
-                                    </button>
-                                    <button
-                                        onClick={() => { }}
-                                        className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
-                                    >
-                                        <Download className="h-5 w-5 text-white" />
-                                    </button>
-                                </div>
-
-                                {/* Info */}
-                                <div className="p-2">
-                                    <p className="text-xs font-medium truncate">{item.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {formatFileSize(item.size)}
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="bg-card border border-border rounded-xl overflow-hidden">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-border bg-muted/30">
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        <input
-                                            type="checkbox"
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedItems(new Set(filteredMedia.map((m) => m.id)));
-                                                } else {
-                                                    setSelectedItems(new Set());
-                                                }
-                                            }}
-                                            checked={
-                                                selectedItems.size === filteredMedia.length &&
-                                                filteredMedia.length > 0
-                                            }
-                                            className="rounded border-border"
-                                        />
-                                    </th>
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Media
-                                    </th>
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Type
-                                    </th>
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Size
-                                    </th>
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Dimensions
-                                    </th>
-
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Uploaded By
-                                    </th>
-                                    <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Date
-                                    </th>
-                                    <th className="p-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {filteredMedia.map((item) => (
-                                    <tr
-                                        key={item.id}
-                                        className={`hover:bg-muted/30 transition-colors ${selectedItems.has(item.id) ? "bg-primary/5" : ""
-                                            }`}
-                                    >
-                                        <td className="p-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedItems.has(item.id)}
-                                                onChange={() => toggleSelection(item.id)}
-                                                className="rounded border-border"
-                                            />
-                                        </td>
-                                        <td className="p-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                                                    {item.type === "video" && item.preview === item.url ? (
-                                                        <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                                                            <Film className="h-5 w-5 text-gray-400" />
-                                                        </div>
-                                                    ) : (
-                                                        <img
-                                                            src={item.preview}
-                                                            alt={item.name}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    )}
-                                                </div>
-                                                <span className="font-medium text-sm truncate max-w-[200px]">
-                                                    {item.name}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="p-3">
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-muted">
-                                                {item.type === "image" ? (
-                                                    <>
-                                                        <ImageIcon className="h-3 w-3" />
-                                                        Image
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Film className="h-3 w-3" />
-                                                        Video
-                                                    </>
-                                                )}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-sm text-muted-foreground">
-                                            {formatFileSize(item.size)}
-                                        </td>
-                                        <td className="p-3 text-sm text-muted-foreground">
-                                            {item.dimensions
-                                                ? `${item.dimensions.width} × ${item.dimensions.height}`
-                                                : "-"}
-                                        </td>
-
-                                        <td className="p-3 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                                                    <span className="text-xs font-medium text-primary">
-                                                        {(item.uploadedBy || "H").charAt(0)}
-                                                    </span>
-                                                </div>
-                                                <span className="text-muted-foreground">{item.uploadedBy || "Harry"}</span>
-                                            </div>
-                                        </td>
-                                        <td className="p-3 text-sm text-muted-foreground">
-                                            {item.uploadedAt.toLocaleDateString()}
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button
-                                                    onClick={() => setPreviewItem(item)}
-                                                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                                                    title="Preview"
-                                                >
-                                                    <Eye className="h-4 w-4 text-muted-foreground" />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (item.url) {
-                                                            window.open(item.url, '_blank');
-                                                        }
-                                                    }}
-                                                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                                                    title="Download"
-                                                >
-                                                    <Download className="h-4 w-4 text-muted-foreground" />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm('Delete this item?')) {
-                                                            setSelectedItems(new Set([item.id]));
-                                                            setTimeout(() => deleteSelected(), 0);
-                                                        }
-                                                    }}
-                                                    className="p-1.5 hover:bg-muted rounded-md transition-colors text-red-500 hover:text-red-600"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )
-            }
-
-            {/* Stats Footer */}
-            <div className="flex items-center justify-between text-sm text-muted-foreground pt-4 border-t border-border">
-                <span>
-                    {filteredMedia.length} item{filteredMedia.length !== 1 ? "s" : ""}
-                </span>
-                <span>
-                    Total size:{" "}
-                    {formatFileSize(filteredMedia.reduce((sum, m) => sum + m.size, 0))}
-                </span>
-            </div>
-        </div >
+        </DataTablePageLayout>
     );
 }

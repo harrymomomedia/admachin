@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2 } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, GripVertical as DragHandle } from 'lucide-react';
 import { SingleSelect, SearchInput } from './fields';
 import {
     DndContext,
@@ -92,15 +92,22 @@ export interface ColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'textarea' | 'select' | 'badge' | 'date' | 'url' | 'priority' | 'custom';
+    type?: 'text' | 'textarea' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
+    optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
     colorMap?: Record<string, string>;
     render?: (value: unknown, row: T, isEditing: boolean, expandText?: boolean) => React.ReactNode;
     getValue?: (row: T) => unknown;
     fallbackKey?: string; // For legacy data - show this field's value if current value not found in options
     maxPriority?: number; // For priority type - max value (default: 5)
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
+    // Column dependency - when this column's value is set, auto-set the parent column value
+    // Used for subproject -> project relationships where selecting a subproject should auto-select its project
+    dependsOn?: {
+        parentKey: string; // The column key this depends on (e.g., 'project_id')
+        getParentValue: (value: string | number) => string | number | null; // Function to resolve parent value from this column's value
+    };
 }
 
 export interface DataTableProps<T> {
@@ -121,7 +128,8 @@ export interface DataTableProps<T> {
     onDuplicate?: (row: T) => void;
 
     // Inline row creation (no popup)
-    onCreateRow?: () => Promise<T> | T;
+    // defaults: filter values to pre-populate (extracted from active "is" filters)
+    onCreateRow?: (defaults?: Record<string, unknown>) => Promise<T> | T;
 
     showRowActions?: boolean;
 
@@ -138,6 +146,9 @@ export interface DataTableProps<T> {
 
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;
+
+    // Quick filters - array of column keys to show as quick filter dropdowns at far left of toolbar
+    quickFilters?: string[];
 
     // Grouping
     groupRules?: { id: string; key: string; direction: 'asc' | 'desc' }[];
@@ -191,6 +202,9 @@ export interface DataTableProps<T> {
         column_order?: string[];
     }) => void;
     onResetPreferences?: () => void;
+
+    // Column configuration editing (for select options, colors, etc.)
+    onColumnConfigChange?: (columnKey: string, updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }) => void;
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -207,11 +221,33 @@ interface DropdownMenuProps {
 function DropdownMenu({ options, value, onSelect, onClear, position, colorMap }: DropdownMenuProps) {
     const [search, setSearch] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const [adjustedPosition, setAdjustedPosition] = useState(position);
 
-    // Focus search input on mount
+    // Focus search input on mount and calculate position
     useEffect(() => {
         inputRef.current?.focus();
     }, []);
+
+    // Adjust position if dropdown would go off-screen
+    useEffect(() => {
+        if (dropdownRef.current) {
+            const rect = dropdownRef.current.getBoundingClientRect();
+            const dropdownHeight = rect.height;
+            const viewportHeight = window.innerHeight;
+            const spaceBelow = viewportHeight - position.top - 10;
+
+            if (spaceBelow < dropdownHeight && position.top > dropdownHeight) {
+                // Not enough space below, position above
+                setAdjustedPosition({
+                    ...position,
+                    top: position.top - dropdownHeight - 8
+                });
+            } else {
+                setAdjustedPosition(position);
+            }
+        }
+    }, [position]);
 
     const filteredOptions = options.filter(opt =>
         opt.label.toLowerCase().includes(search.toLowerCase())
@@ -222,8 +258,9 @@ function DropdownMenu({ options, value, onSelect, onClear, position, colorMap }:
 
     return (
         <div
+            ref={dropdownRef}
             className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] overflow-hidden"
-            style={{ top: position.top, left: position.left }}
+            style={{ top: adjustedPosition.top, left: adjustedPosition.left, maxHeight: 'calc(100vh - 20px)' }}
         >
             {/* Selected value with X to clear (Notion-style) */}
             {selectedOption && value && (
@@ -316,6 +353,7 @@ interface ColumnContextMenuProps {
     onGroupBy: (columnKey: string) => void;
     onSort: (columnKey: string, direction: 'asc' | 'desc') => void;
     onFilter: (columnKey: string) => void;
+    onEditField?: () => void;
     onClose: () => void;
     isGroupedBy: boolean;
     sortRules: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
@@ -329,6 +367,7 @@ function ColumnContextMenu({
     onGroupBy,
     onSort,
     onFilter,
+    onEditField,
     onClose,
     isGroupedBy,
     sortRules
@@ -362,7 +401,7 @@ function ColumnContextMenu({
             <div className="px-3 py-1.5 border-b border-gray-100 mb-1">
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider">Field type: </span>
                 <span className="text-[10px] text-gray-600 font-medium">
-                    {columnType === 'select' || columnType === 'badge' ? 'Single Select' :
+                    {columnType === 'select' ? 'Single Select' :
                         columnType === 'textarea' ? 'Long Text' :
                             columnType === 'text' ? 'Text' :
                                 columnType === 'date' ? 'Date' :
@@ -427,6 +466,279 @@ function ColumnContextMenu({
                 <Filter className="w-4 h-4 text-gray-400" />
                 Filter by this field
             </button>
+
+            {/* Edit Field (only for select type) */}
+            {columnType === 'select' && onEditField && (
+                <>
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                        onClick={() => {
+                            onEditField();
+                            onClose();
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left text-gray-700"
+                    >
+                        <Pencil className="w-4 h-4 text-gray-400" />
+                        Edit this field
+                    </button>
+                </>
+            )}
+        </div>,
+        document.body
+    );
+}
+
+// ============ Field Editor Modal ============
+
+const PRESET_COLORS = [
+    { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200', name: 'Red' },
+    { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', name: 'Orange' },
+    { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', name: 'Amber' },
+    { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', name: 'Yellow' },
+    { bg: 'bg-lime-100', text: 'text-lime-700', border: 'border-lime-200', name: 'Lime' },
+    { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', name: 'Green' },
+    { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', name: 'Emerald' },
+    { bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-200', name: 'Teal' },
+    { bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-200', name: 'Cyan' },
+    { bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-200', name: 'Sky' },
+    { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', name: 'Blue' },
+    { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', name: 'Indigo' },
+    { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200', name: 'Violet' },
+    { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', name: 'Purple' },
+    { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', border: 'border-fuchsia-200', name: 'Fuchsia' },
+    { bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-200', name: 'Pink' },
+    { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200', name: 'Rose' },
+    { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200', name: 'Gray' },
+];
+
+interface FieldEditorProps {
+    columnKey: string;
+    columnHeader: string;
+    options: { label: string; value: string | number }[];
+    colorMap: Record<string, string>;
+    colorOnly?: boolean; // When true, only allow color changes (no add/remove/rename options)
+    onSave: (updates: { options: { label: string; value: string | number }[]; colorMap: Record<string, string> }) => void;
+    onClose: () => void;
+}
+
+function FieldEditor({
+    columnHeader,
+    options: initialOptions,
+    colorMap: initialColorMap,
+    colorOnly = false,
+    onSave,
+    onClose
+}: FieldEditorProps) {
+    const [options, setOptions] = useState<{ label: string; value: string | number }[]>([...initialOptions]);
+    const [colorMap, setColorMap] = useState<Record<string, string>>({ ...initialColorMap });
+    const [colorPickerOpen, setColorPickerOpen] = useState<string | null>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
+    const colorPickerRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onClose]);
+
+    // Close color picker on click outside
+    useEffect(() => {
+        if (!colorPickerOpen) return;
+        function handleClickOutside(event: MouseEvent) {
+            if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
+                setColorPickerOpen(null);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [colorPickerOpen]);
+
+    const handleAddOption = () => {
+        const newValue = `option_${Date.now()}`;
+        setOptions([...options, { label: 'New option', value: newValue }]);
+    };
+
+    const handleRemoveOption = (index: number) => {
+        const opt = options[index];
+        setOptions(options.filter((_, i) => i !== index));
+        // Also remove from colorMap
+        const newColorMap = { ...colorMap };
+        delete newColorMap[String(opt.value)];
+        setColorMap(newColorMap);
+    };
+
+    const handleOptionLabelChange = (index: number, newLabel: string) => {
+        const newOptions = [...options];
+        newOptions[index] = { ...newOptions[index], label: newLabel };
+        setOptions(newOptions);
+    };
+
+    const handleColorChange = (value: string, colorClass: string) => {
+        setColorMap({ ...colorMap, [value]: colorClass });
+        setColorPickerOpen(null);
+    };
+
+    const handleSave = () => {
+        onSave({ options, colorMap });
+        onClose();
+    };
+
+    const getColorClasses = (value: string) => {
+        return colorMap[String(value)] || 'bg-gray-100 text-gray-700 border-gray-200';
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 bg-black/30 z-[9998] flex items-center justify-center">
+            <div
+                ref={modalRef}
+                className="bg-white rounded-xl shadow-2xl w-[400px] max-h-[80vh] flex flex-col overflow-hidden"
+            >
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900">Edit field</h3>
+                    <button
+                        onClick={onClose}
+                        className="p-1 hover:bg-gray-100 rounded transition-colors"
+                    >
+                        <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {/* Field Name */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Field name</label>
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                            {columnHeader}
+                        </div>
+                    </div>
+
+                    {/* Field Type */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Field type</label>
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                            Single Select
+                        </div>
+                    </div>
+
+                    {/* Options */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Options</label>
+                        {colorOnly && (
+                            <p className="text-[11px] text-gray-400 mb-2">Options are managed externally. You can only change colors.</p>
+                        )}
+                        <div className="space-y-1.5">
+                            {options.map((opt, index) => (
+                                <div key={String(opt.value)} className="flex items-center gap-2 group">
+                                    {/* Drag Handle - hidden in colorOnly mode */}
+                                    {!colorOnly && (
+                                        <DragHandle className="w-3.5 h-3.5 text-gray-300 cursor-grab" />
+                                    )}
+
+                                    {/* Color Picker Button */}
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setColorPickerOpen(colorPickerOpen === String(opt.value) ? null : String(opt.value))}
+                                            className={cn(
+                                                "w-5 h-5 rounded border flex items-center justify-center transition-all hover:scale-110",
+                                                getColorClasses(String(opt.value))
+                                            )}
+                                        />
+
+                                        {/* Color Picker Dropdown */}
+                                        {colorPickerOpen === String(opt.value) && (
+                                            <div
+                                                ref={colorPickerRef}
+                                                className="absolute top-7 left-0 z-50 bg-white rounded-lg shadow-xl border border-gray-200 p-2 w-[280px]"
+                                            >
+                                                <div className="grid grid-cols-2 gap-1.5">
+                                                    {PRESET_COLORS.map((color) => (
+                                                        <button
+                                                            key={color.name}
+                                                            type="button"
+                                                            onClick={() => handleColorChange(String(opt.value), `${color.bg} ${color.text} ${color.border}`)}
+                                                            className={cn(
+                                                                "px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:scale-105 text-center truncate",
+                                                                color.bg,
+                                                                color.text,
+                                                                color.border
+                                                            )}
+                                                        >
+                                                            {opt.label || 'Option'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Option Label - editable input or read-only text */}
+                                    {colorOnly ? (
+                                        <span className="flex-1 px-2 py-1.5 text-sm text-gray-700">
+                                            {opt.label}
+                                        </span>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={opt.label}
+                                            onChange={(e) => handleOptionLabelChange(index, e.target.value)}
+                                            className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                    )}
+
+                                    {/* Delete Button - hidden in colorOnly mode */}
+                                    {!colorOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveOption(index)}
+                                            className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Add Option Button - hidden in colorOnly mode */}
+                        {!colorOnly && (
+                            <button
+                                type="button"
+                                onClick={handleAddOption}
+                                className="mt-2 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 transition-colors"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add option
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSave}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                        Save
+                    </button>
+                </div>
+            </div>
         </div>,
         document.body
     );
@@ -483,6 +795,7 @@ interface SortableRowProps<T> {
     columnWidths: Record<string, number>;
     sortable: boolean;
     showRowActions: boolean;
+    actionsColumnIndex: number; // -1 means at the end
     editingCell: { id: string; field: string } | null;
     editingValue: string;
     wrapRules: { columnKey: string; lines: '1' | '2' | '3' | 'full' }[];
@@ -501,7 +814,7 @@ interface SortableRowProps<T> {
     onRowDragEnter: (e: React.DragEvent<HTMLTableRowElement>) => void;
     onRowDragOver: (e: React.DragEvent<HTMLTableRowElement>) => void;
     onRowDragLeave: (e: React.DragEvent<HTMLTableRowElement>) => void;
-    onRowDrop: (e: React.DragEvent<HTMLTableRowElement>) => void;
+    onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => void;
     isDragging: boolean;
     isDragOver: boolean;
 }
@@ -513,6 +826,7 @@ function SortableRow<T>({
     columnWidths,
     sortable,
     showRowActions,
+    actionsColumnIndex,
     editingCell,
     editingValue,
     wrapRules,
@@ -535,6 +849,7 @@ function SortableRow<T>({
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
+    const [dropPosition, setDropPosition] = useState<'before' | 'after'>('after');
 
     const inputRef = useRef<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>(null);
 
@@ -599,10 +914,15 @@ function SortableRow<T>({
                 onDragEnter={onRowDragEnter}
                 onDragOver={(e) => {
                     onRowDragOver(e);
-                    // Update indicator position directly for immediate feedback
+                    // Update indicator position based on cursor position within row
                     if (rowRef.current) {
                         const rect = rowRef.current.getBoundingClientRect();
-                        setIndicatorRect({ top: rect.top, left: rect.left, width: rect.width });
+                        const mouseY = e.clientY;
+                        const rowMiddle = rect.top + rect.height / 2;
+                        // Show indicator at top or bottom based on cursor position
+                        const indicatorTop = mouseY < rowMiddle ? rect.top : rect.bottom;
+                        setIndicatorRect({ top: indicatorTop, left: rect.left, width: rect.width });
+                        setDropPosition(mouseY < rowMiddle ? 'before' : 'after');
                     }
                 }}
                 onDragLeave={(e) => {
@@ -611,8 +931,9 @@ function SortableRow<T>({
                     setIndicatorRect(null);
                 }}
                 onDrop={(e) => {
-                    onRowDrop(e);
+                    onRowDrop(e, dropPosition);
                     setIndicatorRect(null);
+                    setDropPosition('after');
                 }}
             >
                 {/* Drag Handle */}
@@ -625,8 +946,50 @@ function SortableRow<T>({
                 )}
 
 
-                {/* Data Columns */}
-                {columns.map((col) => {
+                {/* Data Columns - with actions inserted at correct position */}
+                {columns.map((col, colIndex) => {
+                    // Determine if actions should be inserted BEFORE this column
+                    const insertActionsHere = showRowActions && actionsColumnIndex === colIndex;
+
+                    // Helper to render the actions cell
+                    const actionsCell = showRowActions ? (
+                        <td key="_actions" className="data-grid-td px-2 w-20">
+                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {onDuplicate && (
+                                    <button
+                                        onClick={() => onDuplicate(row)}
+                                        className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                        title="Duplicate"
+                                    >
+                                        <Plus className="w-3 h-3" />
+                                    </button>
+                                )}
+                                {onCopy && (
+                                    <button
+                                        onClick={() => onCopy(row)}
+                                        className={cn(
+                                            "p-1 rounded transition-colors",
+                                            copiedId === rowId
+                                                ? "text-green-600 bg-green-50"
+                                                : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                                        )}
+                                        title="Copy Text"
+                                    >
+                                        {copiedId === rowId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                    </button>
+                                )}
+                                {onDelete && (
+                                    <button
+                                        onClick={() => onDelete(rowId)}
+                                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                        title="Delete"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        </td>
+                    ) : null;
                     const value = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
                     const isEditing = editingCell?.id === rowId && editingCell?.field === col.key;
                     const width = columnWidths[col.key] || col.width || 100;
@@ -639,8 +1002,9 @@ function SortableRow<T>({
                     const wrapLines = wrapRule?.lines;
 
                     return (
-                        <td
-                            key={col.key}
+                        <React.Fragment key={col.key}>
+                            {insertActionsHere && actionsCell}
+                            <td
                             className={cn(
                                 "data-grid-td px-2 relative",
                                 wrapLines !== 'full' && "overflow-hidden"
@@ -655,7 +1019,7 @@ function SortableRow<T>({
                         >
                             {/* Check for editing FIRST - takes priority over custom render */}
                             {isEditing && col.editable ? (
-                                col.type === 'select' || col.type === 'badge' ? (
+                                col.type === 'select' ? (
                                     <>
                                         {/* Show blank placeholder when empty, otherwise show value with ring */}
                                         {value ? (
@@ -817,8 +1181,8 @@ function SortableRow<T>({
                                     {col.render(value, row, isEditing, wrapLines === 'full')}
                                 </div>
                             ) : (
-                                // Default display mode
-                                col.type === 'badge' || col.type === 'select' ? (() => {
+                                // Default display mode - all types use h-[34px] for consistent row height
+                                col.type === 'select' ? (() => {
                                     // Check if value exists in options
                                     const optionLabel = options?.find(o => String(o.value) === String(value))?.label;
                                     // Use fallback value if value not found in options
@@ -828,25 +1192,27 @@ function SortableRow<T>({
                                     if (!displayValue) {
                                         return (
                                             <span
-                                                className="cursor-pointer w-full h-full block min-h-[20px]"
+                                                className="cursor-pointer w-full h-[34px] flex items-center"
                                                 onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                             />
                                         );
                                     }
 
                                     return (
-                                        <span
-                                            className={cn(
-                                                "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
-                                                col.colorMap?.[String(value)] || col.colorMap?.['default'] || "bg-gray-500 text-white"
-                                            )}
-                                            onClick={(e) => col.editable && onEditStart(row, col.key, e)}
-                                        >
-                                            {displayValue}
-                                        </span>
+                                        <div className="h-[34px] flex items-center">
+                                            <span
+                                                className={cn(
+                                                    "inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium cursor-pointer hover:opacity-80 whitespace-nowrap transition-opacity ml-2",
+                                                    col.colorMap?.[String(value)] || col.colorMap?.['default'] || "bg-gray-500 text-white"
+                                                )}
+                                                onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                            >
+                                                {displayValue}
+                                            </span>
+                                        </div>
                                     );
                                 })() : col.type === 'date' ? (
-                                    <span className="text-[10px] text-gray-500 px-3 py-2 block">
+                                    <span className="text-[10px] text-gray-500 px-3 h-[34px] flex items-center">
                                         {value ? new Date(String(value)).toLocaleString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
@@ -858,25 +1224,27 @@ function SortableRow<T>({
                                     </span>
                                 ) : col.type === 'url' ? (
                                     <div
-                                        className="px-2 py-1"
+                                        className="px-2 h-[34px] flex items-center"
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <UrlColumn value={value} maxLength={col.urlMaxLength} />
                                     </div>
                                 ) : col.type === 'priority' ? (
                                     <div
-                                        className="px-3 py-2 cursor-pointer"
+                                        className="px-3 h-[34px] flex items-center cursor-pointer"
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <PriorityColumn value={value} maxPriority={col.maxPriority} />
                                     </div>
+                                ) : col.type === 'id' ? (
+                                    <span className="text-[10px] text-gray-400 px-3 h-[34px] flex items-center">{String(value || '-')}</span>
                                 ) : (
                                     <p
                                         className={cn(
-                                            "text-[13px] text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-3 overflow-hidden",
-                                            (!wrapLines || wrapLines === '1') && "line-clamp-1 leading-[34px]",
-                                            wrapLines === '2' && "line-clamp-2 py-2 leading-[20px]",
-                                            wrapLines === '3' && "line-clamp-3 py-2 leading-[20px]",
+                                            "text-[13px] text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-3",
+                                            (!wrapLines || wrapLines === '1') && "truncate leading-[34px]",
+                                            wrapLines === '2' && "line-clamp-2 leading-[28px]",
+                                            wrapLines === '3' && "line-clamp-3 leading-[25px]",
                                             wrapLines === 'full' && "whitespace-pre-wrap py-2 leading-relaxed"
                                         )}
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
@@ -886,11 +1254,12 @@ function SortableRow<T>({
                                 )
                             )}
                         </td>
+                        </React.Fragment>
                     );
                 })}
 
-                {/* Row Actions */}
-                {showRowActions && (
+                {/* Row Actions - only render at end if actionsColumnIndex is -1 or >= columns.length */}
+                {showRowActions && (actionsColumnIndex === -1 || actionsColumnIndex >= columns.length) && (
                     <td className="data-grid-td px-2 w-20">
                         <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {onDuplicate && (
@@ -936,6 +1305,157 @@ function SortableRow<T>({
 // Memoized SortableRow to prevent re-renders of unchanged rows
 const MemoizedSortableRow = React.memo(SortableRow) as typeof SortableRow;
 
+// ============ Quick Filter Component ============
+
+interface QuickFilterProps {
+    columnKey: string;
+    header: string;
+    options: { label: string; value: string | number }[];
+    colorMap?: Record<string, string>;
+    value: string | null; // Current filter value (null = no filter)
+    onSelect: (value: string) => void;
+    onClear: () => void;
+}
+
+function QuickFilter({ columnKey, header, options, colorMap, value, onSelect, onClear }: QuickFilterProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        if (!isOpen) return;
+
+        function handleClickOutside(event: MouseEvent) {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node) &&
+                buttonRef.current &&
+                !buttonRef.current.contains(event.target as Node)
+            ) {
+                setIsOpen(false);
+                setSearch('');
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    const filteredOptions = options.filter(opt =>
+        opt.label.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const selectedOption = options.find(o => String(o.value) === value);
+
+    // Suppress unused variable warning - columnKey is used for uniqueness
+    void columnKey;
+
+    return (
+        <div className="relative flex-shrink-0">
+            <button
+                ref={buttonRef}
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+            >
+                {value && selectedOption ? (
+                    <>
+                        <span className={cn(
+                            "inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium",
+                            colorMap?.[String(value)] || "bg-gray-100 text-gray-700"
+                        )}>
+                            {selectedOption.label}
+                        </span>
+                        <span
+                            className="p-0.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onClear();
+                            }}
+                        >
+                            <X className="w-3 h-3" />
+                        </span>
+                    </>
+                ) : (
+                    <>
+                        <Filter className="w-3.5 h-3.5" />
+                        {header}
+                    </>
+                )}
+            </button>
+
+            {isOpen && createPortal(
+                <>
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-[9998]" onClick={() => { setIsOpen(false); setSearch(''); }} />
+
+                    {/* Dropdown */}
+                    <div
+                        ref={dropdownRef}
+                        className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] overflow-hidden"
+                        style={{
+                            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
+                            left: buttonRef.current ? buttonRef.current.getBoundingClientRect().left : 0,
+                        }}
+                    >
+                        {/* Search Input */}
+                        <div className="p-2 border-b border-gray-100">
+                            <div className="relative">
+                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder={`Filter ${header.toLowerCase()}...`}
+                                    className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white"
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        {/* Options List */}
+                        <div className="max-h-[200px] overflow-y-auto py-1">
+                            {filteredOptions.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-gray-400 italic whitespace-nowrap">
+                                    No options found
+                                </div>
+                            ) : (
+                                filteredOptions.map((opt) => (
+                                    <div
+                                        key={opt.value}
+                                        onClick={() => {
+                                            onSelect(String(opt.value));
+                                            setIsOpen(false);
+                                            setSearch('');
+                                        }}
+                                        className={cn(
+                                            "px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 transition-colors whitespace-nowrap flex items-center gap-2",
+                                            String(opt.value) === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                                colorMap?.[String(opt.value)] || "bg-gray-100 text-gray-700"
+                                            )}
+                                        >
+                                            {opt.label}
+                                        </span>
+                                        {String(opt.value) === value && (
+                                            <Check className="w-3.5 h-3.5 text-blue-600 ml-auto" />
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </>,
+                document.body
+            )}
+        </div>
+    );
+}
+
 // ============ Main DataTable Component ============
 
 export function DataTable<T>({
@@ -956,6 +1476,7 @@ export function DataTable<T>({
     wrapRules: externalWrapRules,
     onWrapRulesChange,
     fullscreen = false,
+    quickFilters = [],
     groupRules: externalGroupRules,
     onGroupRulesChange,
     columnOrder: externalColumnOrder,
@@ -969,7 +1490,9 @@ export function DataTable<T>({
     sharedPreferences,
     onPreferencesChange,
     onSaveForEveryone,
-    onResetPreferences
+    onResetPreferences,
+    // Column config editing
+    onColumnConfigChange
 }: DataTableProps<T>) {
     // Initialize wrap rules from preferences
     const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
@@ -1128,30 +1651,73 @@ export function DataTable<T>({
         return ordered;
     }, [columns, columnOrder]);
 
+    // Track actions column position (index in the full column order, -1 means at the end)
+    const [actionsColumnIndex, setActionsColumnIndex] = useState<number>(-1);
+
     // Handle column reorder - now works with orderedColumns to include new columns
-    const handleColumnReorder = useCallback((draggedKey: string, targetKey: string) => {
+    // Also handles special '_actions' key for the Actions column
+    // dropPosition: 'before' = insert before target, 'after' = insert after target
+    const handleColumnReorder = useCallback((draggedKey: string, targetKey: string, dropPosition: 'before' | 'after') => {
         // Build new order from orderedColumns (which includes all columns, even new ones)
         const currentOrderedKeys = orderedColumns.map(c => c.key);
+
+        // Handle _actions column specially
+        if (draggedKey === '_actions') {
+            // Moving actions column to a new position
+            let targetIndex = targetKey === '_actions' ? currentOrderedKeys.length : currentOrderedKeys.indexOf(targetKey);
+            if (targetIndex === -1) return;
+            // Adjust for 'after' position
+            if (dropPosition === 'after') targetIndex++;
+            setActionsColumnIndex(targetIndex);
+            return;
+        }
+
+        if (targetKey === '_actions') {
+            // Moving a column to the actions position
+            const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
+            if (draggedIndex === -1) return;
+
+            const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
+            // Insert at actions position, adjusted for before/after
+            let insertAt = actionsColumnIndex === -1 ? newOrder.length : Math.min(actionsColumnIndex, newOrder.length);
+            if (dropPosition === 'after') insertAt++;
+            newOrder.splice(Math.min(insertAt, newOrder.length), 0, draggedKey);
+
+            if (onColumnOrderChange) {
+                onColumnOrderChange(newOrder);
+            } else {
+                setInternalColumnOrder(newOrder);
+            }
+            return;
+        }
+
         const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
-        const targetIndex = currentOrderedKeys.indexOf(targetKey);
+        let targetIndex = currentOrderedKeys.indexOf(targetKey);
 
         if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
 
         const newOrder = [...currentOrderedKeys];
         const [removed] = newOrder.splice(draggedIndex, 1);
 
-        // Adjust target index: when dragging from left to right, after removing the dragged item,
-        // indices shift down. So if we want to insert at the visual target position, we need to
-        // account for this shift. When dragging right to left, no adjustment needed.
-        const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
-        newOrder.splice(adjustedTargetIndex, 0, removed);
+        // Adjust target index based on drop position and drag direction
+        // After removing the dragged item, indices shift if dragging left-to-right
+        let adjustedTargetIndex = targetIndex;
+        if (draggedIndex < targetIndex) {
+            adjustedTargetIndex = targetIndex - 1;
+        }
+        // Apply 'after' offset
+        if (dropPosition === 'after') {
+            adjustedTargetIndex++;
+        }
+
+        newOrder.splice(Math.min(adjustedTargetIndex, newOrder.length), 0, removed);
 
         if (onColumnOrderChange) {
             onColumnOrderChange(newOrder);
         } else {
             setInternalColumnOrder(newOrder);
         }
-    }, [orderedColumns, onColumnOrderChange]);
+    }, [orderedColumns, onColumnOrderChange, actionsColumnIndex]);
 
     // Resize tracking
     const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
@@ -1172,6 +1738,7 @@ export function DataTable<T>({
     const [draggingColumnKey, setDraggingColumnKey] = useState<string | null>(null);
     const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
     const [columnIndicatorRect, setColumnIndicatorRect] = useState<{ top: number; left: number; height: number } | null>(null);
+    const [columnDropPosition, setColumnDropPosition] = useState<'before' | 'after'>('before');
 
     // Collapsed groups state
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -1234,10 +1801,53 @@ export function DataTable<T>({
         }
         return [];
     };
-    const [filterRules, setFilterRules] = useState<FilterRule[]>(getInitialFilterRules);
+    const [filterRules, setFilterRulesRaw] = useState<FilterRule[]>(getInitialFilterRules);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
     const [filterSearch, setFilterSearch] = useState('');
     const filterPanelRef = useRef<HTMLDivElement>(null);
+
+    // Helper to handle filter dependencies (e.g., subproject -> project)
+    // When a filter is set for a column with dependsOn, auto-add/update parent column filter
+    const setFilterRules = useCallback((updater: FilterRule[] | ((prev: FilterRule[]) => FilterRule[])) => {
+        setFilterRulesRaw(prev => {
+            const newRules = typeof updater === 'function' ? updater(prev) : updater;
+
+            // Find any rules for columns with dependencies that have values
+            const additionalRules: FilterRule[] = [];
+            for (const rule of newRules) {
+                if (rule.value && rule.operator === 'is') {
+                    const col = columns.find(c => c.key === rule.field);
+                    if (col?.dependsOn) {
+                        const parentValue = col.dependsOn.getParentValue(rule.value);
+                        if (parentValue !== null) {
+                            // Check if parent filter already exists with correct value
+                            const existingParentRule = newRules.find(
+                                r => r.field === col.dependsOn!.parentKey && r.operator === 'is'
+                            );
+                            if (!existingParentRule) {
+                                // Add parent filter
+                                additionalRules.push({
+                                    id: Math.random().toString(36).substring(2, 11),
+                                    field: col.dependsOn.parentKey,
+                                    operator: 'is',
+                                    value: String(parentValue),
+                                    conjunction: 'and'
+                                });
+                            } else if (existingParentRule.value !== String(parentValue)) {
+                                // Update existing parent filter - find and update in place
+                                const idx = newRules.findIndex(r => r.id === existingParentRule.id);
+                                if (idx !== -1) {
+                                    newRules[idx] = { ...newRules[idx], value: String(parentValue) };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return additionalRules.length > 0 ? [...newRules, ...additionalRules] : newRules;
+        });
+    }, [columns]);
 
     // Track if preferences have been loaded (to avoid resetting after user makes changes)
     const preferencesLoadedRef = useRef(false);
@@ -1319,6 +1929,15 @@ export function DataTable<T>({
         columnHeader: string;
         columnType?: string;
         position: { top: number; left: number };
+    } | null>(null);
+
+    // Field editor state
+    const [fieldEditor, setFieldEditor] = useState<{
+        columnKey: string;
+        columnHeader: string;
+        options: { label: string; value: string | number }[];
+        colorMap: Record<string, string>;
+        colorOnly: boolean;
     } | null>(null);
 
     // DnD sensors
@@ -1552,28 +2171,15 @@ export function DataTable<T>({
         column_order: columnOrder
     }), [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder]);
 
-    // Check if current preferences differ from shared preferences (or if any rules exist when no shared prefs)
-    const hasUnsavedChanges = useMemo(() => {
+    // Check if current view matches team view
+    const isMatchingTeamView = useMemo(() => {
+        if (!sharedPreferences) return false;
         const current = getCurrentPreferences();
-
-        // If no shared preferences, show Reset when ANY rules are active
-        if (!sharedPreferences) {
-            return (
-                (current.sort_config?.length || 0) > 0 ||
-                (current.filter_config?.length || 0) > 0 ||
-                (current.group_config?.length || 0) > 0 ||
-                (current.wrap_config?.length || 0) > 0
-            );
-        }
-
-        // Compare with shared preferences
-        const shared = sharedPreferences;
-        const sortChanged = JSON.stringify(current.sort_config) !== JSON.stringify(shared.sort_config || []);
-        const filterChanged = JSON.stringify(current.filter_config) !== JSON.stringify(shared.filter_config || []);
-        const groupChanged = JSON.stringify(current.group_config) !== JSON.stringify(shared.group_config || []);
-        const wrapChanged = JSON.stringify(current.wrap_config) !== JSON.stringify(shared.wrap_config || []);
-
-        return sortChanged || filterChanged || groupChanged || wrapChanged;
+        const sortMatch = JSON.stringify(current.sort_config || []) === JSON.stringify(sharedPreferences.sort_config || []);
+        const filterMatch = JSON.stringify(current.filter_config || []) === JSON.stringify(sharedPreferences.filter_config || []);
+        const groupMatch = JSON.stringify(current.group_config || []) === JSON.stringify(sharedPreferences.group_config || []);
+        const wrapMatch = JSON.stringify(current.wrap_config || []) === JSON.stringify(sharedPreferences.wrap_config || []);
+        return sortMatch && filterMatch && groupMatch && wrapMatch;
     }, [getCurrentPreferences, sharedPreferences]);
 
     // Auto-save preferences when they change (debounced)
@@ -1615,42 +2221,25 @@ export function DataTable<T>({
         };
     }, [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, getCurrentPreferences]);
 
-    // Handle reset to shared preferences
-    const handleReset = useCallback(() => {
-        if (sharedPreferences) {
-            setSortRules(sharedPreferences.sort_config || []);
-            setFilterRules((sharedPreferences.filter_config || []) as FilterRule[]);
-            setGroupRules(sharedPreferences.group_config || []);
-            setWrapRules((sharedPreferences.wrap_config || []) as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
-            // Reset column widths to shared or default
-            if (sharedPreferences.column_widths) {
-                setColumnWidths(sharedPreferences.column_widths);
-            } else {
-                // Reset to column defaults
-                const defaults: Record<string, number> = {};
-                columns.forEach(col => { defaults[col.key] = col.width || 120; });
-                setColumnWidths(defaults);
-            }
-            // Reset column order to shared or default
-            if (sharedPreferences.column_order) {
-                setInternalColumnOrder(sharedPreferences.column_order);
-            } else {
-                setInternalColumnOrder(columns.map(c => c.key));
-            }
-        } else {
-            setSortRules([]);
-            setFilterRules([]);
-            setGroupRules([]);
-            setWrapRules([]);
-            // Reset column widths to defaults
-            const defaults: Record<string, number> = {};
-            columns.forEach(col => { defaults[col.key] = col.width || 120; });
-            setColumnWidths(defaults);
-            // Reset column order to default
-            setInternalColumnOrder(columns.map(c => c.key));
+    // Handle load team view - loads the shared/team preferences
+    const handleLoadTeamView = useCallback(() => {
+        if (!sharedPreferences) return; // No team view saved, do nothing
+
+        setSortRules(sharedPreferences.sort_config || []);
+        setFilterRules((sharedPreferences.filter_config || []) as FilterRule[]);
+        setGroupRules(sharedPreferences.group_config || []);
+        setWrapRules((sharedPreferences.wrap_config || []) as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+
+        // Load column widths from team view or use defaults
+        if (sharedPreferences.column_widths) {
+            setColumnWidths(sharedPreferences.column_widths);
         }
-        onResetPreferences?.();
-    }, [sharedPreferences, setGroupRules, setWrapRules, onResetPreferences, columns]);
+
+        // Load column order from team view or use defaults
+        if (sharedPreferences.column_order) {
+            setInternalColumnOrder(sharedPreferences.column_order);
+        }
+    }, [sharedPreferences, setGroupRules, setWrapRules]);
 
     // Handle save for everyone
     const handleSaveForEveryone = useCallback(() => {
@@ -1807,14 +2396,21 @@ export function DataTable<T>({
 
         setIsCreating(true);
         try {
-            await onCreateRow();
+            // Extract default values from active "is" filters
+            const defaults: Record<string, unknown> = {};
+            for (const rule of filterRules) {
+                if (rule.operator === 'is' && rule.value) {
+                    defaults[rule.field] = rule.value;
+                }
+            }
+            await onCreateRow(Object.keys(defaults).length > 0 ? defaults : undefined);
             // Don't reload - parent component should optimistically update data
         } catch (error) {
             console.error('Failed to create row:', error);
         } finally {
             setIsCreating(false);
         }
-    }, [onCreateRow, isCreating]);
+    }, [onCreateRow, isCreating, filterRules]);
 
     // Drag end handler
     const _handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1864,13 +2460,25 @@ export function DataTable<T>({
                 }
             }
         },
-        onRowDrop: (e: React.DragEvent<HTMLTableRowElement>) => {
+        onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => {
             e.preventDefault();
             const draggedId = e.dataTransfer.getData('text/plain');
             if (draggedId !== rowId && onReorder) {
                 const oldIndex = data.findIndex(row => getRowId(row) === draggedId);
-                const newIndex = data.findIndex(row => getRowId(row) === rowId);
+                let newIndex = data.findIndex(row => getRowId(row) === rowId);
                 if (oldIndex !== -1 && newIndex !== -1) {
+                    // Adjust newIndex based on drop position and drag direction
+                    if (dropPosition === 'after' && oldIndex < newIndex) {
+                        // Dragging down, drop after target - no adjustment needed
+                    } else if (dropPosition === 'before' && oldIndex > newIndex) {
+                        // Dragging up, drop before target - no adjustment needed
+                    } else if (dropPosition === 'after' && oldIndex > newIndex) {
+                        // Dragging up, drop after target - increment index
+                        newIndex = newIndex + 1;
+                    } else if (dropPosition === 'before' && oldIndex < newIndex) {
+                        // Dragging down, drop before target - decrement index
+                        newIndex = newIndex - 1;
+                    }
                     const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
                     onReorder(newOrder);
                 }
@@ -1884,6 +2492,28 @@ export function DataTable<T>({
     const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0)
         + (sortable ? 40 : 0)  // Drag handle column (w-10 = 40px)
         + (showRowActions ? 80 : 0);  // Actions column (w-20 = 80px)
+
+    // Build combined column order including _actions at the right position
+    const columnsWithActions = useMemo(() => {
+        if (!showRowActions) return orderedColumns.map(col => ({ type: 'data' as const, col }));
+
+        const result: Array<{ type: 'data'; col: typeof orderedColumns[0] } | { type: 'actions' }> = [];
+        const insertIndex = actionsColumnIndex === -1 ? orderedColumns.length : Math.min(actionsColumnIndex, orderedColumns.length);
+
+        orderedColumns.forEach((col, i) => {
+            if (i === insertIndex) {
+                result.push({ type: 'actions' });
+            }
+            result.push({ type: 'data', col });
+        });
+
+        // If actions should be at the end
+        if (insertIndex >= orderedColumns.length) {
+            result.push({ type: 'actions' });
+        }
+
+        return result;
+    }, [orderedColumns, showRowActions, actionsColumnIndex]);
 
     const _rowIds = sortedData.map(getRowId);
 
@@ -1914,10 +2544,64 @@ export function DataTable<T>({
             "bg-white border border-gray-200 shadow-sm",
             fullscreen ? "flex-1 flex flex-col h-full overflow-hidden" : "rounded-xl"
         )}>
-            {/* Sort/Group Toolbar */}
-            <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 relative z-20 shadow-sm">
+            {/* Scroll container for toolbar + table */}
+            <div className={cn(
+                "overflow-x-auto",
+                fullscreen && "flex-1 overflow-y-auto"
+            )}>
+            {/* Sort/Group Toolbar - scrolls with table */}
+            <div
+                className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 sticky top-0 z-20 shadow-sm flex-nowrap"
+                style={{ minWidth: totalWidth }}
+            >
+                {/* Quick Filters */}
+                {quickFilters.map(columnKey => {
+                    const col = columns.find(c => c.key === columnKey);
+                    if (!col) return null;
+
+                    // Get options for this column (static options only, not function-based)
+                    const rawOptions = col.filterOptions || (Array.isArray(col.options) ? col.options : []);
+                    if (rawOptions.length === 0) return null;
+
+                    // Find current filter value for this column (look for "is" filter)
+                    const currentFilter = filterRules.find(r => r.field === columnKey && r.operator === 'is');
+                    const currentValue = currentFilter?.value || null;
+
+                    return (
+                        <QuickFilter
+                            key={columnKey}
+                            columnKey={columnKey}
+                            header={col.header}
+                            options={rawOptions.map(o => ({ label: o.label, value: o.value }))}
+                            colorMap={col.colorMap}
+                            value={currentValue}
+                            onSelect={(value) => {
+                                // Remove any existing filter for this column, then add new one
+                                const newRules = filterRules.filter(r => r.field !== columnKey);
+                                newRules.push({
+                                    id: Math.random().toString(36).substring(2, 11),
+                                    field: columnKey,
+                                    operator: 'is',
+                                    value: value,
+                                    conjunction: 'and'
+                                });
+                                setFilterRules(newRules);
+                            }}
+                            onClear={() => {
+                                // Remove filter for this column
+                                setFilterRules(filterRules.filter(r => r.field !== columnKey));
+                            }}
+                        />
+                    );
+                })}
+
+                {/* Separator if there are quick filters */}
+                {quickFilters.length > 0 && quickFilters.some(key => columns.find(c => c.key === key)) && (
+                    <div className="w-px h-5 bg-gray-300 flex-shrink-0" />
+                )}
+
                 {/* Sort Button */}
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                     <button
                         onClick={() => {
                             const wasOpen = showSortPanel;
@@ -1925,7 +2609,7 @@ export function DataTable<T>({
                             if (!wasOpen) setShowSortPanel(true);
                         }}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
                             sortRules.length > 0
                                 ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -2068,7 +2752,7 @@ export function DataTable<T>({
                 </div>
 
                 {/* Filter Button */}
-                <div ref={filterPanelRef} className="relative">
+                <div ref={filterPanelRef} className="relative flex-shrink-0">
                     <button
                         onClick={() => {
                             const wasOpen = showFilterPanel;
@@ -2076,7 +2760,7 @@ export function DataTable<T>({
                             if (!wasOpen) setShowFilterPanel(true);
                         }}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
                             filterRules.length > 0
                                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -2326,10 +3010,10 @@ export function DataTable<T>({
                 </div>
 
                 {/* Group Button */}
-                <div ref={groupPanelRef} className="relative">
+                <div ref={groupPanelRef} className="relative flex-shrink-0">
                     <button
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
                             groupRules.length > 0
                                 ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -2508,7 +3192,7 @@ export function DataTable<T>({
                 </div>
 
                 {/* Wrap Button and Panel */}
-                <div className="relative" ref={wrapPanelRef}>
+                <div className="relative flex-shrink-0" ref={wrapPanelRef}>
                     <button
                         onClick={() => {
                             const wasOpen = showWrapPanel;
@@ -2516,7 +3200,7 @@ export function DataTable<T>({
                             if (!wasOpen) setShowWrapPanel(true);
                         }}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors",
+                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
                             wrapRules.length > 0
                                 ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -2635,7 +3319,7 @@ export function DataTable<T>({
 
                 {/* Collapse/Expand buttons for groups */}
                 {groupRules.length > 0 && groupedData && (
-                    <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-xs flex-shrink-0">
                         <button
                             type="button"
                             onClick={() => {
@@ -2666,34 +3350,43 @@ export function DataTable<T>({
                 {/* Spacer to push Reset/Save buttons to the right */}
                 <div className="flex-1" />
 
-                {/* Reset and Save for Everyone buttons */}
-                {(onResetPreferences || onSaveForEveryone) && (
-                    <div className="flex items-center gap-2">
-                        {onResetPreferences && hasUnsavedChanges && (
+                {/* Team View controls */}
+                {onSaveForEveryone && (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Team View Indicator */}
+                        {sharedPreferences && (
+                            <span className={cn(
+                                "text-xs px-2 py-1 rounded-full",
+                                isMatchingTeamView
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-gray-100 text-gray-600"
+                            )}>
+                                {isMatchingTeamView ? "✓ Team View" : "Your View"}
+                            </span>
+                        )}
+
+                        {/* Load Team View button */}
+                        {sharedPreferences && !isMatchingTeamView && (
                             <button
                                 type="button"
-                                onClick={handleReset}
+                                onClick={handleLoadTeamView}
                                 className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
                             >
-                                Reset
+                                Load Team View
                             </button>
                         )}
-                        {onSaveForEveryone && (
-                            <button
-                                type="button"
-                                onClick={handleSaveForEveryone}
-                                className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors"
-                            >
-                                Save for everyone
-                            </button>
-                        )}
+
+                        {/* Save for Team button */}
+                        <button
+                            type="button"
+                            onClick={handleSaveForEveryone}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors"
+                        >
+                            Save for Team
+                        </button>
                     </div>
                 )}
             </div>
-            <div className={cn(
-                "overflow-x-auto",
-                fullscreen && "flex-1 overflow-y-auto"
-            )}>
                 <table
                     className="data-grid-table"
                     style={{ width: totalWidth, tableLayout: 'fixed' }}
@@ -2719,7 +3412,74 @@ export function DataTable<T>({
                     <thead className="sticky top-0 z-10 bg-white">
                         <tr>
                             {sortable && <th className="data-grid-th w-10"></th>}
-                            {orderedColumns.map((col) => {
+                            {columnsWithActions.map((item, index) => {
+                                if (item.type === 'actions') {
+                                    // Render Actions column
+                                    return (
+                                        <th
+                                            key="_actions"
+                                            className={cn(
+                                                "data-grid-th w-20 relative group/header cursor-grab active:cursor-grabbing",
+                                                draggingColumnKey === '_actions' && "opacity-50"
+                                            )}
+                                            draggable
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData('text/plain', '_actions');
+                                                e.dataTransfer.effectAllowed = 'move';
+                                                setDraggingColumnKey('_actions');
+                                            }}
+                                            onDragEnd={() => {
+                                                setDraggingColumnKey(null);
+                                                setDragOverColumnKey(null);
+                                                setColumnIndicatorRect(null);
+                                            }}
+                                            onDragEnter={(e) => {
+                                                e.preventDefault();
+                                            }}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.dataTransfer.dropEffect = 'move';
+                                                const draggedKey = e.dataTransfer.types.includes('text/plain') ? 'pending' : null;
+                                                if (draggedKey && draggingColumnKey !== '_actions') {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const mouseX = e.clientX;
+                                                    const colMiddle = rect.left + rect.width / 2;
+                                                    const position = mouseX < colMiddle ? 'before' : 'after';
+                                                    const indicatorLeft = position === 'before' ? rect.left : rect.right;
+                                                    setDragOverColumnKey('_actions');
+                                                    setColumnDropPosition(position);
+                                                    setColumnIndicatorRect({ top: rect.top, left: indicatorLeft, height: rect.height });
+                                                }
+                                            }}
+                                            onDragLeave={(e) => {
+                                                const relatedTarget = e.relatedTarget as Node | null;
+                                                if (!e.currentTarget.contains(relatedTarget)) {
+                                                    if (dragOverColumnKey === '_actions') {
+                                                        setDragOverColumnKey(null);
+                                                        setColumnIndicatorRect(null);
+                                                    }
+                                                }
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                const draggedKey = e.dataTransfer.getData('text/plain');
+                                                if (draggedKey && draggedKey !== '_actions') {
+                                                    handleColumnReorder(draggedKey, '_actions', columnDropPosition);
+                                                }
+                                                setDragOverColumnKey(null);
+                                                setColumnIndicatorRect(null);
+                                            }}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                <GripVertical className="w-3 h-3 text-gray-300 group-hover/header:text-gray-500 rotate-90" />
+                                                Actions
+                                            </div>
+                                        </th>
+                                    );
+                                }
+
+                                // Render data column
+                                const col = item.col;
                                 const sortRule = sortRules.find(r => r.key === col.key);
                                 const isDraggingThis = draggingColumnKey === col.key;
                                 return (
@@ -2748,18 +3508,19 @@ export function DataTable<T>({
                                         onDragOver={(e) => {
                                             e.preventDefault();
                                             e.dataTransfer.dropEffect = 'move';
-                                            // Update indicator position while dragging over this column
-                                            // Check dataTransfer for the dragged key to avoid timing issues with state
                                             const draggedKey = e.dataTransfer.types.includes('text/plain') ? 'pending' : null;
                                             if (draggedKey && draggingColumnKey !== col.key) {
                                                 const rect = e.currentTarget.getBoundingClientRect();
-                                                // Show indicator at LEFT edge - where the dragged column's left edge will be
+                                                const mouseX = e.clientX;
+                                                const colMiddle = rect.left + rect.width / 2;
+                                                const position = mouseX < colMiddle ? 'before' : 'after';
+                                                const indicatorLeft = position === 'before' ? rect.left : rect.right;
                                                 setDragOverColumnKey(col.key);
-                                                setColumnIndicatorRect({ top: rect.top, left: rect.left, height: rect.height });
+                                                setColumnDropPosition(position);
+                                                setColumnIndicatorRect({ top: rect.top, left: indicatorLeft, height: rect.height });
                                             }
                                         }}
                                         onDragLeave={(e) => {
-                                            // Only clear if actually leaving the th element (not just moving to a child)
                                             const relatedTarget = e.relatedTarget as Node | null;
                                             if (!e.currentTarget.contains(relatedTarget)) {
                                                 if (dragOverColumnKey === col.key) {
@@ -2772,7 +3533,7 @@ export function DataTable<T>({
                                             e.preventDefault();
                                             const draggedKey = e.dataTransfer.getData('text/plain');
                                             if (draggedKey && draggedKey !== col.key) {
-                                                handleColumnReorder(draggedKey, col.key);
+                                                handleColumnReorder(draggedKey, col.key, columnDropPosition);
                                             }
                                             setDragOverColumnKey(null);
                                             setColumnIndicatorRect(null);
@@ -2786,7 +3547,6 @@ export function DataTable<T>({
                                                     ? <ArrowUp className="w-3 h-3 text-blue-600" />
                                                     : <ArrowDown className="w-3 h-3 text-blue-600" />
                                             )}
-                                            {/* Dropdown arrow - visible on hover, opens context menu on click */}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -2811,42 +3571,48 @@ export function DataTable<T>({
                                     </th>
                                 );
                             })}
-                            {showRowActions && (
-                                <th
-                                    className="data-grid-th w-20"
-                                    onDragOver={(e) => {
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = 'move';
-                                        // Show indicator at the left edge of Actions column
+                            {/* Invisible drop zone for dragging columns to the far right */}
+                            <th
+                                className="data-grid-th w-4 p-0"
+                                style={{ minWidth: 16 }}
+                                onDragEnter={(e) => e.preventDefault()}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                    if (draggingColumnKey && draggingColumnKey !== '_end_zone') {
                                         const rect = e.currentTarget.getBoundingClientRect();
+                                        setDragOverColumnKey('_end_zone');
+                                        setColumnDropPosition('after');
                                         setColumnIndicatorRect({ top: rect.top, left: rect.left, height: rect.height });
-                                    }}
-                                    onDragLeave={() => {
-                                        setColumnIndicatorRect(null);
-                                    }}
-                                    onDrop={(e) => {
-                                        e.preventDefault();
-                                        const draggedKey = e.dataTransfer.getData('text/plain');
-                                        if (draggedKey) {
-                                            // Move dragged column to the end
-                                            const currentOrderedKeys = orderedColumns.map(c => c.key);
-                                            const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
-                                            if (draggedIndex !== -1 && draggedIndex !== currentOrderedKeys.length - 1) {
-                                                const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
-                                                newOrder.push(draggedKey); // Add to end
-                                                if (onColumnOrderChange) {
-                                                    onColumnOrderChange(newOrder);
-                                                } else {
-                                                    setInternalColumnOrder(newOrder);
-                                                }
-                                            }
+                                    }
+                                }}
+                                onDragLeave={(e) => {
+                                    const relatedTarget = e.relatedTarget as Node | null;
+                                    if (!e.currentTarget.contains(relatedTarget)) {
+                                        if (dragOverColumnKey === '_end_zone') {
+                                            setDragOverColumnKey(null);
+                                            setColumnIndicatorRect(null);
                                         }
-                                        setColumnIndicatorRect(null);
-                                    }}
-                                >
-                                    Actions
-                                </th>
-                            )}
+                                    }
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    const draggedKey = e.dataTransfer.getData('text/plain');
+                                    if (draggedKey && draggedKey !== '_actions') {
+                                        // Move column to the end (before actions if actions exists)
+                                        const currentOrderedKeys = orderedColumns.map(c => c.key);
+                                        const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
+                                        newOrder.push(draggedKey);
+                                        if (onColumnOrderChange) {
+                                            onColumnOrderChange(newOrder);
+                                        } else {
+                                            setInternalColumnOrder(newOrder);
+                                        }
+                                    }
+                                    setDragOverColumnKey(null);
+                                    setColumnIndicatorRect(null);
+                                }}
+                            />
                         </tr>
                     </thead>
 
@@ -2905,6 +3671,7 @@ export function DataTable<T>({
                                                                 columnWidths={columnWidths}
                                                                 sortable={sortable}
                                                                 showRowActions={showRowActions}
+                                                                actionsColumnIndex={actionsColumnIndex}
                                                                 editingCell={editingCell}
                                                                 editingValue={editingValue}
                                                                 wrapRules={wrapRules}
@@ -2940,6 +3707,7 @@ export function DataTable<T>({
                                     columnWidths={columnWidths}
                                     sortable={sortable}
                                     showRowActions={showRowActions}
+                                    actionsColumnIndex={actionsColumnIndex}
                                     editingCell={editingCell}
                                     editingValue={editingValue}
                                     wrapRules={wrapRules}
@@ -3023,12 +3791,46 @@ export function DataTable<T>({
                             ]);
                             setShowFilterPanel(true);
                         }}
+                        onEditField={onColumnConfigChange ? () => {
+                            const col = columns.find(c => c.key === contextMenu.columnKey);
+                            // Use options if it's an array, otherwise fall back to filterOptions
+                            const isOptionsArray = Array.isArray(col?.options);
+                            const optionsArray = isOptionsArray
+                                ? col.options
+                                : col?.filterOptions;
+                            // colorOnly when optionsEditable is explicitly false, or when using filterOptions (options is a function)
+                            const colorOnly = col?.optionsEditable === false || !isOptionsArray;
+                            if (col && col.type === 'select' && Array.isArray(optionsArray)) {
+                                setFieldEditor({
+                                    columnKey: contextMenu.columnKey,
+                                    columnHeader: contextMenu.columnHeader,
+                                    options: optionsArray as { label: string; value: string | number }[],
+                                    colorMap: col.colorMap || {},
+                                    colorOnly
+                                });
+                            }
+                        } : undefined}
                         onClose={() => setContextMenu(null)}
                         isGroupedBy={groupRules.some(r => r.key === contextMenu.columnKey)}
                         sortRules={sortRules}
                     />
                 )
             }
+
+            {/* Field Editor Modal */}
+            {fieldEditor && onColumnConfigChange && (
+                <FieldEditor
+                    columnKey={fieldEditor.columnKey}
+                    columnHeader={fieldEditor.columnHeader}
+                    options={fieldEditor.options}
+                    colorMap={fieldEditor.colorMap}
+                    colorOnly={fieldEditor.colorOnly}
+                    onSave={(updates) => {
+                        onColumnConfigChange(fieldEditor.columnKey, updates);
+                    }}
+                    onClose={() => setFieldEditor(null)}
+                />
+            )}
 
             {/* Pagination Bottom Bar */}
             {

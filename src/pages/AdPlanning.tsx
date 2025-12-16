@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
     getAdPlans,
     createAdPlan,
@@ -187,6 +188,10 @@ export function AdPlanning() {
             const sub = subprojects.find(s => s.id === value);
             if (sub) {
                 extraUpdates.subproject = sub.name;
+                // Auto-set project if subproject's project differs from current
+                if (sub.project_id !== original.project_id) {
+                    extraUpdates.project_id = sub.project_id;
+                }
             } else if (value === '' || value === null) {
                 extraUpdates.subproject = null;
             }
@@ -283,6 +288,31 @@ export function AdPlanning() {
         }
     };
 
+    // Color palette for dynamic colorMaps
+    const colorPalette = [
+        'bg-pink-500 text-white',
+        'bg-indigo-500 text-white',
+        'bg-cyan-500 text-white',
+        'bg-amber-500 text-white',
+        'bg-rose-500 text-white',
+        'bg-violet-500 text-white',
+        'bg-teal-500 text-white',
+        'bg-orange-500 text-white',
+        'bg-lime-500 text-white',
+        'bg-fuchsia-500 text-white',
+    ];
+
+    // Generate colorMap for projects
+    const projectColorMap = projects.reduce((map, project, index) => {
+        map[project.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
+
+    // Generate colorMap for subprojects
+    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
+        map[subproject.id] = colorPalette[index % colorPalette.length];
+        return map;
+    }, {} as Record<string, string>);
 
     // Column Definitions
     const columns: ColumnDef<AdPlan>[] = [
@@ -292,9 +322,7 @@ export function AdPlanning() {
             width: 50,
             minWidth: 40,
             editable: false,
-            render: (value) => (
-                <span className="text-[10px] text-gray-400">{String(value || '-')}</span>
-            ),
+            type: 'id',
         },
         {
             key: 'project_id',
@@ -305,7 +333,7 @@ export function AdPlanning() {
             type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
             fallbackKey: 'project', // Legacy field for old data
-            colorMap: { default: 'bg-pink-500 text-white' },
+            colorMap: projectColorMap,
         },
         {
             key: 'subproject_id',
@@ -325,7 +353,14 @@ export function AdPlanning() {
             },
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
             fallbackKey: 'subproject', // Legacy field for old data
-            colorMap: { default: 'bg-orange-500 text-white' },
+            colorMap: subprojectColorMap,
+            dependsOn: {
+                parentKey: 'project_id',
+                getParentValue: (subprojectId) => {
+                    const sub = subprojects.find(s => s.id === subprojectId);
+                    return sub?.project_id ?? null;
+                },
+            },
         },
         {
             key: 'plan_type',
@@ -333,7 +368,7 @@ export function AdPlanning() {
             width: 90,
             minWidth: 70,
             editable: true,
-            type: 'badge',
+            type: 'select',
             options: [
                 { label: 'CClone', value: 'CClone' },
                 { label: 'Full Ad', value: 'Full Ad' },
@@ -434,22 +469,11 @@ export function AdPlanning() {
     ];
 
     return (
-        <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between flex-shrink-0">
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900">Ad Planning</h1>
-                    <p className="text-xs text-gray-500">Drag rows to reorder. Click cells to edit.</p>
-                </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded shadow hover:bg-blue-700 transition-colors"
-                >
-                    <Plus className="w-3.5 h-3.5" />
-                    New Plan
-                </button>
-            </div>
-
+        <DataTablePageLayout
+            title="Ad Planning"
+            onNewClick={() => setIsCreateModalOpen(true)}
+            newButtonLabel="New"
+        >
             {/* Data Table */}
             <DataTable
                 columns={columns}
@@ -463,6 +487,7 @@ export function AdPlanning() {
                 resizable={true}
                 showRowActions={false}
                 fullscreen={true}
+                quickFilters={['project_id', 'subproject_id', 'plan_type']}
                 // View persistence
                 viewId="ad_planning"
                 userId={currentUserId || undefined}
@@ -641,6 +666,6 @@ export function AdPlanning() {
                     </div>
                 </div>
             )}
-        </div>
+        </DataTablePageLayout>
     );
 }
