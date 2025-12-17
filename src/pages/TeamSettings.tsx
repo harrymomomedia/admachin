@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FolderKanban, Plus, Trash2, UserPlus, X, Check, Pencil } from 'lucide-react';
+import { Users, FolderKanban, Plus, Trash2, UserPlus, X, Check, Pencil, Camera } from 'lucide-react';
 import {
     getProjects, createProject, deleteProject,
     getUsers, createUser, deleteUser, updateUser,
@@ -7,6 +7,7 @@ import {
     getSubprojects, createSubproject, deleteSubproject,
     type Project, type User, type Subproject
 } from '../lib/supabase-service';
+import { AvatarUploadModal } from '../components/AvatarUploadModal';
 
 export function TeamSettings() {
     const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'subprojects'>('users');
@@ -40,6 +41,8 @@ export function TeamSettings() {
     const [editUserEmail, setEditUserEmail] = useState('');
     const [editUserPassword, setEditUserPassword] = useState('');
     const [editUserRole, setEditUserRole] = useState<'admin' | 'member'>('member');
+    const [editUserAvatarUrl, setEditUserAvatarUrl] = useState<string | null>(null);
+    const [showAvatarUpload, setShowAvatarUpload] = useState(false);
 
     // Add Project modal state
     const [showAddProject, setShowAddProject] = useState(false);
@@ -106,32 +109,24 @@ export function TeamSettings() {
 
     const openEditUser = (user: User) => {
         setEditingUser(user);
-
-        let first = user.first_name || '';
-        let last = user.last_name || '';
-
-        if (!first && !last && user.name) {
-            const parts = user.name.split(' ');
-            first = parts[0];
-            last = parts.slice(1).join(' ');
-        }
-
-        setEditUserFirstName(first);
-        setEditUserLastName(last);
+        setEditUserFirstName(user.first_name || '');
+        setEditUserLastName(user.last_name || '');
         setEditUserEmail(user.email);
         setEditUserPassword('');
         setEditUserRole(user.role as 'admin' | 'member');
+        setEditUserAvatarUrl(user.avatar_url || null);
     };
 
     const handleEditUser = async () => {
         if (!editingUser || !editUserFirstName.trim() || !editUserLastName.trim() || !editUserEmail.trim()) return;
 
         try {
-            const updates: { first_name?: string; last_name?: string; email?: string; password?: string; role?: string } = {
+            const updates: { first_name?: string; last_name?: string; email?: string; password?: string; role?: string; avatar_url?: string | null } = {
                 first_name: editUserFirstName,
                 last_name: editUserLastName,
                 email: editUserEmail,
-                role: editUserRole
+                role: editUserRole,
+                avatar_url: editUserAvatarUrl
             };
             // Only update password if provided
             if (editUserPassword.trim()) {
@@ -143,7 +138,8 @@ export function TeamSettings() {
             setEditingUser(null);
         } catch (error) {
             console.error('Error updating user:', error);
-            alert('Error updating user.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Error updating user: ${errorMessage}`);
         }
     };
 
@@ -249,11 +245,11 @@ export function TeamSettings() {
         if (user.first_name || user.last_name) {
             return `${user.first_name || ''} ${user.last_name || ''}`.trim();
         }
-        return user.name || user.email;
+        return user.email;
     };
 
     return (
-        <div className="space-y-6">
+        <div className="p-6 space-y-6">
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Admin</h1>
                 <p className="mt-1 text-sm text-gray-500">
@@ -315,6 +311,7 @@ export function TeamSettings() {
                         <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
+                                    <th className="pl-6 pr-2 py-3 font-medium text-gray-500 w-20">Photo</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">First Name</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">Last Name</th>
                                     <th className="px-6 py-3 font-medium text-gray-500">Email</th>
@@ -326,19 +323,32 @@ export function TeamSettings() {
                             <tbody className="divide-y divide-gray-200">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                                             Loading users...
                                         </td>
                                     </tr>
                                 ) : users.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                                             No users yet. Add your first user.
                                         </td>
                                     </tr>
                                 ) : (
                                     users.map(user => (
                                         <tr key={user.id} className="hover:bg-gray-50">
+                                            <td className="pl-6 pr-2 py-3">
+                                                {user.avatar_url ? (
+                                                    <img
+                                                        src={user.avatar_url}
+                                                        alt={`${user.first_name} ${user.last_name}`}
+                                                        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                                                    />
+                                                ) : (
+                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                                                        {(user.first_name?.[0] || '').toUpperCase()}{(user.last_name?.[0] || '').toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="px-6 py-4 font-medium text-gray-900">
                                                 {user.first_name || '-'}
                                             </td>
@@ -664,6 +674,30 @@ export function TeamSettings() {
                             </button>
                         </div>
 
+                        {/* Avatar Upload Section */}
+                        <div className="flex justify-center mb-6">
+                            <button
+                                onClick={() => setShowAvatarUpload(true)}
+                                className="relative group"
+                                type="button"
+                            >
+                                {editUserAvatarUrl ? (
+                                    <img
+                                        src={editUserAvatarUrl}
+                                        alt={`${editUserFirstName} ${editUserLastName}`}
+                                        className="w-20 h-20 rounded-full object-cover border-4 border-gray-100"
+                                    />
+                                ) : (
+                                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-semibold border-4 border-gray-100">
+                                        {(editUserFirstName[0] || '').toUpperCase()}{(editUserLastName[0] || '').toUpperCase()}
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Camera className="w-6 h-6 text-white" />
+                                </div>
+                            </button>
+                        </div>
+
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -895,6 +929,21 @@ export function TeamSettings() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Avatar Upload Modal */}
+            {editingUser && (
+                <AvatarUploadModal
+                    isOpen={showAvatarUpload}
+                    onClose={() => setShowAvatarUpload(false)}
+                    onSave={(avatarUrl) => {
+                        setEditUserAvatarUrl(avatarUrl || null);
+                        setShowAvatarUpload(false);
+                    }}
+                    currentAvatarUrl={editUserAvatarUrl}
+                    userId={editingUser.id}
+                    userName={`${editUserFirstName} ${editUserLastName}`.trim()}
+                />
             )}
         </div>
     );

@@ -28,6 +28,8 @@ interface CreativeUploaderProps {
     onUploadComplete: (files: UploadedFile[]) => void;
     maxFiles?: number;
     acceptedTypes?: "image" | "video" | "both";
+    userId?: string;
+    userName?: string;
 }
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -39,6 +41,8 @@ export function CreativeUploader({
     onUploadComplete,
     maxFiles = 5,
     acceptedTypes = "both",
+    userId,
+    userName = "Unknown",
 }: CreativeUploaderProps) {
     const [files, setFiles] = useState<UploadedFile[]>([]);
     const [isDragging, setIsDragging] = useState(false);
@@ -119,7 +123,8 @@ export function CreativeUploader({
                 file_size: uploadedFile.file.size,
                 dimensions: thumbnailPath ? { thumbnail: thumbnailPath } : null,
                 duration: null,
-                uploaded_by: 'Harry',
+                uploaded_by: userName,
+                user_id: userId,
                 fb_hash: null,
                 fb_video_id: null, // Set at launch time, not upload time
             });
@@ -156,7 +161,7 @@ export function CreativeUploader({
                 )
             );
         }
-    }, [onUploadComplete]);
+    }, [onUploadComplete, userId, userName]);
 
     const createVideoThumbnail = (file: File): Promise<string> => {
         return new Promise((resolve) => {

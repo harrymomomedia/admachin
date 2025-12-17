@@ -21,7 +21,7 @@ export function DataTablePageLayout({
     children
 }: DataTablePageLayoutProps) {
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0 max-w-full h-full">
             {/* Header Bar */}
             <div className="flex items-center justify-between flex-shrink-0 px-3 py-1.5 border-b border-border bg-card">
                 <div className="flex items-center gap-2">
@@ -41,8 +41,10 @@ export function DataTablePageLayout({
                 )}
             </div>
 
-            {/* Content (DataTable) */}
-            {children}
+            {/* Content (DataTable) - flex-1 ensures it fills remaining space */}
+            <div className="flex-1 flex flex-col min-h-0">
+                {children}
+            </div>
         </div>
     );
 }

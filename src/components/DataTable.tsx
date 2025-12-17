@@ -1405,9 +1405,10 @@ function SortableRow<T>({
                                 col.type === 'select' ? (() => {
                                     // Check if value exists in options
                                     const optionLabel = options?.find(o => String(o.value) === String(value))?.label;
-                                    // Use fallback value if value not found in options
+                                    // Use fallback value if value not found in options (for legacy data)
                                     const fallbackValue = col.fallbackKey ? (row as Record<string, unknown>)[col.fallbackKey] : null;
-                                    const displayValue = optionLabel || (value ? String(value) : null) || (fallbackValue ? String(fallbackValue) : null);
+                                    // Only show optionLabel or fallbackValue - don't show raw UUID if no match
+                                    const displayValue = optionLabel || (fallbackValue ? String(fallbackValue) : null);
 
                                     if (!displayValue) {
                                         return (
@@ -1878,6 +1879,9 @@ export function DataTable<T>({
         return ordered;
     }, [columns, columnOrder]);
 
+    // Row order state - for manual drag-and-drop ordering persistence
+    const [internalRowOrder, setInternalRowOrder] = useState<string[]>([]);
+
     // Track actions column position (index in the full column order, -1 means at the end)
     const [actionsColumnIndex, setActionsColumnIndex] = useState<number>(-1);
 
@@ -1907,8 +1911,19 @@ export function DataTable<T>({
             const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
             // Insert at actions position, adjusted for before/after
             let insertAt = actionsColumnIndex === -1 ? newOrder.length : Math.min(actionsColumnIndex, newOrder.length);
-            if (dropPosition === 'after') insertAt++;
-            newOrder.splice(Math.min(insertAt, newOrder.length), 0, draggedKey);
+
+            if (dropPosition === 'after') {
+                // When dropping AFTER actions:
+                // Insert the column after actions, and set actionsColumnIndex to fix actions position
+                newOrder.splice(Math.min(insertAt + 1, newOrder.length), 0, draggedKey);
+                setActionsColumnIndex(insertAt);
+            } else {
+                // When dropping BEFORE actions:
+                // Insert the column at actions position, then shift actions right by 1
+                newOrder.splice(Math.min(insertAt, newOrder.length), 0, draggedKey);
+                // Actions should now be one position to the right
+                setActionsColumnIndex(insertAt + 1);
+            }
 
             if (onColumnOrderChange) {
                 onColumnOrderChange(newOrder);
@@ -1937,7 +1952,24 @@ export function DataTable<T>({
             adjustedTargetIndex++;
         }
 
-        newOrder.splice(Math.min(adjustedTargetIndex, newOrder.length), 0, removed);
+        const finalIndex = Math.min(adjustedTargetIndex, newOrder.length);
+        newOrder.splice(finalIndex, 0, removed);
+
+        // Adjust actionsColumnIndex if a column moved across the actions boundary
+        if (actionsColumnIndex !== -1) {
+            let newActionsIndex = actionsColumnIndex;
+            // If dragged from before actions to after actions, decrement
+            if (draggedIndex < actionsColumnIndex && finalIndex >= actionsColumnIndex) {
+                newActionsIndex = actionsColumnIndex - 1;
+            }
+            // If dragged from after actions to before actions, increment
+            else if (draggedIndex >= actionsColumnIndex && finalIndex < actionsColumnIndex) {
+                newActionsIndex = actionsColumnIndex + 1;
+            }
+            if (newActionsIndex !== actionsColumnIndex) {
+                setActionsColumnIndex(newActionsIndex);
+            }
+        }
 
         if (onColumnOrderChange) {
             onColumnOrderChange(newOrder);
@@ -2109,6 +2141,10 @@ export function DataTable<T>({
             if (initialPreferences.column_order?.length) {
                 setInternalColumnOrder(initialPreferences.column_order);
             }
+            // Apply row order from user preferences
+            if (initialPreferences.row_order?.length) {
+                setInternalRowOrder(initialPreferences.row_order);
+            }
             return;
         }
 
@@ -2133,6 +2169,10 @@ export function DataTable<T>({
         // Apply column order from shared preferences
         if (sharedPreferences.column_order?.length) {
             setInternalColumnOrder(sharedPreferences.column_order);
+        }
+        // Apply row order from shared preferences
+        if (sharedPreferences.row_order?.length) {
+            setInternalRowOrder(sharedPreferences.row_order);
         }
     }, [initialPreferences, sharedPreferences, externalGroupRules, externalWrapRules]);
 
@@ -2229,7 +2269,19 @@ export function DataTable<T>({
         // Group rules need to act as "sort by group key asc/desc"
         const effectiveSortRules = [...groupRules, ...sortRules];
 
-        if (effectiveSortRules.length === 0) return filteredData;
+        // When no sorting is applied, use saved row order if available
+        if (effectiveSortRules.length === 0) {
+            if (internalRowOrder.length > 0) {
+                // Apply saved row order
+                const orderMap = new Map(internalRowOrder.map((id, index) => [id, index]));
+                return [...filteredData].sort((a, b) => {
+                    const aIndex = orderMap.get(getRowId(a)) ?? Infinity;
+                    const bIndex = orderMap.get(getRowId(b)) ?? Infinity;
+                    return aIndex - bIndex;
+                });
+            }
+            return filteredData;
+        }
 
         const sorted = [...filteredData].sort((a, b) => {
             for (const rule of effectiveSortRules) {
@@ -2266,7 +2318,7 @@ export function DataTable<T>({
         });
 
         return sorted;
-    }, [filteredData, sortRules, groupRules, columns]);
+    }, [filteredData, sortRules, groupRules, columns, internalRowOrder, getRowId]);
 
     // Pagination - compute paginated data from sorted data (only when not grouped)
     const totalRows = sortedData.length;
@@ -2395,8 +2447,9 @@ export function DataTable<T>({
         group_config: groupRules,
         wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>,
         column_widths: columnWidths,
-        column_order: columnOrder
-    }), [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder]);
+        column_order: columnOrder,
+        row_order: internalRowOrder.length > 0 ? internalRowOrder : undefined
+    }), [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, internalRowOrder]);
 
     // Check if current view matches team view
     const isMatchingTeamView = useMemo(() => {
@@ -2446,7 +2499,7 @@ export function DataTable<T>({
                 clearTimeout(preferencesChangeTimeoutRef.current);
             }
         };
-    }, [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, getCurrentPreferences]);
+    }, [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, internalRowOrder, getCurrentPreferences]);
 
     // Handle load team view - loads the shared/team preferences
     const handleLoadTeamView = useCallback(() => {
@@ -2649,6 +2702,7 @@ export function DataTable<T>({
 
         if (oldIndex !== -1 && newIndex !== -1) {
             const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
+            setInternalRowOrder(newOrder); // Update internal state for persistence
             onReorder(newOrder);
         }
     }, [data, getRowId, onReorder]);
@@ -2707,6 +2761,7 @@ export function DataTable<T>({
                         newIndex = newIndex - 1;
                     }
                     const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
+                    setInternalRowOrder(newOrder); // Update internal state for persistence
                     onReorder(newOrder);
                 }
             }
@@ -2769,11 +2824,11 @@ export function DataTable<T>({
     return (
         <div className={cn(
             "bg-white border border-gray-200 shadow-sm",
-            fullscreen ? "flex-1 flex flex-col h-full overflow-hidden" : "rounded-xl"
+            fullscreen ? "flex-1 flex flex-col h-full overflow-hidden min-w-0" : "rounded-xl"
         )}>
             {/* Scroll container for toolbar + table */}
             <div className={cn(
-                "overflow-x-auto",
+                "overflow-x-auto min-w-0 max-w-full",
                 fullscreen && "flex-1 overflow-y-auto"
             )}>
             {/* Sort/Group Toolbar - scrolls with table */}
@@ -3058,7 +3113,7 @@ export function DataTable<T>({
                                                 {(() => {
                                                     const col = columns.find(c => c.key === rule.field);
                                                     const rawOptions = col?.options;
-                                                    const hasOptions = col?.filterOptions || Array.isArray(rawOptions);
+                                                    const hasOptions = col?.filterOptions || Array.isArray(rawOptions) || col?.type === 'people';
 
                                                     return (
                                                         <select
@@ -3093,8 +3148,16 @@ export function DataTable<T>({
                                                 {rule.operator !== 'is_empty' && rule.operator !== 'is_not_empty' && (() => {
                                                     const col = columns.find(c => c.key === rule.field);
                                                     const rawOptions = col?.options;
-                                                    // Use filterOptions if available, otherwise use options if it's an array (not a function)
-                                                    const colOptions = col?.filterOptions || (Array.isArray(rawOptions) ? rawOptions : undefined);
+
+                                                    // For people type, generate options from users array
+                                                    let colOptions = col?.filterOptions || (Array.isArray(rawOptions) ? rawOptions : undefined);
+
+                                                    if (col?.type === 'people' && col?.users && !colOptions) {
+                                                        colOptions = col.users.map((u: { id: string; first_name?: string; last_name?: string; email: string }) => ({
+                                                            label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
+                                                            value: u.id,
+                                                        }));
+                                                    }
 
                                                     if (colOptions && colOptions.length > 0) {
                                                         // Column has options - use SingleSelect component
@@ -3800,8 +3863,8 @@ export function DataTable<T>({
                             })}
                             {/* Invisible drop zone for dragging columns to the far right */}
                             <th
-                                className="data-grid-th w-4 p-0"
-                                style={{ minWidth: 16 }}
+                                className="p-0 border-y-0 border-r-0 border-l border-transparent"
+                                style={{ width: 8, minWidth: 8, maxWidth: 8 }}
                                 onDragEnter={(e) => e.preventDefault()}
                                 onDragOver={(e) => {
                                     e.preventDefault();

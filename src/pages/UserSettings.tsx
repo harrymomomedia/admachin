@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Lock, Save, Loader2, Check, AlertCircle } from 'lucide-react';
+import { User, Lock, Save, Loader2, Check, AlertCircle, Camera } from 'lucide-react';
+import { AvatarUploadModal } from '../components/AvatarUploadModal';
 
 export function UserSettings() {
     const { user, updateProfile, updatePassword, refreshUser } = useAuth();
@@ -8,6 +9,8 @@ export function UserSettings() {
     // Profile state
     const [firstName, setFirstName] = useState(user?.first_name || '');
     const [lastName, setLastName] = useState(user?.last_name || '');
+    const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
+    const [showAvatarUpload, setShowAvatarUpload] = useState(false);
     const [profileLoading, setProfileLoading] = useState(false);
     const [profileSuccess, setProfileSuccess] = useState(false);
     const [profileError, setProfileError] = useState<string | null>(null);
@@ -26,7 +29,7 @@ export function UserSettings() {
         setProfileSuccess(false);
         setProfileError(null);
 
-        const { error } = await updateProfile({ firstName, lastName });
+        const { error } = await updateProfile({ firstName, lastName, avatarUrl });
 
         if (error) {
             setProfileError(error.message);
@@ -92,12 +95,7 @@ export function UserSettings() {
         .slice(0, 2) || 'U';
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-                <p className="text-gray-500 mt-1">Manage your account settings and preferences</p>
-            </div>
-
+        <div className="max-w-2xl mx-auto pt-6">
             {/* Profile Section */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
                 <div className="flex items-center gap-3 mb-6">
@@ -113,9 +111,26 @@ export function UserSettings() {
                 <form onSubmit={handleProfileSubmit} className="space-y-5">
                     {/* Avatar Display */}
                     <div className="flex items-center gap-6">
-                        <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold border-4 border-white shadow-lg">
-                            {initials}
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowAvatarUpload(true)}
+                            className="relative group"
+                        >
+                            {avatarUrl ? (
+                                <img
+                                    src={avatarUrl}
+                                    alt={displayName}
+                                    className="h-20 w-20 rounded-full object-cover border-4 border-white shadow-lg"
+                                />
+                            ) : (
+                                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold border-4 border-white shadow-lg">
+                                    {initials}
+                                </div>
+                            )}
+                            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Camera className="w-6 h-6 text-white" />
+                            </div>
+                        </button>
                         <div>
                             <p className="text-sm font-medium text-gray-700">{displayName || 'User'}</p>
                             <p className="text-xs text-gray-500">{user?.email}</p>
@@ -124,6 +139,13 @@ export function UserSettings() {
                                     {user.role}
                                 </span>
                             )}
+                            <button
+                                type="button"
+                                onClick={() => setShowAvatarUpload(true)}
+                                className="block mt-2 text-xs text-blue-600 hover:text-blue-700"
+                            >
+                                Change photo
+                            </button>
                         </div>
                     </div>
 
@@ -286,6 +308,21 @@ export function UserSettings() {
                     </button>
                 </form>
             </div>
+
+            {/* Avatar Upload Modal */}
+            {user && (
+                <AvatarUploadModal
+                    isOpen={showAvatarUpload}
+                    onClose={() => setShowAvatarUpload(false)}
+                    onSave={(newAvatarUrl) => {
+                        setAvatarUrl(newAvatarUrl || null);
+                        setShowAvatarUpload(false);
+                    }}
+                    currentAvatarUrl={avatarUrl}
+                    userId={user.id}
+                    userName={displayName}
+                />
+            )}
         </div>
     );
 }

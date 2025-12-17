@@ -465,13 +465,13 @@ export function LaunchAd() {
             // Wait a moment so user can see the success log
             await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // Store success message in sessionStorage to display on dashboard
+            // Store success message in sessionStorage
             sessionStorage.setItem('launch_success', JSON.stringify({
                 message,
                 timestamp: Date.now()
             }));
 
-            // Navigate to dashboard
+            // Navigate to home
             navigate("/", {
                 state: {
                     launchSuccess: true,

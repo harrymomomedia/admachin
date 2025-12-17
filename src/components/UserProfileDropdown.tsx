@@ -60,9 +60,17 @@ export function UserProfileDropdown({ isCollapsed = false }: UserProfileDropdown
                 title={isCollapsed ? displayName : undefined}
             >
                 {/* Avatar */}
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium shadow-sm text-sm flex-shrink-0">
-                    {initials}
-                </div>
+                {user.avatar_url ? (
+                    <img
+                        src={user.avatar_url}
+                        alt={displayName}
+                        className="h-8 w-8 rounded-full object-cover shadow-sm flex-shrink-0"
+                    />
+                ) : (
+                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium shadow-sm text-sm flex-shrink-0">
+                        {initials}
+                    </div>
+                )}
 
                 {!isCollapsed && (
                     <>

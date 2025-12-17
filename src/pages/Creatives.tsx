@@ -11,13 +11,15 @@ import {
     getCreativeUrl,
     getProjects,
     getSubprojects,
+    getUsers,
     getUserViewPreferences,
     saveUserViewPreferences,
     getSharedViewPreferences,
     saveSharedViewPreferences,
     deleteUserViewPreferences,
+    saveRowOrder,
 } from "../lib/supabase-service";
-import type { ViewPreferencesConfig, Project, Subproject } from "../lib/supabase-service";
+import type { ViewPreferencesConfig, Project, Subproject, User } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Creative {
@@ -30,6 +32,7 @@ interface Creative {
     sizeFormatted: string;
     uploadedAt: string;
     uploadedBy: string;
+    user_id?: string; // User ID for people column
     hash?: string;
     videoId?: string;
     dimensions?: string;
@@ -37,6 +40,7 @@ interface Creative {
     dbId?: string;
     project_id?: string | null;
     subproject_id?: string | null;
+    row_number?: number; // Serial number for display ID
 }
 
 interface UploadedFile {
@@ -106,6 +110,7 @@ async function loadMediaFromDb(): Promise<Creative[]> {
                 duration: c.duration || undefined,
                 project_id: c.project_id,
                 subproject_id: c.subproject_id,
+                row_number: (c as unknown as { row_number?: number }).row_number,
             };
         });
     } catch (error) {
@@ -123,9 +128,10 @@ export function Creatives() {
     const [showUploader, setShowUploader] = useState(false);
     const [previewItem, setPreviewItem] = useState<Creative | null>(null);
 
-    // Projects and subprojects
+    // Projects, subprojects, and users
     const [projects, setProjects] = useState<Project[]>([]);
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
 
     // View preferences
     const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
@@ -136,17 +142,29 @@ export function Creatives() {
         async function loadData() {
             setIsLoading(true);
             try {
-                const [items, projectsData, subprojectsData, userPrefs, sharedPrefs] = await Promise.all([
+                const [items, projectsData, subprojectsData, usersData, userPrefs, sharedPrefs] = await Promise.all([
                     loadMediaFromDb(),
                     getProjects(),
                     getSubprojects(),
+                    getUsers(),
                     currentUserId ? getUserViewPreferences(currentUserId, 'creatives') : null,
                     getSharedViewPreferences('creatives'),
                 ]);
-                setCreatives(items);
+
+                // Map user_id to creatives by matching uploaded_by name
+                const creativesWithUserId = items.map(item => {
+                    const matchedUser = usersData.find(u => {
+                        const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+                        return fullName === item.uploadedBy || u.email === item.uploadedBy;
+                    });
+                    return { ...item, user_id: matchedUser?.id };
+                });
+
+                setCreatives(creativesWithUserId);
                 setProjects(projectsData);
                 setSubprojects(subprojectsData);
-                saveMediaToCache(items);
+                setUsers(usersData);
+                saveMediaToCache(creativesWithUserId);
                 setUserPreferences(userPrefs);
                 setSharedPreferences(sharedPrefs);
             } catch (error) {
@@ -186,21 +204,32 @@ export function Creatives() {
         }
     };
 
-    const handleUploadComplete = useCallback((files: UploadedFile[]) => {
-        const newCreatives: Creative[] = files.map((f, i) => ({
-            id: `new-${Date.now()}-${i}`,
-            name: f.file.name,
-            type: f.type,
-            preview: f.preview || f.url || "",
-            url: f.type === 'video' ? URL.createObjectURL(f.file) : (f.url || f.preview),
-            size: f.file.size,
-            sizeFormatted: formatFileSize(f.file.size),
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: user?.first_name || "You",
-            hash: f.hash,
-        }));
-        setCreatives((prev) => [...newCreatives, ...prev]);
-    }, [user]);
+    // Reload creatives from database
+    const reloadCreatives = useCallback(async () => {
+        try {
+            const items = await loadMediaFromDb();
+            // Map user_id to creatives by matching uploaded_by name
+            const creativesWithUserId = items.map(item => {
+                const matchedUser = users.find(u => {
+                    const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+                    return fullName === item.uploadedBy || u.email === item.uploadedBy;
+                });
+                return { ...item, user_id: matchedUser?.id };
+            });
+            setCreatives(creativesWithUserId);
+            saveMediaToCache(creativesWithUserId);
+        } catch (error) {
+            console.error('[Creatives] Failed to reload:', error);
+        }
+    }, [users]);
+
+    const handleUploadComplete = useCallback(async (files: UploadedFile[]) => {
+        // Only reload when all uploads are successful
+        if (files.every(f => f.status === 'success')) {
+            // Reload from database to get the actual records (avoids duplicates)
+            await reloadCreatives();
+        }
+    }, [reloadCreatives]);
 
     const handleDelete = useCallback(async (id: string) => {
         const item = creatives.find(c => c.id === id);
@@ -252,7 +281,7 @@ export function Creatives() {
         if (item.dbId) {
             const dbUpdates: Record<string, string | null> = {};
             for (const [key, val] of Object.entries(updates)) {
-                if (key === 'project_id' || key === 'subproject_id' || key === 'name') {
+                if (key === 'project_id' || key === 'subproject_id' || key === 'name' || key === 'user_id') {
                     dbUpdates[key] = val as string | null;
                 }
             }
@@ -265,6 +294,21 @@ export function Creatives() {
             }
         }
     }, [creatives, subprojects]);
+
+    // Reorder Handler (for drag & drop) - persists to database
+    const handleReorder = async (newOrder: string[]) => {
+        const reordered = newOrder.map(id => creatives.find(c => c.id === id)!).filter(Boolean);
+        setCreatives(reordered);
+
+        // Save order to database
+        if (currentUserId) {
+            try {
+                await saveRowOrder(currentUserId, 'creatives', newOrder);
+            } catch (error) {
+                console.error('Failed to save row order:', error);
+            }
+        }
+    };
 
     // Color palette for dynamic colorMaps
     const colorPalette = [
@@ -327,6 +371,14 @@ export function Creatives() {
             type: 'text',
         },
         {
+            key: 'row_number',
+            header: 'ID',
+            width: 50,
+            minWidth: 40,
+            editable: false,
+            type: 'id',
+        },
+        {
             key: 'project_id',
             header: 'Project',
             width: 140,
@@ -344,7 +396,10 @@ export function Creatives() {
             editable: true,
             type: 'select',
             options: (row) => {
-                if (!row.project_id) return [];
+                // Show all subprojects if no project selected, otherwise filter by project
+                if (!row.project_id) {
+                    return subprojects.map(s => ({ label: s.name, value: s.id }));
+                }
                 return subprojects
                     .filter(s => s.project_id === row.project_id)
                     .map(s => ({ label: s.name, value: s.id }));
@@ -392,12 +447,13 @@ export function Creatives() {
             type: 'text',
         },
         {
-            key: 'uploadedBy',
-            header: 'Uploaded By',
-            width: 120,
+            key: 'user_id',
+            header: 'Owner',
+            width: 130,
             minWidth: 100,
-            editable: false,
-            type: 'text',
+            editable: user?.role === 'admin',
+            type: 'people',
+            users: users,
         },
         {
             key: 'uploadedAt',
@@ -424,6 +480,8 @@ export function Creatives() {
                 getRowId={(creative) => creative.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
+                sortable={true}
+                onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
                 quickFilters={['project_id', 'subproject_id', 'type']}
@@ -460,6 +518,8 @@ export function Creatives() {
                             }}
                             maxFiles={10}
                             acceptedTypes="both"
+                            userId={user?.id}
+                            userName={user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown'}
                         />
                     </div>
                 </div>

@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { FacebookProvider } from "./contexts/FacebookContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { DashboardLayout } from "./layouts/DashboardLayout";
-import { Dashboard } from "./pages/Dashboard";
 import { LaunchAd } from "./pages/LaunchAd";
 import { Creatives } from "./pages/Creatives";
 import { FBProfiles } from "./pages/FBProfiles";
@@ -39,7 +38,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Public route wrapper (redirect to dashboard if already logged in)
+// Public route wrapper (redirect to home if already logged in)
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
@@ -80,7 +79,7 @@ function App() {
                 <DashboardLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<Dashboard />} />
+              <Route index element={<AdCopyLibrary />} />
               <Route path="launch" element={<LaunchAd />} />
               <Route path="creatives" element={<Creatives />} />
 
@@ -89,7 +88,8 @@ function App() {
               <Route path="fb-ad-library" element={<FBAdLibrary />} />
               {/* Redirect old ad-accounts path */}
               <Route path="ad-accounts" element={<Navigate to="/facebook/ad-accounts" replace />} />
-              <Route path="ad-copies" element={<AdCopyLibrary />} />
+              {/* Redirect old ad-copies path to home */}
+              <Route path="ad-copies" element={<Navigate to="/" replace />} />
               <Route path="ad-planning" element={<AdPlanning />} />
               <Route path="ai-copywriting" element={<PersonaAICopy />} />
               <Route path="saved-personas" element={<SavedPersonasLibrary />} />

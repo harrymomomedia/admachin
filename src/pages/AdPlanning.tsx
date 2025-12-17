@@ -317,7 +317,7 @@ export function AdPlanning() {
     // Column Definitions
     const columns: ColumnDef<AdPlan>[] = [
         {
-            key: 'ad_number',
+            key: 'row_number',
             header: 'ID',
             width: 50,
             minWidth: 40,
@@ -343,7 +343,10 @@ export function AdPlanning() {
             editable: true,
             type: 'select',
             options: (row) => {
-                if (!row.project_id) return [];
+                // Show all subprojects if no project selected, otherwise filter by project
+                if (!row.project_id) {
+                    return subprojects.map(s => ({ label: s.name, value: s.id }));
+                }
                 return subprojects
                     .filter(s => s.project_id === row.project_id)
                     .map(s => ({

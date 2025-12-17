@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen } from "lucide-react";
+import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { UserProfileDropdown } from "./UserProfileDropdown";
@@ -13,10 +13,8 @@ const FacebookIcon = () => (
 );
 
 const mainNavigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Launch Ad", href: "/launch", icon: Rocket },
+    { name: "Ad Text", href: "/", icon: Type },
     { name: "Creatives", href: "/creatives", icon: Image },
-    { name: "Ad Text", href: "/ad-copies", icon: Type },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
     { name: "FB Ad Library", href: "/fb-ad-library", icon: Library },
 ];
@@ -262,6 +260,23 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         />
                     </div>
                 )}
+
+                {/* Launch Ad - between Copywriting and Facebook */}
+                <Link
+                    to="/launch"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? "Launch Ad" : undefined}
+                    className={cn(
+                        "flex items-center gap-3 rounded-md text-sm font-medium transition-colors mt-2",
+                        isCollapsed ? "justify-center p-3" : "px-3 py-2",
+                        location.pathname === "/launch"
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                >
+                    <Rocket className="h-5 w-5 flex-shrink-0" />
+                    {!isCollapsed && "Launch Ad"}
+                </Link>
 
                 {/* Facebook Section */}
                 {!isCollapsed ? (

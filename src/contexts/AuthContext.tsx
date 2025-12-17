@@ -9,7 +9,7 @@ interface AuthContextType {
     error: string | null;
     signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
     signOut: () => void;
-    updateProfile: (data: { firstName?: string; lastName?: string }) => Promise<{ error: Error | null }>;
+    updateProfile: (data: { firstName?: string; lastName?: string; avatarUrl?: string | null }) => Promise<{ error: Error | null }>;
     updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
     refreshUser: () => Promise<void>;
 }
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null);
     };
 
-    const updateProfile = async (data: { firstName?: string; lastName?: string }) => {
+    const updateProfile = async (data: { firstName?: string; lastName?: string; avatarUrl?: string | null }) => {
         if (!user) {
             return { error: new Error('Not logged in') };
         }
@@ -100,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await updateUserInDb(user.id, {
                 first_name: data.firstName,
                 last_name: data.lastName,
+                avatar_url: data.avatarUrl,
             });
 
             // Refresh user data

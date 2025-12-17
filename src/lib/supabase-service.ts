@@ -242,6 +242,7 @@ export async function addCreative(creative: {
     dimensions?: { width: number; height: number } | { thumbnail: string } | null;
     duration?: number | null;
     uploaded_by: string;
+    user_id?: string | null;
     fb_hash?: string | null;
     fb_video_id?: string | null;
 }): Promise<Creative> {
@@ -255,6 +256,7 @@ export async function addCreative(creative: {
             dimensions: creative.dimensions as Database['public']['Tables']['creatives']['Insert']['dimensions'],
             duration: creative.duration,
             uploaded_by: creative.uploaded_by,
+            user_id: creative.user_id,
             fb_hash: creative.fb_hash,
             fb_video_id: creative.fb_video_id,
         })
@@ -362,6 +364,84 @@ export async function uploadCreativeFile(
 export function getCreativeUrl(storagePath: string): string {
     const { data } = supabase.storage
         .from('creatives')
+        .getPublicUrl(storagePath);
+
+    return data.publicUrl;
+}
+
+// ============================================
+// AVATARS
+// ============================================
+
+/**
+ * Upload an avatar image to Supabase Storage
+ * @param file - The image file (should be cropped JPEG blob)
+ * @param userId - The user's ID for organizing storage
+ * @returns The public URL of the uploaded avatar
+ */
+export async function uploadAvatar(file: Blob, userId: string): Promise<string> {
+    const fileName = `${userId}/${Date.now()}.jpg`;
+
+    const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: 'image/jpeg',
+        });
+
+    if (error) {
+        console.error('[Supabase] Error uploading avatar:', error);
+        throw new Error(error.message || 'Failed to upload avatar');
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+}
+
+/**
+ * Delete old avatar files for a user (cleanup)
+ * @param userId - The user's ID
+ * @param keepUrl - Optional URL to keep (the current avatar)
+ */
+export async function deleteOldAvatars(userId: string, keepUrl?: string): Promise<void> {
+    try {
+        // List all files in the user's avatar folder
+        const { data: files, error } = await supabase.storage
+            .from('avatars')
+            .list(userId);
+
+        if (error || !files) return;
+
+        // Filter out the current avatar if keepUrl is provided
+        const filesToDelete = files
+            .filter(file => {
+                if (!keepUrl) return true;
+                return !keepUrl.includes(file.name);
+            })
+            .map(file => `${userId}/${file.name}`);
+
+        if (filesToDelete.length > 0) {
+            await supabase.storage
+                .from('avatars')
+                .remove(filesToDelete);
+        }
+    } catch (err) {
+        console.warn('[Supabase] Error cleaning up old avatars:', err);
+        // Don't throw - this is a cleanup operation
+    }
+}
+
+/**
+ * Get public URL for an avatar path
+ */
+export function getAvatarUrl(storagePath: string): string {
+    const { data } = supabase.storage
+        .from('avatars')
         .getPublicUrl(storagePath);
 
     return data.publicUrl;
@@ -530,11 +610,10 @@ export interface User {
     id: string;
     first_name: string;
     last_name: string;
-    name?: string; // Legacy field for backwards compatibility
     email: string;
     password?: string;
     role: string;
-    avatar_url?: string | null; // Profile image URL
+    avatar_url?: string | null;
     created_at: string;
 }
 
@@ -625,16 +704,15 @@ export async function getUsers(): Promise<User[]> {
  */
 export async function createUser(firstName: string, lastName: string, email: string, _password: string, role: string = 'member'): Promise<User> {
     if (!supabaseUntyped) throw new Error('Supabase client not initialized');
-    const name = `${firstName} ${lastName}`.trim();
     const { data, error } = await supabaseUntyped
         .from('users')
-        .insert({ name, email, role }) // Note: password handling omitted for simplicity as per existing pattern
+        .insert({ first_name: firstName, last_name: lastName, email, role })
         .select()
         .single();
 
     if (error) {
         console.error('[Supabase] Error creating user:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to create user');
     }
 
     return data;
@@ -659,20 +737,17 @@ export async function deleteUser(id: string): Promise<void> {
 /**
  * Update a user
  */
-export async function updateUser(id: string, updates: { first_name?: string; last_name?: string; name?: string; email?: string; password?: string; role?: string }): Promise<User> {
+export async function updateUser(id: string, updates: { first_name?: string; last_name?: string; email?: string; password?: string; role?: string; avatar_url?: string | null }): Promise<User> {
     if (!supabaseUntyped) throw new Error('Supabase client not initialized');
-    // Map legacy first/last to name if needed
-    const dbUpdates: any = { ...updates };
-    if (updates.first_name || updates.last_name) {
-        dbUpdates.name = `${updates.first_name || ''} ${updates.last_name || ''}`.trim();
-        delete dbUpdates.first_name;
-        delete dbUpdates.last_name;
-    }
 
-    // Remove password from dbUpdates as it cannot be updated directly in the users table
-    if (dbUpdates.password) {
-        delete dbUpdates.password;
-    }
+    // Build update object with only allowed fields
+    const dbUpdates: any = {};
+    if (updates.first_name !== undefined) dbUpdates.first_name = updates.first_name;
+    if (updates.last_name !== undefined) dbUpdates.last_name = updates.last_name;
+    if (updates.email !== undefined) dbUpdates.email = updates.email;
+    if (updates.role !== undefined) dbUpdates.role = updates.role;
+    if (updates.avatar_url !== undefined) dbUpdates.avatar_url = updates.avatar_url;
+    // Note: password not stored in users table
 
     const { data, error } = await supabaseUntyped
         .from('users')
@@ -683,7 +758,7 @@ export async function updateUser(id: string, updates: { first_name?: string; las
 
     if (error) {
         console.error('[Supabase] Error updating user:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to update user');
     }
 
     return data;
@@ -754,7 +829,7 @@ export async function removeUserFromProject(projectId: string, userId: string): 
 
 export interface AdPlan {
     id: string;
-    ad_number: number;
+    row_number: number;
     project_id: string | null;
     user_id: string | null;
     creative_id: string | null;

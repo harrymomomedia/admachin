@@ -22,7 +22,7 @@ export function Login() {
             setError(error.message);
             setLoading(false);
         } else {
-            // Navigate to dashboard on success
+            // Navigate to home on success
             navigate('/');
         }
     };
