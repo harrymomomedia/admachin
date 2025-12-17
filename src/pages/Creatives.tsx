@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { X, Film } from "lucide-react";
+import { X, Film, Check, Play, Image as ImageIcon } from "lucide-react";
 import { CreativeUploader } from "../components/CreativeUploader";
 import { DataTable } from "../components/DataTable";
 import type { ColumnDef } from "../components/DataTable";
@@ -160,13 +160,49 @@ export function Creatives() {
                     return { ...item, user_id: matchedUser?.id };
                 });
 
-                setCreatives(creativesWithUserId);
+                // Store shared preferences (including column_widths and column_order)
+                if (sharedPrefs) {
+                    setSharedPreferences({
+                        sort_config: sharedPrefs.sort_config,
+                        filter_config: sharedPrefs.filter_config,
+                        group_config: sharedPrefs.group_config,
+                        wrap_config: sharedPrefs.wrap_config,
+                        row_order: sharedPrefs.row_order,
+                        column_widths: sharedPrefs.column_widths,
+                        column_order: sharedPrefs.column_order
+                    });
+                }
+
+                // Store user view preferences (including column_widths and column_order)
+                if (userPrefs) {
+                    setUserPreferences({
+                        sort_config: userPrefs.sort_config,
+                        filter_config: userPrefs.filter_config,
+                        group_config: userPrefs.group_config,
+                        wrap_config: userPrefs.wrap_config,
+                        row_order: userPrefs.row_order,
+                        column_widths: userPrefs.column_widths,
+                        column_order: userPrefs.column_order
+                    });
+                }
+
+                // Apply row order (user's or shared)
+                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
+                let finalCreatives = creativesWithUserId;
+                if (rowOrder && rowOrder.length > 0) {
+                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
+                    finalCreatives = [...creativesWithUserId].sort((a, b) => {
+                        const aIndex = orderMap.get(a.id) ?? Infinity;
+                        const bIndex = orderMap.get(b.id) ?? Infinity;
+                        return aIndex - bIndex;
+                    });
+                }
+
+                setCreatives(finalCreatives);
                 setProjects(projectsData);
                 setSubprojects(subprojectsData);
                 setUsers(usersData);
-                saveMediaToCache(creativesWithUserId);
-                setUserPreferences(userPrefs);
-                setSharedPreferences(sharedPrefs);
+                saveMediaToCache(finalCreatives);
             } catch (error) {
                 console.error('[Creatives] Failed to load:', error);
             } finally {
@@ -188,7 +224,15 @@ export function Creatives() {
 
     const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
         try {
-            await saveSharedViewPreferences('creatives', preferences);
+            const rowOrder = creatives.map(c => c.id);
+            await saveSharedViewPreferences('creatives', {
+                ...preferences,
+                row_order: rowOrder
+            });
+            setSharedPreferences({
+                ...preferences,
+                row_order: rowOrder
+            });
         } catch (error) {
             console.error('Failed to save shared preferences:', error);
         }
@@ -494,6 +538,126 @@ export function Creatives() {
                 onPreferencesChange={handlePreferencesChange}
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
+                // Gallery view support
+                cardColumns={4}
+                renderCard={(creative, isSelected, onToggle) => {
+                    const project = projects.find(p => p.id === creative.project_id);
+                    const subproject = subprojects.find(s => s.id === creative.subproject_id);
+                    const owner = users.find(u => u.id === creative.user_id);
+                    const isVideo = creative.type === 'video';
+
+                    return (
+                        <div
+                            onClick={onToggle}
+                            className={`
+                                relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all
+                                ${isSelected
+                                    ? 'border-blue-500 ring-2 ring-blue-500/20'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }
+                            `}
+                        >
+                            {/* Selection checkbox */}
+                            <div className="absolute top-2 left-2 z-10">
+                                <div
+                                    className={`
+                                        w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
+                                        ${isSelected
+                                            ? 'bg-blue-500 border-blue-500 text-white'
+                                            : 'bg-white/80 border-gray-300 backdrop-blur-sm'
+                                        }
+                                    `}
+                                >
+                                    {isSelected && <Check className="w-3 h-3" />}
+                                </div>
+                            </div>
+
+                            {/* Media type badge */}
+                            {isVideo && (
+                                <div className="absolute top-2 right-2 z-10 bg-purple-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <Play className="w-3 h-3" />
+                                    Video
+                                </div>
+                            )}
+
+                            {/* Preview Image */}
+                            <div
+                                className="aspect-square bg-gray-100 relative"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewItem(creative);
+                                }}
+                            >
+                                {creative.preview && creative.preview !== creative.url ? (
+                                    <img
+                                        src={creative.preview}
+                                        alt={creative.name}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : isVideo ? (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                        <Film className="w-12 h-12" />
+                                    </div>
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                        <ImageIcon className="w-12 h-12" />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Info */}
+                            <div className="p-3 bg-white">
+                                <div className="font-medium text-sm text-gray-900 truncate">
+                                    {creative.name}
+                                </div>
+                                <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                    {creative.dimensions && (
+                                        <span>{creative.dimensions}</span>
+                                    )}
+                                    {creative.sizeFormatted && (
+                                        <>
+                                            {creative.dimensions && <span>·</span>}
+                                            <span>{creative.sizeFormatted}</span>
+                                        </>
+                                    )}
+                                </div>
+                                {(project || creative.uploadedAt) && (
+                                    <div className="mt-2 flex items-center justify-between text-xs">
+                                        {project && (
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded truncate max-w-[120px]">
+                                                {project.name}
+                                            </span>
+                                        )}
+                                        {creative.uploadedAt && (
+                                            <span className="text-gray-400">
+                                                {new Date(creative.uploadedAt).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                })}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                                {owner && (
+                                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                                        {owner.avatar_url ? (
+                                            <img
+                                                src={owner.avatar_url}
+                                                alt=""
+                                                className="w-4 h-4 rounded-full"
+                                            />
+                                        ) : (
+                                            <div className="w-4 h-4 rounded-full bg-gray-300" />
+                                        )}
+                                        <span className="truncate">
+                                            {owner.first_name} {owner.last_name}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                }}
             />
 
             {/* Upload Modal */}

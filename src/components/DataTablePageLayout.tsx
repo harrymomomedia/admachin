@@ -6,6 +6,8 @@ interface DataTablePageLayoutProps {
     subtitle?: string;
     onNewClick?: () => void;
     newButtonLabel?: string;
+    /** Additional action buttons to show in the header */
+    headerActions?: ReactNode;
     children: ReactNode;
 }
 
@@ -18,6 +20,7 @@ export function DataTablePageLayout({
     subtitle,
     onNewClick,
     newButtonLabel = 'New',
+    headerActions,
     children
 }: DataTablePageLayoutProps) {
     return (
@@ -30,15 +33,18 @@ export function DataTablePageLayout({
                         <span className="text-xs text-muted-foreground">{subtitle}</span>
                     )}
                 </div>
-                {onNewClick && (
-                    <button
-                        onClick={onNewClick}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                    >
-                        <Plus className="w-3 h-3" />
-                        {newButtonLabel}
-                    </button>
-                )}
+                <div className="flex items-center gap-2">
+                    {headerActions}
+                    {onNewClick && (
+                        <button
+                            onClick={onNewClick}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                            <Plus className="w-3 h-3" />
+                            {newButtonLabel}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Content (DataTable) - flex-1 ensures it fills remaining space */}

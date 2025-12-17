@@ -10,6 +10,8 @@ import { FBAdLibrary } from './pages/FBAdLibrary';
 import { TeamSettings } from "./pages/TeamSettings";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
+import { Ads } from "./pages/Ads";
+import { AdCreator } from "./pages/AdCreator";
 import { PersonaAICopy } from "./pages/PersonaAICopy";
 import { SavedPersonasLibrary } from "./pages/SavedPersonasLibrary";
 import { Login } from "./pages/Login";
@@ -91,6 +93,8 @@ function App() {
               {/* Redirect old ad-copies path to home */}
               <Route path="ad-copies" element={<Navigate to="/" replace />} />
               <Route path="ad-planning" element={<AdPlanning />} />
+              <Route path="ads" element={<Ads />} />
+              <Route path="ads/create" element={<AdCreator />} />
               <Route path="ai-copywriting" element={<PersonaAICopy />} />
               <Route path="saved-personas" element={<SavedPersonasLibrary />} />
               <Route path="admin" element={<TeamSettings />} />

@@ -870,7 +870,7 @@ export async function getAdPlans(): Promise<AdPlan[]> {
             creative:creatives!ad_plans_creative_id_fkey (*),
             reference_creative:creatives!ad_plans_reference_creative_id_fkey (*)
         `)
-        .order('ad_number', { ascending: false });
+        .order('row_number', { ascending: false });
 
     if (error) {
         console.error('[Supabase] Error fetching ad plans:', error);
@@ -1301,5 +1301,199 @@ export async function saveSharedViewPreferences(
         // Table might not exist - fail gracefully
         console.warn('[Supabase] Shared view preferences table may not exist');
     }
+}
+
+// ============================================
+// ADS
+// ============================================
+
+export interface Ad {
+    id: string;
+    row_number: number;
+    creative_id: string | null;
+    traffic: string | null;
+    ad_type: string | null;
+    project_id: string | null;
+    subproject_id: string | null;
+    user_id: string | null;
+    headline_id: string | null;
+    primary_id: string | null;
+    description_id: string | null;
+    created_at: string;
+    updated_at: string;
+    // Joined relations
+    creative?: Creative;
+    project?: Project;
+    subproject?: Subproject;
+    user?: User;
+    headline?: AdCopy;
+    primary?: AdCopy;
+    description?: AdCopy;
+}
+
+/**
+ * Get all Ads with related data
+ */
+export async function getAds(): Promise<Ad[]> {
+    const { data: ads, error } = await supabaseUntyped
+        .from('ads')
+        .select(`
+            *,
+            creative:creatives (*),
+            project:projects (*),
+            subproject:subprojects (*),
+            user:users (*),
+            headline:ad_copies!ads_headline_id_fkey (*),
+            primary:ad_copies!ads_primary_id_fkey (*),
+            description:ad_copies!ads_description_id_fkey (*)
+        `)
+        .order('row_number', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching ads:', error);
+        throw error;
+    }
+
+    return ads || [];
+}
+
+/**
+ * Create a new Ad
+ */
+export async function createAd(ad: {
+    creative_id?: string | null;
+    traffic?: string | null;
+    ad_type?: string | null;
+    project_id?: string | null;
+    subproject_id?: string | null;
+    user_id?: string | null;
+    headline_id?: string | null;
+    primary_id?: string | null;
+    description_id?: string | null;
+}): Promise<Ad> {
+    const { data, error } = await supabaseUntyped
+        .from('ads')
+        .insert({
+            creative_id: ad.creative_id || null,
+            traffic: ad.traffic || null,
+            ad_type: ad.ad_type || null,
+            project_id: ad.project_id || null,
+            subproject_id: ad.subproject_id || null,
+            user_id: ad.user_id || null,
+            headline_id: ad.headline_id || null,
+            primary_id: ad.primary_id || null,
+            description_id: ad.description_id || null,
+        })
+        .select(`
+            *,
+            creative:creatives (*),
+            project:projects (*),
+            subproject:subprojects (*),
+            user:users (*),
+            headline:ad_copies!ads_headline_id_fkey (*),
+            primary:ad_copies!ads_primary_id_fkey (*),
+            description:ad_copies!ads_description_id_fkey (*)
+        `)
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating ad:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Update an existing Ad
+ */
+export async function updateAd(id: string, updates: Partial<Ad>): Promise<Ad> {
+    // Remove relation fields before update
+    const { creative, project, subproject, user, headline, primary, description, ...updateData } = updates;
+
+    const { data, error } = await supabaseUntyped
+        .from('ads')
+        .update({
+            ...updateData,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select(`
+            *,
+            creative:creatives (*),
+            project:projects (*),
+            subproject:subprojects (*),
+            user:users (*),
+            headline:ad_copies!ads_headline_id_fkey (*),
+            primary:ad_copies!ads_primary_id_fkey (*),
+            description:ad_copies!ads_description_id_fkey (*)
+        `)
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating ad:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Delete an Ad
+ */
+export async function deleteAd(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('ads')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting ad:', error);
+        throw error;
+    }
+}
+
+/**
+ * Batch create multiple Ads at once
+ */
+export async function createAds(ads: Array<{
+    creative_id?: string | null;
+    headline_id?: string | null;
+    primary_id?: string | null;
+    description_id?: string | null;
+    user_id?: string | null;
+    project_id?: string | null;
+    subproject_id?: string | null;
+}>): Promise<Ad[]> {
+    if (ads.length === 0) return [];
+
+    const { data, error } = await supabaseUntyped
+        .from('ads')
+        .insert(ads.map(ad => ({
+            creative_id: ad.creative_id || null,
+            headline_id: ad.headline_id || null,
+            primary_id: ad.primary_id || null,
+            description_id: ad.description_id || null,
+            user_id: ad.user_id || null,
+            project_id: ad.project_id || null,
+            subproject_id: ad.subproject_id || null,
+        })))
+        .select(`
+            *,
+            creative:creatives (*),
+            project:projects (*),
+            subproject:subprojects (*),
+            user:users (*),
+            headline:ad_copies!ads_headline_id_fkey (*),
+            primary:ad_copies!ads_primary_id_fkey (*),
+            description:ad_copies!ads_description_id_fkey (*)
+        `);
+
+    if (error) {
+        console.error('[Supabase] Error batch creating ads:', error);
+        throw error;
+    }
+
+    return data || [];
 }
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen } from "lucide-react";
+import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen, Megaphone } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { UserProfileDropdown } from "./UserProfileDropdown";
@@ -16,6 +16,7 @@ const mainNavigation = [
     { name: "Ad Text", href: "/", icon: Type },
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
+    { name: "Ads", href: "/ads", icon: Megaphone },
     { name: "FB Ad Library", href: "/fb-ad-library", icon: Library },
 ];
 

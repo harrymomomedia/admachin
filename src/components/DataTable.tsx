@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, GripVertical as DragHandle } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, GripVertical as DragHandle } from 'lucide-react';
 import { SingleSelect, SearchInput } from './fields';
 import {
     DndContext,
@@ -207,6 +207,17 @@ export interface DataTableProps<T> {
 
     // Column configuration editing (for select options, colors, etc.)
     onColumnConfigChange?: (columnKey: string, updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }) => void;
+
+    // Multi-select mode with checkboxes
+    selectable?: boolean;
+    selectedIds?: Set<string>;
+    onSelectionChange?: (selectedIds: Set<string>) => void;
+
+    // View mode (table or gallery/card view)
+    viewMode?: 'table' | 'gallery';
+    onViewModeChange?: (mode: 'table' | 'gallery') => void;
+    renderCard?: (item: T, isSelected: boolean, onToggle: () => void) => React.ReactNode;
+    cardColumns?: number;
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -1001,6 +1012,10 @@ interface SortableRowProps<T> {
     onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => void;
     isDragging: boolean;
     isDragOver: boolean;
+    // Multi-select
+    selectable?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: () => void;
 }
 
 function SortableRow<T>({
@@ -1030,6 +1045,9 @@ function SortableRow<T>({
     onRowDragLeave,
     onRowDrop,
     isDragging,
+    selectable,
+    isSelected,
+    onToggleSelect,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1129,6 +1147,22 @@ function SortableRow<T>({
                     </td>
                 )}
 
+                {/* Selection Checkbox */}
+                {selectable && (
+                    <td className="data-grid-td w-10 px-2">
+                        <div className="flex items-center justify-center">
+                            <input
+                                type="checkbox"
+                                checked={isSelected || false}
+                                onChange={(e) => {
+                                    e.stopPropagation();
+                                    onToggleSelect?.();
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                        </div>
+                    </td>
+                )}
 
                 {/* Data Columns - with actions inserted at correct position */}
                 {columns.map((col, colIndex) => {
@@ -1465,7 +1499,7 @@ function SortableRow<T>({
                                         <PeopleColumn value={value} users={col.users || []} />
                                     </div>
                                 ) : col.type === 'id' ? (
-                                    <span className="text-[10px] text-gray-400 px-3 h-[34px] flex items-center">{String(value || '-')}</span>
+                                    <span className="text-[11px] text-gray-700 font-medium px-3 h-[34px] flex items-center">{String(value || '-')}</span>
                                 ) : (
                                     <p
                                         className={cn(
@@ -1720,7 +1754,16 @@ export function DataTable<T>({
     onSaveForEveryone,
     onResetPreferences,
     // Column config editing
-    onColumnConfigChange
+    onColumnConfigChange,
+    // Multi-select mode
+    selectable = false,
+    selectedIds,
+    onSelectionChange,
+    // View mode
+    viewMode: externalViewMode,
+    onViewModeChange,
+    renderCard,
+    cardColumns = 4
 }: DataTableProps<T>) {
     // Initialize wrap rules from preferences
     const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
@@ -1782,6 +1825,17 @@ export function DataTable<T>({
             }
         };
     }, [groupRules, onGroupRulesChange]);
+
+    // View mode state (managed internally if not provided externally)
+    const [internalViewMode, setInternalViewMode] = useState<'table' | 'gallery'>('table');
+    const viewMode = externalViewMode || internalViewMode;
+    const setViewMode = (mode: 'table' | 'gallery') => {
+        if (onViewModeChange) {
+            onViewModeChange(mode);
+        } else {
+            setInternalViewMode(mode);
+        }
+    };
 
     // Handle group by change (toggles or adds)
     const handleGroupByChange = (columnKey: string | null) => {
@@ -2112,6 +2166,8 @@ export function DataTable<T>({
     const preferencesLoadedRef = useRef(false);
     // Track if we've applied user-specific preferences (not just shared)
     const userPrefsAppliedRef = useRef(false);
+    // Track if we've applied shared preferences (separate from fallback timer)
+    const sharedPrefsAppliedRef = useRef(false);
 
     // Sync state when preferences are loaded after initial mount
     // User preferences take priority over shared preferences
@@ -2149,8 +2205,10 @@ export function DataTable<T>({
         }
 
         // Fall back to shared preferences if no user preferences
-        if (preferencesLoadedRef.current || !sharedPreferences) return;
+        // Use separate ref to avoid race condition with fallback timer
+        if (!sharedPreferences || sharedPrefsAppliedRef.current) return;
 
+        sharedPrefsAppliedRef.current = true;
         preferencesLoadedRef.current = true;
 
         // Apply shared preferences
@@ -2833,8 +2891,7 @@ export function DataTable<T>({
             )}>
             {/* Sort/Group Toolbar - scrolls with table */}
             <div
-                className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 sticky top-0 z-20 shadow-sm flex-nowrap"
-                style={{ minWidth: totalWidth }}
+                className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 sticky top-0 z-20 shadow-sm flex-nowrap min-w-full"
             >
                 {/* Quick Filters */}
                 {quickFilters.map(columnKey => {
@@ -3637,16 +3694,42 @@ export function DataTable<T>({
                     </div>
                 )}
 
-                {/* Spacer to push Reset/Save buttons to the right */}
-                <div className="flex-1" />
+                {/* Spacer to push right buttons to the right edge */}
+                <div className="flex-1 min-w-4" />
 
-                {/* Team View controls */}
+                {/* View Mode Toggle - only show if renderCard is provided */}
+                {renderCard && (
+                    <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-0.5 flex-shrink-0">
+                        <button
+                            onClick={() => setViewMode('gallery')}
+                            className={cn(
+                                "p-1.5 rounded transition-colors",
+                                viewMode === 'gallery' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                            )}
+                            title="Gallery view"
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={cn(
+                                "p-1.5 rounded transition-colors",
+                                viewMode === 'table' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                            )}
+                            title="Table view"
+                        >
+                            <List className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Team View controls - flows naturally, scrolls with toolbar */}
                 {onSaveForEveryone && (
                     <div className="flex items-center gap-2 flex-shrink-0">
                         {/* Team View Indicator */}
                         {sharedPreferences && (
                             <span className={cn(
-                                "text-xs px-2 py-1 rounded-full",
+                                "text-xs px-2 py-1 rounded-full whitespace-nowrap",
                                 isMatchingTeamView
                                     ? "bg-green-100 text-green-700"
                                     : "bg-gray-100 text-gray-600"
@@ -3660,7 +3743,7 @@ export function DataTable<T>({
                             <button
                                 type="button"
                                 onClick={handleLoadTeamView}
-                                className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                                className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors whitespace-nowrap"
                             >
                                 Load Team View
                             </button>
@@ -3670,13 +3753,15 @@ export function DataTable<T>({
                         <button
                             type="button"
                             onClick={handleSaveForEveryone}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors whitespace-nowrap"
                         >
                             Save for Team
                         </button>
                     </div>
                 )}
             </div>
+                {/* Table View */}
+                {viewMode === 'table' && (
                 <table
                     className="data-grid-table"
                     style={{ width: totalWidth, tableLayout: 'fixed' }}
@@ -3702,6 +3787,33 @@ export function DataTable<T>({
                     <thead className="sticky top-0 z-10 bg-white">
                         <tr>
                             {sortable && <th className="data-grid-th w-10"></th>}
+                            {selectable && (
+                                <th className="data-grid-th w-10 px-2">
+                                    <div className="flex items-center justify-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds ? selectedIds.size > 0 && selectedIds.size === data.length : false}
+                                            ref={(el) => {
+                                                if (el && selectedIds) {
+                                                    el.indeterminate = selectedIds.size > 0 && selectedIds.size < data.length;
+                                                }
+                                            }}
+                                            onChange={(e) => {
+                                                if (!onSelectionChange) return;
+                                                if (e.target.checked) {
+                                                    // Select all
+                                                    const allIds = new Set(data.map(getRowId));
+                                                    onSelectionChange(allIds);
+                                                } else {
+                                                    // Deselect all
+                                                    onSelectionChange(new Set());
+                                                }
+                                            }}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                    </div>
+                                </th>
+                            )}
                             {columnsWithActions.map((item, index) => {
                                 if (item.type === 'actions') {
                                     // Render Actions column
@@ -3912,6 +4024,7 @@ export function DataTable<T>({
                             Array.from({ length: 5 }).map((_, i) => (
                                 <tr key={i} className="animate-pulse">
                                     {sortable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-6 mx-2"></div></td>}
+                                    {selectable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-4 mx-2"></div></td>}
                                     {columns.map((col) => (
                                         <td key={col.key} className="data-grid-td">
                                             <div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div>
@@ -3923,7 +4036,7 @@ export function DataTable<T>({
                         ) : data.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0)}
+                                    colSpan={columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0)}
                                     className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs"
                                 >
                                     {emptyMessage}
@@ -3932,7 +4045,7 @@ export function DataTable<T>({
                         ) : groupedData ? (
                             // Recursive Grouped Rendering
                             (() => {
-                                const colSpan = columns.length + (sortable ? 1 : 0) + (showRowActions ? 1 : 0);
+                                const colSpan = columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0);
 
                                 const renderGroupNodes = (nodes: any[]) => {
                                     return nodes.map((node: any) => {
@@ -3977,6 +4090,19 @@ export function DataTable<T>({
                                                                 {...createRowDragHandlers(getRowId(row))}
                                                                 isDragging={draggingRowId === getRowId(row)}
                                                                 isDragOver={dragOverRowId === getRowId(row)}
+                                                                selectable={selectable}
+                                                                isSelected={selectedIds?.has(getRowId(row))}
+                                                                onToggleSelect={() => {
+                                                                    if (!onSelectionChange || !selectedIds) return;
+                                                                    const id = getRowId(row);
+                                                                    const newSet = new Set(selectedIds);
+                                                                    if (newSet.has(id)) {
+                                                                        newSet.delete(id);
+                                                                    } else {
+                                                                        newSet.add(id);
+                                                                    }
+                                                                    onSelectionChange(newSet);
+                                                                }}
                                                             />
                                                         ))
                                                 )}
@@ -4013,6 +4139,19 @@ export function DataTable<T>({
                                     {...createRowDragHandlers(getRowId(row))}
                                     isDragging={draggingRowId === getRowId(row)}
                                     isDragOver={dragOverRowId === getRowId(row)}
+                                    selectable={selectable}
+                                    isSelected={selectedIds?.has(getRowId(row))}
+                                    onToggleSelect={() => {
+                                        if (!onSelectionChange || !selectedIds) return;
+                                        const id = getRowId(row);
+                                        const newSet = new Set(selectedIds);
+                                        if (newSet.has(id)) {
+                                            newSet.delete(id);
+                                        } else {
+                                            newSet.add(id);
+                                        }
+                                        onSelectionChange(newSet);
+                                    }}
                                 />
                             ))
                         )}
@@ -4024,6 +4163,7 @@ export function DataTable<T>({
                                 className="group cursor-pointer hover:bg-blue-50 transition-colors border-b border-gray-100"
                             >
                                 {sortable && <td className="w-10" />}
+                                {selectable && <td className="w-10" />}
                                 <td
                                     colSpan={columns.length}
                                     className="px-4 py-2 text-xs text-gray-400 group-hover:text-blue-600"
@@ -4047,6 +4187,66 @@ export function DataTable<T>({
                         )}
                     </tbody>
                 </table>
+                )}
+
+                {/* Gallery/Card View */}
+                {viewMode === 'gallery' && renderCard && (
+                    <div className="p-4">
+                        {/* Select All Header */}
+                        {selectable && (
+                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                                <span className="text-sm text-gray-600">
+                                    {selectedIds ? selectedIds.size : 0} of {sortedData.length} selected
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        if (!onSelectionChange) return;
+                                        if (selectedIds && selectedIds.size === sortedData.length) {
+                                            onSelectionChange(new Set());
+                                        } else {
+                                            onSelectionChange(new Set(sortedData.map(getRowId)));
+                                        }
+                                    }}
+                                    className="text-sm text-blue-600 hover:text-blue-700"
+                                >
+                                    {selectedIds && selectedIds.size === sortedData.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Card Grid */}
+                        {sortedData.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500 text-sm">
+                                {emptyMessage}
+                            </div>
+                        ) : (
+                            <div
+                                className="grid gap-4"
+                                style={{ gridTemplateColumns: `repeat(${cardColumns}, minmax(0, 1fr))` }}
+                            >
+                                {sortedData.map((item) => {
+                                    const id = getRowId(item);
+                                    const isSelected = selectedIds ? selectedIds.has(id) : false;
+                                    const handleToggle = () => {
+                                        if (!onSelectionChange || !selectedIds) return;
+                                        const newSet = new Set(selectedIds);
+                                        if (newSet.has(id)) {
+                                            newSet.delete(id);
+                                        } else {
+                                            newSet.add(id);
+                                        }
+                                        onSelectionChange(newSet);
+                                    };
+                                    return (
+                                        <div key={id}>
+                                            {renderCard(item, isSelected, handleToggle)}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Column Context Menu */}
