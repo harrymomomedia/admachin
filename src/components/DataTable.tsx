@@ -23,6 +23,8 @@ import { cn } from '../utils/cn';
 import { UrlColumn } from './UrlColumn';
 import { PriorityColumn } from './PriorityColumn';
 import { PeopleColumn, type PeopleOption } from './PeopleColumn';
+import { CreativeCard } from './CardView';
+import { getCreativeUrl } from '../lib/supabase-service';
 
 // ============ Sortable Sort Rule Item ============
 function SortableSortRule({
@@ -218,6 +220,39 @@ export interface DataTableProps<T> {
     onViewModeChange?: (mode: 'table' | 'gallery') => void;
     renderCard?: (item: T, isSelected: boolean, onToggle: () => void) => React.ReactNode;
     cardColumns?: number;
+
+    // Gallery configuration - maps data columns to gallery card fields
+    // If provided, DataTable will use built-in CreativeCard for gallery view
+    galleryConfig?: {
+        /** Column key for media URL (image/video source) */
+        mediaUrlKey: string;
+        /** Column key for thumbnail URL (optional, falls back to mediaUrl) */
+        thumbnailKey?: string;
+        /** Column key for media type ('image' or 'video') */
+        mediaTypeKey?: string;
+        /** Column key for item name/title */
+        nameKey?: string;
+        /** Column key for project_id */
+        projectKey?: string;
+        /** Column key for subproject_id */
+        subprojectKey?: string;
+        /** Column key for user_id (created by) */
+        userKey?: string;
+        /** Column key for created_at/date */
+        dateKey?: string;
+        /** Column key for file size */
+        fileSizeKey?: string;
+        /** Show file info (name, size, dimensions) - default true */
+        showFileInfo?: boolean;
+    };
+    /** Lookup maps for resolving IDs to names in gallery view */
+    galleryLookups?: {
+        projects?: Map<string, string>;
+        subprojects?: Map<string, string>;
+        users?: Map<string, string>;
+        projectColors?: Record<string, string>;
+        subprojectColors?: Record<string, string>;
+    };
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -1340,13 +1375,17 @@ function SortableRow<T>({
                                                             ref={(el) => {
                                                                 (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
                                                                 if (el) {
-                                                                    el.style.height = 'auto';
-                                                                    const newHeight = Math.min(el.scrollHeight, maxH);
-                                                                    el.style.height = `${Math.max(34, newHeight)}px`;
-                                                                    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
-                                                                    // If showing above, adjust position after height is calculated
+                                                                    // Match cell height (34px) for single line, grow for multi-line
+                                                                    const cellHeight = 34;
+                                                                    const lineHeight = 20;
+                                                                    const verticalPadding = 14; // 7px top + 7px bottom to center text
+                                                                    const lineCount = (editingValue?.split('\n').length || 1);
+                                                                    const contentHeight = lineCount * lineHeight + verticalPadding;
+                                                                    const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
+                                                                    el.style.height = `${newHeight}px`;
+                                                                    el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                     if (showAbove) {
-                                                                        el.style.top = `${dropdownPosition.top - Math.max(34, newHeight)}px`;
+                                                                        el.style.top = `${dropdownPosition.top - newHeight}px`;
                                                                     }
                                                                 }
                                                             }}
@@ -1354,12 +1393,16 @@ function SortableRow<T>({
                                                             onChange={(e) => {
                                                                 onEditChange(e.target.value);
                                                                 const el = e.target;
-                                                                el.style.height = 'auto';
-                                                                const newHeight = Math.min(el.scrollHeight, maxH);
-                                                                el.style.height = `${Math.max(34, newHeight)}px`;
-                                                                el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+                                                                const cellHeight = 34;
+                                                                const lineHeight = 20;
+                                                                const verticalPadding = 14;
+                                                                const lineCount = (e.target.value?.split('\n').length || 1);
+                                                                const contentHeight = lineCount * lineHeight + verticalPadding;
+                                                                const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
+                                                                el.style.height = `${newHeight}px`;
+                                                                el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                 if (showAbove) {
-                                                                    el.style.top = `${dropdownPosition.top - Math.max(34, newHeight)}px`;
+                                                                    el.style.top = `${dropdownPosition.top - newHeight}px`;
                                                                 }
                                                             }}
                                                             onKeyDown={(e) => {
@@ -1373,7 +1416,9 @@ function SortableRow<T>({
                                                                 bottom: showAbove ? `${window.innerHeight - dropdownPosition.top}px` : undefined,
                                                                 left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
                                                                 width: dropdownPosition.width,
-                                                                padding: '8px 12px',
+                                                                padding: '7px 8px',
+                                                                lineHeight: '20px',
+                                                                boxSizing: 'border-box',
                                                             }}
                                                             placeholder="Enter text..."
                                                             autoFocus
@@ -1763,7 +1808,10 @@ export function DataTable<T>({
     viewMode: externalViewMode,
     onViewModeChange,
     renderCard,
-    cardColumns = 4
+    cardColumns = 4,
+    // Gallery configuration for native media preview
+    galleryConfig,
+    galleryLookups
 }: DataTableProps<T>) {
     // Initialize wrap rules from preferences
     const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
@@ -4190,7 +4238,7 @@ export function DataTable<T>({
                 )}
 
                 {/* Gallery/Card View */}
-                {viewMode === 'gallery' && renderCard && (
+                {viewMode === 'gallery' && (renderCard || galleryConfig) && (
                     <div className="p-4">
                         {/* Select All Header */}
                         {selectable && (
@@ -4224,7 +4272,7 @@ export function DataTable<T>({
                                 className="grid gap-4"
                                 style={{ gridTemplateColumns: `repeat(${cardColumns}, minmax(0, 1fr))` }}
                             >
-                                {sortedData.map((item) => {
+                                {sortedData.map((item, index) => {
                                     const id = getRowId(item);
                                     const isSelected = selectedIds ? selectedIds.has(id) : false;
                                     const handleToggle = () => {
@@ -4237,11 +4285,76 @@ export function DataTable<T>({
                                         }
                                         onSelectionChange(newSet);
                                     };
-                                    return (
-                                        <div key={id}>
-                                            {renderCard(item, isSelected, handleToggle)}
-                                        </div>
-                                    );
+
+                                    // Use custom renderCard if provided, otherwise use built-in CreativeCard
+                                    if (renderCard) {
+                                        return (
+                                            <div key={id}>
+                                                {renderCard(item, isSelected, handleToggle)}
+                                            </div>
+                                        );
+                                    }
+
+                                    // Default gallery rendering using CreativeCard when galleryConfig is provided
+                                    if (galleryConfig) {
+                                        // Extract values from item using galleryConfig keys
+                                        const itemAny = item as Record<string, unknown>;
+                                        const mediaUrl = galleryConfig.mediaUrlKey ? itemAny[galleryConfig.mediaUrlKey] as string | null : null;
+                                        const thumbnailUrl = galleryConfig.thumbnailKey ? itemAny[galleryConfig.thumbnailKey] as string | null : null;
+                                        const mediaType = galleryConfig.mediaTypeKey ? itemAny[galleryConfig.mediaTypeKey] as string | null : null;
+                                        const name = galleryConfig.nameKey ? itemAny[galleryConfig.nameKey] as string | null : null;
+                                        const projectId = galleryConfig.projectKey ? itemAny[galleryConfig.projectKey] as string | null : null;
+                                        const subprojectId = galleryConfig.subprojectKey ? itemAny[galleryConfig.subprojectKey] as string | null : null;
+                                        const userId = galleryConfig.userKey ? itemAny[galleryConfig.userKey] as string | null : null;
+                                        const createdAt = galleryConfig.dateKey ? itemAny[galleryConfig.dateKey] as string | null : null;
+                                        const fileSize = galleryConfig.fileSizeKey ? itemAny[galleryConfig.fileSizeKey] as number | null : null;
+
+                                        // Get dimensions if available (from dimensions field or storage_path)
+                                        const dimensions = itemAny.dimensions as { width?: number; height?: number; thumbnail?: string } | null;
+                                        const storagePath = itemAny.storage_path as string | null;
+
+                                        // Build the file_url - use storage_path if mediaUrl is a path, not a full URL
+                                        const fileUrl = mediaUrl ? (
+                                            mediaUrl.startsWith('http') ? mediaUrl : getCreativeUrl(mediaUrl)
+                                        ) : (storagePath ? getCreativeUrl(storagePath) : null);
+
+                                        // Build thumbnail_url
+                                        const thumbUrl = thumbnailUrl ? (
+                                            thumbnailUrl.startsWith('http') ? thumbnailUrl : getCreativeUrl(thumbnailUrl)
+                                        ) : (dimensions?.thumbnail ? getCreativeUrl(dimensions.thumbnail) : fileUrl);
+
+                                        return (
+                                            <div key={id}>
+                                                <CreativeCard
+                                                    creative={{
+                                                        id,
+                                                        name,
+                                                        file_url: fileUrl,
+                                                        thumbnail_url: thumbUrl,
+                                                        type: mediaType as 'image' | 'video' | null,
+                                                        dimensions: dimensions ? { width: dimensions.width, height: dimensions.height } : null,
+                                                        file_size: fileSize,
+                                                        project_id: projectId,
+                                                        subproject_id: subprojectId,
+                                                        user_id: userId,
+                                                        created_at: createdAt,
+                                                    }}
+                                                    isSelected={isSelected}
+                                                    onToggle={handleToggle}
+                                                    selectable={selectable}
+                                                    rowNumber={index + 1}
+                                                    showFileInfo={galleryConfig.showFileInfo !== false}
+                                                    projectName={projectId && galleryLookups?.projects?.get(projectId)}
+                                                    subprojectName={subprojectId && galleryLookups?.subprojects?.get(subprojectId)}
+                                                    userName={userId && galleryLookups?.users?.get(userId)}
+                                                    projectColor={projectId ? (galleryLookups?.projectColors?.[projectId] ?? undefined) : undefined}
+                                                    subprojectColor={subprojectId ? (galleryLookups?.subprojectColors?.[subprojectId] ?? undefined) : undefined}
+                                                />
+                                            </div>
+                                        );
+                                    }
+
+                                    return null;
                                 })}
                             </div>
                         )}

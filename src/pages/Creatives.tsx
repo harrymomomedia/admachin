@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { X, Film, Check, Play, Image as ImageIcon } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { X } from "lucide-react";
 import { CreativeUploader } from "../components/CreativeUploader";
 import { DataTable } from "../components/DataTable";
 import type { ColumnDef } from "../components/DataTable";
@@ -126,7 +126,6 @@ export function Creatives() {
     const [creatives, setCreatives] = useState<Creative[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showUploader, setShowUploader] = useState(false);
-    const [previewItem, setPreviewItem] = useState<Creative | null>(null);
 
     // Projects, subprojects, and users
     const [projects, setProjects] = useState<Project[]>([]);
@@ -136,6 +135,51 @@ export function Creatives() {
     // View preferences
     const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
     const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
+
+    // Color palette for dynamic colorMaps
+    const colorPalette = [
+        'bg-pink-500 text-white',
+        'bg-indigo-500 text-white',
+        'bg-cyan-500 text-white',
+        'bg-amber-500 text-white',
+        'bg-rose-500 text-white',
+        'bg-violet-500 text-white',
+        'bg-teal-500 text-white',
+        'bg-orange-500 text-white',
+        'bg-lime-500 text-white',
+        'bg-fuchsia-500 text-white',
+    ];
+
+    // Generate colorMaps for projects and subprojects
+    const projectColorMap = useMemo(() =>
+        projects.reduce((map, p, i) => {
+            map[p.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [projects]
+    );
+
+    const subprojectColorMap = useMemo(() =>
+        subprojects.reduce((map, s, i) => {
+            map[s.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [subprojects]
+    );
+
+    // Lookup maps for gallery card
+    const projectNameMap = useMemo(() =>
+        new Map(projects.map(p => [p.id, p.name])),
+        [projects]
+    );
+    const subprojectNameMap = useMemo(() =>
+        new Map(subprojects.map(s => [s.id, s.name])),
+        [subprojects]
+    );
+    const userNameMap = useMemo(() =>
+        new Map(users.map(u => [u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim()])),
+        [users]
+    );
 
     // Load data and preferences
     useEffect(() => {
@@ -354,31 +398,6 @@ export function Creatives() {
         }
     };
 
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMaps for projects and subprojects
-    const projectColorMap = projects.reduce((map, project, index) => {
-        map[project.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
-
-    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
-        map[subproject.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
-
     // Column definitions
     const columns: ColumnDef<Creative>[] = [
         {
@@ -387,21 +406,18 @@ export function Creatives() {
             width: 80,
             minWidth: 60,
             editable: false,
-            render: (_, row) => (
-                <div
-                    className="h-12 w-12 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => setPreviewItem(row)}
-                >
-                    {row.type === "video" && row.preview === row.url ? (
-                        <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                            <Film className="h-5 w-5 text-gray-400" />
-                        </div>
-                    ) : (
+            render: (_: unknown, row: Creative) => (
+                <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted">
+                    {row.preview ? (
                         <img
                             src={row.preview}
                             alt={row.name}
                             className="w-full h-full object-cover"
                         />
+                    ) : (
+                        <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                            No preview
+                        </div>
                     )}
                 </div>
             ),
@@ -538,125 +554,27 @@ export function Creatives() {
                 onPreferencesChange={handlePreferencesChange}
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
-                // Gallery view support
+                // Gallery view support - using native DataTable gallery feature
                 cardColumns={4}
-                renderCard={(creative, isSelected, onToggle) => {
-                    const project = projects.find(p => p.id === creative.project_id);
-                    const subproject = subprojects.find(s => s.id === creative.subproject_id);
-                    const owner = users.find(u => u.id === creative.user_id);
-                    const isVideo = creative.type === 'video';
-
-                    return (
-                        <div
-                            onClick={onToggle}
-                            className={`
-                                relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all
-                                ${isSelected
-                                    ? 'border-blue-500 ring-2 ring-blue-500/20'
-                                    : 'border-gray-200 hover:border-gray-300'
-                                }
-                            `}
-                        >
-                            {/* Selection checkbox */}
-                            <div className="absolute top-2 left-2 z-10">
-                                <div
-                                    className={`
-                                        w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-                                        ${isSelected
-                                            ? 'bg-blue-500 border-blue-500 text-white'
-                                            : 'bg-white/80 border-gray-300 backdrop-blur-sm'
-                                        }
-                                    `}
-                                >
-                                    {isSelected && <Check className="w-3 h-3" />}
-                                </div>
-                            </div>
-
-                            {/* Media type badge */}
-                            {isVideo && (
-                                <div className="absolute top-2 right-2 z-10 bg-purple-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <Play className="w-3 h-3" />
-                                    Video
-                                </div>
-                            )}
-
-                            {/* Preview Image */}
-                            <div
-                                className="aspect-square bg-gray-100 relative"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPreviewItem(creative);
-                                }}
-                            >
-                                {creative.preview && creative.preview !== creative.url ? (
-                                    <img
-                                        src={creative.preview}
-                                        alt={creative.name}
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : isVideo ? (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                        <Film className="w-12 h-12" />
-                                    </div>
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                        <ImageIcon className="w-12 h-12" />
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Info */}
-                            <div className="p-3 bg-white">
-                                <div className="font-medium text-sm text-gray-900 truncate">
-                                    {creative.name}
-                                </div>
-                                <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                                    {creative.dimensions && (
-                                        <span>{creative.dimensions}</span>
-                                    )}
-                                    {creative.sizeFormatted && (
-                                        <>
-                                            {creative.dimensions && <span>·</span>}
-                                            <span>{creative.sizeFormatted}</span>
-                                        </>
-                                    )}
-                                </div>
-                                {(project || creative.uploadedAt) && (
-                                    <div className="mt-2 flex items-center justify-between text-xs">
-                                        {project && (
-                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded truncate max-w-[120px]">
-                                                {project.name}
-                                            </span>
-                                        )}
-                                        {creative.uploadedAt && (
-                                            <span className="text-gray-400">
-                                                {new Date(creative.uploadedAt).toLocaleDateString('en-US', {
-                                                    month: 'short',
-                                                    day: 'numeric'
-                                                })}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                                {owner && (
-                                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                                        {owner.avatar_url ? (
-                                            <img
-                                                src={owner.avatar_url}
-                                                alt=""
-                                                className="w-4 h-4 rounded-full"
-                                            />
-                                        ) : (
-                                            <div className="w-4 h-4 rounded-full bg-gray-300" />
-                                        )}
-                                        <span className="truncate">
-                                            {owner.first_name} {owner.last_name}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    );
+                selectable={true}
+                galleryConfig={{
+                    mediaUrlKey: 'url',
+                    thumbnailKey: 'preview',
+                    mediaTypeKey: 'type',
+                    nameKey: 'name',
+                    projectKey: 'project_id',
+                    subprojectKey: 'subproject_id',
+                    userKey: 'user_id',
+                    dateKey: 'uploadedAt',
+                    fileSizeKey: 'size',
+                    showFileInfo: true,
+                }}
+                galleryLookups={{
+                    projects: projectNameMap,
+                    subprojects: subprojectNameMap,
+                    users: userNameMap,
+                    projectColors: projectColorMap,
+                    subprojectColors: subprojectColorMap,
                 }}
             />
 
@@ -689,56 +607,6 @@ export function Creatives() {
                 </div>
             )}
 
-            {/* Preview Modal */}
-            {previewItem && (
-                <div
-                    className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-                    onClick={() => setPreviewItem(null)}
-                >
-                    <div
-                        className="relative max-w-4xl w-full max-h-[90vh]"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <button
-                            onClick={() => setPreviewItem(null)}
-                            className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
-                        >
-                            <X className="h-6 w-6" />
-                        </button>
-                        <div className="bg-card rounded-xl overflow-hidden border border-border">
-                            {previewItem.type === "image" ? (
-                                <img
-                                    src={previewItem.preview}
-                                    alt={previewItem.name}
-                                    className="w-full max-h-[70vh] object-contain"
-                                />
-                            ) : (
-                                <div className="aspect-video bg-black flex items-center justify-center">
-                                    <video
-                                        src={previewItem.url}
-                                        poster={previewItem.preview}
-                                        className="w-full h-full max-h-[70vh]"
-                                        controls
-                                        playsInline
-                                    />
-                                </div>
-                            )}
-                            <div className="p-4 border-t border-border">
-                                <h3 className="font-medium truncate">{previewItem.name}</h3>
-                                <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                                    <span>{previewItem.sizeFormatted}</span>
-                                    {previewItem.dimensions && (
-                                        <span>{previewItem.dimensions}</span>
-                                    )}
-                                    {previewItem.duration && (
-                                        <span>{Math.floor(previewItem.duration / 60)}:{(previewItem.duration % 60).toString().padStart(2, "0")}</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </DataTablePageLayout>
     );
 }

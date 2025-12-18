@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Layers } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
     getAds,
@@ -38,22 +38,7 @@ export function Ads() {
     const [creatives, setCreatives] = useState<Creative[]>([]);
     const [adCopies, setAdCopies] = useState<AdCopy[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-    // Form State
-    const [formData, setFormData] = useState({
-        creative_id: '',
-        traffic: '',
-        ad_type: '',
-        project_id: '',
-        subproject_id: '',
-        headline_id: '',
-        primary_id: '',
-        description_id: '',
-    });
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // View preferences state
     const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
@@ -277,43 +262,6 @@ export function Ads() {
         }
     };
 
-    // Create Handler
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            const currentUser = await getCurrentUser();
-            await createAd({
-                creative_id: formData.creative_id || null,
-                traffic: formData.traffic || null,
-                ad_type: formData.ad_type || null,
-                project_id: formData.project_id || null,
-                subproject_id: formData.subproject_id || null,
-                user_id: currentUser?.id || null,
-                headline_id: formData.headline_id || null,
-                primary_id: formData.primary_id || null,
-                description_id: formData.description_id || null,
-            });
-            await loadData();
-            setIsCreateModalOpen(false);
-            setFormData({
-                creative_id: '',
-                traffic: '',
-                ad_type: '',
-                project_id: '',
-                subproject_id: '',
-                headline_id: '',
-                primary_id: '',
-                description_id: '',
-            });
-        } catch (error) {
-            console.error('Failed to create ad:', error);
-            alert('Failed to create ad. Please try again.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     // Color palette for dynamic colorMaps
     const colorPalette = [
         'bg-pink-500 text-white',
@@ -355,7 +303,7 @@ export function Ads() {
 
     // Creative options
     const creativeOptions = creatives.map(c => ({
-        label: c.name || c.file_name || '(unnamed)',
+        label: c.name || '(unnamed)',
         value: c.id
     }));
 
@@ -492,8 +440,6 @@ export function Ads() {
     return (
         <DataTablePageLayout
             title="Ads"
-            onNewClick={() => setIsCreateModalOpen(true)}
-            newButtonLabel="New"
             headerActions={
                 <button
                     onClick={() => navigate('/ads/create')}
@@ -527,164 +473,6 @@ export function Ads() {
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
             />
-
-            {/* Create Modal */}
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-lg font-bold text-gray-900">New Ad</h2>
-                            <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleCreate} className="space-y-4">
-                            <div>
-                                <label htmlFor="ad-creative" className="block text-sm font-medium text-gray-700 mb-1">Creative</label>
-                                <select
-                                    id="ad-creative"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.creative_id}
-                                    onChange={e => setFormData({ ...formData, creative_id: e.target.value })}
-                                >
-                                    <option value="">Select Creative</option>
-                                    {creatives.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name || c.file_name || '(unnamed)'}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="ad-traffic" className="block text-sm font-medium text-gray-700 mb-1">Traffic</label>
-                                    <select
-                                        id="ad-traffic"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.traffic}
-                                        onChange={e => setFormData({ ...formData, traffic: e.target.value })}
-                                    >
-                                        <option value="">None</option>
-                                        <option value="FB">Facebook</option>
-                                        <option value="IG">Instagram</option>
-                                        <option value="All">All</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="ad-type" className="block text-sm font-medium text-gray-700 mb-1">Ad Type</label>
-                                    <select
-                                        id="ad-type"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.ad_type}
-                                        onChange={e => setFormData({ ...formData, ad_type: e.target.value })}
-                                    >
-                                        <option value="">None</option>
-                                        <option value="Image">Image</option>
-                                        <option value="Video">Video</option>
-                                        <option value="Carousel">Carousel</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="ad-project" className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-                                    <select
-                                        id="ad-project"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.project_id}
-                                        onChange={e => setFormData({ ...formData, project_id: e.target.value, subproject_id: '' })}
-                                    >
-                                        <option value="">Select Project</option>
-                                        {projects.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="ad-subproject" className="block text-sm font-medium text-gray-700 mb-1">Subproject</label>
-                                    <select
-                                        id="ad-subproject"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.subproject_id}
-                                        onChange={e => setFormData({ ...formData, subproject_id: e.target.value })}
-                                    >
-                                        <option value="">Select Subproject</option>
-                                        {subprojects
-                                            .filter(s => !formData.project_id || s.project_id === formData.project_id)
-                                            .map(s => (
-                                                <option key={s.id} value={s.id}>{s.name}</option>
-                                            ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label htmlFor="ad-headline" className="block text-sm font-medium text-gray-700 mb-1">Headline</label>
-                                <select
-                                    id="ad-headline"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.headline_id}
-                                    onChange={e => setFormData({ ...formData, headline_id: e.target.value })}
-                                >
-                                    <option value="">Select Headline</option>
-                                    {adCopies.filter(c => c.type === 'headline').map(c => (
-                                        <option key={c.id} value={c.id}>{c.text?.substring(0, 60) || '(empty)'}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label htmlFor="ad-primary" className="block text-sm font-medium text-gray-700 mb-1">Primary Text</label>
-                                <select
-                                    id="ad-primary"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.primary_id}
-                                    onChange={e => setFormData({ ...formData, primary_id: e.target.value })}
-                                >
-                                    <option value="">Select Primary Text</option>
-                                    {adCopies.filter(c => c.type === 'primary_text').map(c => (
-                                        <option key={c.id} value={c.id}>{c.text?.substring(0, 60) || '(empty)'}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label htmlFor="ad-description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                                <select
-                                    id="ad-description"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.description_id}
-                                    onChange={e => setFormData({ ...formData, description_id: e.target.value })}
-                                >
-                                    <option value="">Select Description</option>
-                                    {adCopies.filter(c => c.type === 'description').map(c => (
-                                        <option key={c.id} value={c.id}>{c.text?.substring(0, 60) || '(empty)'}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="pt-4 flex justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsCreateModalOpen(false)}
-                                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                                >
-                                    {isSubmitting ? 'Creating...' : 'Create Ad'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
         </DataTablePageLayout>
     );
 }

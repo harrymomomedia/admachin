@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronRight, Image, Type, FileText, AlignLeft } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, Image, Type, FileText, AlignLeft, Filter, X, Search } from 'lucide-react';
 import { DataTable, type ColumnDef } from '../components/DataTable';
-import { CreativeCard } from '../components/CardView';
 import { PreviewGrid } from '../components/ad-creator/PreviewGrid';
 import {
     getProjects,
@@ -11,48 +11,42 @@ import {
     getAdCopies,
     getUsers,
     createAds,
+    getUserViewPreferences,
+    saveUserViewPreferences,
+    getSharedViewPreferences,
+    getCreativeUrl,
     type Project,
     type Subproject,
     type Creative,
     type AdCopy,
     type User,
+    type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { generateCombinations, type AdCombination } from '../types/ad-creator';
 
-interface CollapsibleSectionProps {
+interface SelectionSectionProps {
     title: string;
     icon: React.ReactNode;
     selectedCount: number;
     totalCount: number;
-    defaultExpanded?: boolean;
     headerRight?: React.ReactNode;
     children: React.ReactNode;
 }
 
-function CollapsibleSection({
+function SelectionSection({
     title,
     icon,
     selectedCount,
     totalCount,
-    defaultExpanded = true,
     headerRight,
     children,
-}: CollapsibleSectionProps) {
-    const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-
+}: SelectionSectionProps) {
     return (
-        <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="flex items-center gap-3 hover:text-gray-900 transition-colors"
-                >
-                    {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-gray-500" />
-                    ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-500" />
-                    )}
+        <div className="border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col max-h-[70vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                <div className="flex items-center gap-3">
                     <span className="text-gray-600">{icon}</span>
                     <span className="font-medium text-gray-900">{title}</span>
                     <span className="text-sm text-gray-500">
@@ -63,17 +57,169 @@ function CollapsibleSection({
                             {selectedCount} selected
                         </span>
                     )}
-                </button>
+                </div>
                 {headerRight && (
                     <div onClick={(e) => e.stopPropagation()}>
                         {headerRight}
                     </div>
                 )}
             </div>
-            {isExpanded && (
-                <div className="border-t border-gray-200">
-                    {children}
-                </div>
+            {/* Content - scrollable when exceeds max-height */}
+            <div className="overflow-auto">
+                {children}
+            </div>
+        </div>
+    );
+}
+
+// Color palette for dynamic colorMaps (same as Ads.tsx)
+const colorPalette = [
+    'bg-pink-500 text-white',
+    'bg-indigo-500 text-white',
+    'bg-cyan-500 text-white',
+    'bg-amber-500 text-white',
+    'bg-rose-500 text-white',
+    'bg-violet-500 text-white',
+    'bg-teal-500 text-white',
+    'bg-orange-500 text-white',
+    'bg-lime-500 text-white',
+    'bg-fuchsia-500 text-white',
+];
+
+interface FilterPillProps {
+    label: string;
+    options: { label: string; value: string; color?: string }[];
+    value: string | null;
+    onSelect: (value: string | null) => void;
+    disabled?: boolean;
+}
+
+function FilterPill({ label, options, value, onSelect, disabled }: FilterPillProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        if (!isOpen) return;
+
+        function handleClickOutside(event: MouseEvent) {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node) &&
+                buttonRef.current &&
+                !buttonRef.current.contains(event.target as Node)
+            ) {
+                setIsOpen(false);
+                setSearch('');
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    const filteredOptions = options.filter(opt =>
+        opt.label.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const selectedOption = options.find(o => o.value === value);
+
+    return (
+        <div className="relative flex-shrink-0">
+            <button
+                ref={buttonRef}
+                onClick={() => !disabled && setIsOpen(!isOpen)}
+                disabled={disabled}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap border ${
+                    disabled
+                        ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                        : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-200'
+                }`}
+            >
+                {value && selectedOption ? (
+                    <>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                            selectedOption.color || 'bg-gray-100 text-gray-700'
+                        }`}>
+                            {selectedOption.label}
+                        </span>
+                        <span
+                            className="p-0.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelect(null);
+                            }}
+                        >
+                            <X className="w-3 h-3" />
+                        </span>
+                    </>
+                ) : (
+                    <>
+                        <Filter className="w-3.5 h-3.5" />
+                        {label}
+                    </>
+                )}
+            </button>
+
+            {isOpen && createPortal(
+                <>
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-[9998]" onClick={() => { setIsOpen(false); setSearch(''); }} />
+
+                    {/* Dropdown */}
+                    <div
+                        ref={dropdownRef}
+                        className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[200px] overflow-hidden"
+                        style={{
+                            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
+                            left: buttonRef.current ? buttonRef.current.getBoundingClientRect().left : 0,
+                        }}
+                    >
+                        {/* Search Input */}
+                        <div className="p-2 border-b border-gray-100">
+                            <div className="relative">
+                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search..."
+                                    className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        {/* Options */}
+                        <div className="max-h-[200px] overflow-y-auto py-1">
+                            {filteredOptions.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-gray-500">No options found</div>
+                            ) : (
+                                filteredOptions.map((opt) => (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => {
+                                            onSelect(opt.value);
+                                            setIsOpen(false);
+                                            setSearch('');
+                                        }}
+                                        className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 flex items-center gap-2 ${
+                                            opt.value === value ? 'bg-blue-50' : ''
+                                        }`}
+                                    >
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                            opt.color || 'bg-gray-100 text-gray-700'
+                                        }`}>
+                                            {opt.label}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </>,
+                document.body
             )}
         </div>
     );
@@ -113,6 +259,49 @@ export function AdCreator() {
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
 
+    // View preferences state for each DataTable
+    const [creativesPrefs, setCreativesPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [headlinesPrefs, setHeadlinesPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [primaryPrefs, setPrimaryPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [descriptionsPrefs, setDescriptionsPrefs] = useState<ViewPreferencesConfig | null>(null);
+
+    // Handle preferences change for each DataTable
+    const handleCreativesPrefsChange = async (prefs: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad-creator-creatives', prefs);
+        } catch (error) {
+            console.error('Failed to save creatives preferences:', error);
+        }
+    };
+
+    const handleHeadlinesPrefsChange = async (prefs: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad-creator-headlines', prefs);
+        } catch (error) {
+            console.error('Failed to save headlines preferences:', error);
+        }
+    };
+
+    const handlePrimaryPrefsChange = async (prefs: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad-creator-primary', prefs);
+        } catch (error) {
+            console.error('Failed to save primary preferences:', error);
+        }
+    };
+
+    const handleDescriptionsPrefsChange = async (prefs: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ad-creator-descriptions', prefs);
+        } catch (error) {
+            console.error('Failed to save descriptions preferences:', error);
+        }
+    };
+
     // Load initial data
     useEffect(() => {
         async function loadData() {
@@ -133,8 +322,22 @@ export function AdCreator() {
                 setCreatives(creativesData);
                 setAdCopies(adCopiesData);
                 setUsers(usersData);
+
                 if (user?.id) {
                     setCurrentUserId(user.id);
+
+                    // Load view preferences for each DataTable
+                    const [creativesP, headlinesP, primaryP, descriptionsP] = await Promise.all([
+                        getUserViewPreferences(user.id, 'ad-creator-creatives'),
+                        getUserViewPreferences(user.id, 'ad-creator-headlines'),
+                        getUserViewPreferences(user.id, 'ad-creator-primary'),
+                        getUserViewPreferences(user.id, 'ad-creator-descriptions'),
+                    ]);
+
+                    if (creativesP) setCreativesPrefs(creativesP);
+                    if (headlinesP) setHeadlinesPrefs(headlinesP);
+                    if (primaryP) setPrimaryPrefs(primaryP);
+                    if (descriptionsP) setDescriptionsPrefs(descriptionsP);
                 }
             } catch (error) {
                 console.error('Failed to load data:', error);
@@ -161,10 +364,10 @@ export function AdCreator() {
     const filteredCreatives = useMemo(() => {
         let filtered = creatives;
         if (projectId) {
-            filtered = filtered.filter(c => c.project_id === projectId || !c.project_id);
+            filtered = filtered.filter(c => c.project_id === projectId);
         }
         if (subprojectId) {
-            filtered = filtered.filter(c => c.subproject_id === subprojectId || !c.subproject_id);
+            filtered = filtered.filter(c => c.subproject_id === subprojectId);
         }
         if (createdById) {
             filtered = filtered.filter(c => c.user_id === createdById);
@@ -175,10 +378,10 @@ export function AdCreator() {
     const filteredAdCopies = useMemo(() => {
         let filtered = adCopies;
         if (projectId) {
-            filtered = filtered.filter(c => c.project_id === projectId || !c.project_id);
+            filtered = filtered.filter(c => c.project_id === projectId);
         }
         if (subprojectId) {
-            filtered = filtered.filter(c => c.subproject_id === subprojectId || !c.subproject_id);
+            filtered = filtered.filter(c => c.subproject_id === subprojectId);
         }
         if (createdById) {
             filtered = filtered.filter(c => c.user_id === createdById);
@@ -228,6 +431,20 @@ export function AdCreator() {
     const creativeMap = useMemo(() => new Map(creatives.map(c => [c.id, c])), [creatives]);
     const adCopyMap = useMemo(() => new Map(adCopies.map(c => [c.id, c])), [adCopies]);
 
+    // Lookup maps for names
+    const projectNameMap = useMemo(() =>
+        new Map(projects.map(p => [p.id, p.name])),
+        [projects]
+    );
+    const subprojectNameMap = useMemo(() =>
+        new Map(allSubprojects.map(s => [s.id, s.name])),
+        [allSubprojects]
+    );
+    const userNameMap = useMemo(() =>
+        new Map(users.map(u => [u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim()])),
+        [users]
+    );
+
     // Handle save
     const handleSave = async () => {
         const selectedCombosList = combinations.filter(c => selectedCombinations.has(c.id));
@@ -261,8 +478,58 @@ export function AdCreator() {
         [allSubprojects]
     );
 
+    // Generate colorMaps for projects and subprojects (consistent with filter pills)
+    const projectColorMap = useMemo(() =>
+        projects.reduce((map, p, i) => {
+            map[p.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [projects]
+    );
+
+    const subprojectColorMap = useMemo(() =>
+        allSubprojects.reduce((map, s, i) => {
+            map[s.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [allSubprojects]
+    );
+
     // Column definitions for Creatives DataTable
     const creativeColumns: ColumnDef<Creative>[] = [
+        {
+            key: 'row_number',
+            header: 'ID',
+            width: 50,
+            minWidth: 40,
+            editable: false,
+            type: 'id',
+        },
+        {
+            key: 'preview',
+            header: 'Preview',
+            width: 60,
+            minWidth: 50,
+            editable: false,
+            type: 'custom',
+            render: (_value: unknown, row: Creative) => {
+                const dims = row.dimensions as { thumbnail?: string } | null;
+                const thumbnailUrl = dims?.thumbnail ? getCreativeUrl(dims.thumbnail) : getCreativeUrl(row.storage_path);
+                return (
+                    <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
+                        {thumbnailUrl ? (
+                            <img
+                                src={thumbnailUrl}
+                                alt={row.name || 'Preview'}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <Image className="w-4 h-4 text-gray-400" />
+                        )}
+                    </div>
+                );
+            },
+        },
         {
             key: 'name',
             header: 'Name',
@@ -294,9 +561,10 @@ export function AdCreator() {
             minWidth: 100,
             editable: false,
             type: 'text',
-            getValue: (row) => {
-                if (row.width && row.height) {
-                    return `${row.width}×${row.height}`;
+            getValue: (row: Creative) => {
+                const dims = row.dimensions as { width?: number; height?: number } | null;
+                if (dims?.width && dims?.height) {
+                    return `${dims.width}×${dims.height}`;
                 }
                 return '-';
             },
@@ -309,6 +577,7 @@ export function AdCreator() {
             editable: false,
             type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
+            colorMap: projectColorMap,
         },
         {
             key: 'subproject_id',
@@ -318,6 +587,16 @@ export function AdCreator() {
             editable: false,
             type: 'select',
             options: subprojectOptions,
+            colorMap: subprojectColorMap,
+        },
+        {
+            key: 'user_id',
+            header: 'Created By',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'people',
+            users: users,
         },
         {
             key: 'created_at',
@@ -331,6 +610,14 @@ export function AdCreator() {
 
     // Column definitions for AdCopy DataTables
     const adCopyColumns: ColumnDef<AdCopy>[] = [
+        {
+            key: 'row_number',
+            header: 'ID',
+            width: 50,
+            minWidth: 40,
+            editable: false,
+            type: 'id',
+        },
         {
             key: 'text',
             header: 'Text',
@@ -347,6 +634,7 @@ export function AdCreator() {
             editable: false,
             type: 'select',
             options: projects.map(p => ({ label: p.name, value: p.id })),
+            colorMap: projectColorMap,
         },
         {
             key: 'subproject_id',
@@ -356,6 +644,16 @@ export function AdCreator() {
             editable: false,
             type: 'select',
             options: subprojectOptions,
+            colorMap: subprojectColorMap,
+        },
+        {
+            key: 'user_id',
+            header: 'Created By',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'people',
+            users: users,
         },
         {
             key: 'created_at',
@@ -402,147 +700,161 @@ export function AdCreator() {
             </div>
 
             {/* Filters */}
-            <div className="flex gap-4 px-6 py-4 bg-white border-b border-gray-200 flex-shrink-0">
-                <div className="w-52">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Project</label>
-                    <select
-                        value={projectId || ''}
-                        onChange={(e) => setProjectId(e.target.value || null)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    >
-                        <option value="">All Projects</option>
-                        {projects.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="w-52">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Subproject</label>
-                    <select
-                        value={subprojectId || ''}
-                        onChange={(e) => setSubprojectId(e.target.value || null)}
-                        disabled={!projectId}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                    >
-                        <option value="">All Subprojects</option>
-                        {subprojects.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="w-52">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Created By</label>
-                    <select
-                        value={createdById || ''}
-                        onChange={(e) => setCreatedById(e.target.value || null)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    >
-                        <option value="">All Users</option>
-                        {users.map((u) => (
-                            <option key={u.id} value={u.id}>
-                                {u.first_name} {u.last_name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+            <div className="flex items-center gap-2 px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
+                <FilterPill
+                    label="Project"
+                    options={projects.map((p) => ({
+                        label: p.name,
+                        value: p.id,
+                        color: projectColorMap[p.id]
+                    }))}
+                    value={projectId}
+                    onSelect={setProjectId}
+                />
+                <FilterPill
+                    label="Subproject"
+                    options={subprojects.map((s) => ({
+                        label: s.name,
+                        value: s.id,
+                        color: subprojectColorMap[s.id]
+                    }))}
+                    value={subprojectId}
+                    onSelect={setSubprojectId}
+                    disabled={!projectId}
+                />
+                <FilterPill
+                    label="Created By"
+                    options={users.map((u) => ({
+                        label: `${u.first_name} ${u.last_name}`,
+                        value: u.id
+                    }))}
+                    value={createdById}
+                    onSelect={setCreatedById}
+                />
             </div>
 
             {/* Main Content - Scrollable */}
             <div className="flex-1 overflow-auto px-6 py-6 space-y-4">
                 {/* Creatives Section */}
-                <CollapsibleSection
+                <SelectionSection
                     title="Creatives"
                     icon={<Image className="w-4 h-4" />}
                     selectedCount={selectedCreatives.size}
                     totalCount={filteredCreatives.length}
                 >
-                    <div className="h-[400px]">
-                        <DataTable
-                            columns={creativeColumns}
-                            data={filteredCreatives}
-                            getRowId={(row) => row.id}
-                            isLoading={false}
-                            emptyMessage="No creatives found"
-                            selectable={true}
-                            selectedIds={selectedCreatives}
-                            onSelectionChange={setSelectedCreatives}
-                            viewMode={creativesViewMode}
-                            onViewModeChange={setCreativesViewMode}
-                            cardColumns={5}
-                            renderCard={(creative, isSelected, onToggle) => (
-                                <CreativeCard
-                                    creative={creative}
-                                    isSelected={isSelected}
-                                    onToggle={onToggle}
-                                    selectable={true}
-                                />
-                            )}
-                        />
-                    </div>
-                </CollapsibleSection>
+                    <DataTable
+                        columns={creativeColumns}
+                        data={filteredCreatives}
+                        getRowId={(row) => row.id}
+                        isLoading={false}
+                        emptyMessage="No creatives found"
+                        selectable={true}
+                        selectedIds={selectedCreatives}
+                        onSelectionChange={setSelectedCreatives}
+                        viewMode={creativesViewMode}
+                        onViewModeChange={setCreativesViewMode}
+                        cardColumns={5}
+                        galleryConfig={{
+                            mediaUrlKey: 'storage_path',
+                            mediaTypeKey: 'type',
+                            nameKey: 'name',
+                            projectKey: 'project_id',
+                            subprojectKey: 'subproject_id',
+                            userKey: 'user_id',
+                            dateKey: 'created_at',
+                            fileSizeKey: 'file_size',
+                            showFileInfo: false,
+                        }}
+                        galleryLookups={{
+                            projects: projectNameMap,
+                            subprojects: subprojectNameMap,
+                            users: userNameMap,
+                            projectColors: projectColorMap,
+                            subprojectColors: subprojectColorMap,
+                        }}
+                        resizable={true}
+                        sortable={true}
+                        viewId="ad-creator-creatives"
+                        userId={currentUserId || undefined}
+                        initialPreferences={creativesPrefs || undefined}
+                        onPreferencesChange={handleCreativesPrefsChange}
+                    />
+                </SelectionSection>
 
                 {/* Headlines Section */}
-                <CollapsibleSection
+                <SelectionSection
                     title="Headlines"
                     icon={<Type className="w-4 h-4" />}
                     selectedCount={selectedHeadlines.size}
                     totalCount={headlines.length}
                 >
-                    <div className="h-[250px]">
-                        <DataTable
-                            columns={adCopyColumns}
-                            data={headlines}
-                            getRowId={(row) => row.id}
-                            isLoading={false}
-                            emptyMessage="No headlines found"
-                            selectable={true}
-                            selectedIds={selectedHeadlines}
-                            onSelectionChange={setSelectedHeadlines}
-                        />
-                    </div>
-                </CollapsibleSection>
+                    <DataTable
+                        columns={adCopyColumns}
+                        data={headlines}
+                        getRowId={(row) => row.id}
+                        isLoading={false}
+                        emptyMessage="No headlines found"
+                        selectable={true}
+                        selectedIds={selectedHeadlines}
+                        onSelectionChange={setSelectedHeadlines}
+                        resizable={true}
+                        sortable={true}
+                        viewId="ad-creator-headlines"
+                        userId={currentUserId || undefined}
+                        initialPreferences={headlinesPrefs || undefined}
+                        onPreferencesChange={handleHeadlinesPrefsChange}
+                    />
+                </SelectionSection>
 
                 {/* Primary Text Section */}
-                <CollapsibleSection
+                <SelectionSection
                     title="Primary Text"
                     icon={<FileText className="w-4 h-4" />}
                     selectedCount={selectedPrimary.size}
                     totalCount={primaryTexts.length}
                 >
-                    <div className="h-[250px]">
-                        <DataTable
-                            columns={adCopyColumns}
-                            data={primaryTexts}
-                            getRowId={(row) => row.id}
-                            isLoading={false}
-                            emptyMessage="No primary text found"
-                            selectable={true}
-                            selectedIds={selectedPrimary}
-                            onSelectionChange={setSelectedPrimary}
-                        />
-                    </div>
-                </CollapsibleSection>
+                    <DataTable
+                        columns={adCopyColumns}
+                        data={primaryTexts}
+                        getRowId={(row) => row.id}
+                        isLoading={false}
+                        emptyMessage="No primary text found"
+                        selectable={true}
+                        selectedIds={selectedPrimary}
+                        onSelectionChange={setSelectedPrimary}
+                        resizable={true}
+                        sortable={true}
+                        viewId="ad-creator-primary"
+                        userId={currentUserId || undefined}
+                        initialPreferences={primaryPrefs || undefined}
+                        onPreferencesChange={handlePrimaryPrefsChange}
+                    />
+                </SelectionSection>
 
                 {/* Descriptions Section */}
-                <CollapsibleSection
+                <SelectionSection
                     title="Descriptions"
                     icon={<AlignLeft className="w-4 h-4" />}
                     selectedCount={selectedDescriptions.size}
                     totalCount={descriptions.length}
                 >
-                    <div className="h-[250px]">
-                        <DataTable
-                            columns={adCopyColumns}
-                            data={descriptions}
-                            getRowId={(row) => row.id}
-                            isLoading={false}
-                            emptyMessage="No descriptions found"
-                            selectable={true}
-                            selectedIds={selectedDescriptions}
-                            onSelectionChange={setSelectedDescriptions}
-                        />
-                    </div>
-                </CollapsibleSection>
+                    <DataTable
+                        columns={adCopyColumns}
+                        data={descriptions}
+                        getRowId={(row) => row.id}
+                        isLoading={false}
+                        emptyMessage="No descriptions found"
+                        selectable={true}
+                        selectedIds={selectedDescriptions}
+                        onSelectionChange={setSelectedDescriptions}
+                        resizable={true}
+                        sortable={true}
+                        viewId="ad-creator-descriptions"
+                        userId={currentUserId || undefined}
+                        initialPreferences={descriptionsPrefs || undefined}
+                        onPreferencesChange={handleDescriptionsPrefsChange}
+                    />
+                </SelectionSection>
 
                 {/* Summary Section */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
