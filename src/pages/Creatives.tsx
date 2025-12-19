@@ -110,7 +110,7 @@ async function loadMediaFromDb(): Promise<Creative[]> {
                 duration: c.duration || undefined,
                 project_id: c.project_id,
                 subproject_id: c.subproject_id,
-                row_number: (c as unknown as { row_number?: number }).row_number,
+                row_number: c.row_number,
             };
         });
     } catch (error) {
@@ -406,21 +406,7 @@ export function Creatives() {
             width: 80,
             minWidth: 60,
             editable: false,
-            render: (_: unknown, row: Creative) => (
-                <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted">
-                    {row.preview ? (
-                        <img
-                            src={row.preview}
-                            alt={row.name}
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
-                            No preview
-                        </div>
-                    )}
-                </div>
-            ),
+            type: 'thumbnail',
         },
         {
             key: 'name',
@@ -491,12 +477,12 @@ export function Creatives() {
             },
         },
         {
-            key: 'sizeFormatted',
+            key: 'size',
             header: 'Size',
             width: 100,
             minWidth: 80,
             editable: false,
-            type: 'text',
+            type: 'filesize',
         },
         {
             key: 'dimensions',
@@ -567,6 +553,7 @@ export function Creatives() {
                     userKey: 'user_id',
                     dateKey: 'uploadedAt',
                     fileSizeKey: 'size',
+                    rowNumberKey: 'row_number',
                     showFileInfo: true,
                 }}
                 galleryLookups={{

@@ -1,0 +1,6 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Option 1: Overlapping Circles - Two circles intersecting, creating a lens/spark in the middle -->
+  <circle cx="45" cy="60" r="35" fill="#4F46E5" opacity="0.9"/>
+  <circle cx="75" cy="60" r="35" fill="#F97316" opacity="0.85"/>
+  <!-- The intersection creates a natural blend -->
+</svg>

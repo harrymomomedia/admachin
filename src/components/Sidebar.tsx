@@ -159,23 +159,37 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
             isCollapsed ? "w-16" : "w-64"
         )}>
             <div className={cn(
-                "flex h-16 items-center border-b border-border",
-                isCollapsed ? "justify-center px-2" : "px-4"
+                "flex flex-col border-b border-border",
+                isCollapsed ? "items-center px-2 py-3" : "px-4 py-3"
             )}>
-                <div className="flex items-center">
-                    <Rocket className="h-6 w-6 text-primary" />
-                    {!isCollapsed && (
-                        <span className="text-xl font-bold text-foreground ml-2">AdMachin</span>
+                <div className="flex items-center w-full">
+                    <div className="flex items-center">
+                        <Rocket className="h-6 w-6 text-primary" />
+                        {!isCollapsed && (
+                            <span className="text-xl font-bold text-foreground ml-2">AdMachin</span>
+                        )}
+                    </div>
+                    {/* Close button for mobile only */}
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="md:hidden ml-auto p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
                     )}
                 </div>
-                {/* Close button for mobile only */}
-                {onClose && (
-                    <button
-                        onClick={onClose}
-                        className="md:hidden ml-auto p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                {/* MOMOMedia branding */}
+                {!isCollapsed && (
+                    <a
+                        href="https://momomedia.io"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                     >
-                        <X className="h-5 w-5" />
-                    </button>
+                        <span>by</span>
+                        <img src="/momomedia-logo.svg" alt="MOMOMedia" className="h-3" />
+                    </a>
                 )}
             </div>
             <div className="flex-1 flex flex-col gap-1 p-2 overflow-y-auto">

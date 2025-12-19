@@ -25,6 +25,7 @@ import { PriorityColumn } from './PriorityColumn';
 import { PeopleColumn, type PeopleOption } from './PeopleColumn';
 import { CreativeCard } from './CardView';
 import { getCreativeUrl } from '../lib/supabase-service';
+import { AdCopyPickerModal } from './AdCopyPickerModal';
 
 // ============ Sortable Sort Rule Item ============
 function SortableSortRule({
@@ -95,7 +96,7 @@ export interface ColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'textarea' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'custom';
+    type?: 'text' | 'textarea' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -106,6 +107,7 @@ export interface ColumnDef<T> {
     maxPriority?: number; // For priority type - max value (default: 5)
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
     users?: PeopleOption[]; // For people type - list of users to select from
+    adCopyType?: 'headline' | 'primary_text' | 'description'; // For adcopy type - which type of ad copy
     // Column dependency - when this column's value is set, auto-set the parent column value
     // Used for subproject -> project relationships where selecting a subproject should auto-select its project
     dependsOn?: {
@@ -218,7 +220,6 @@ export interface DataTableProps<T> {
     // View mode (table or gallery/card view)
     viewMode?: 'table' | 'gallery';
     onViewModeChange?: (mode: 'table' | 'gallery') => void;
-    renderCard?: (item: T, isSelected: boolean, onToggle: () => void) => React.ReactNode;
     cardColumns?: number;
 
     // Gallery configuration - maps data columns to gallery card fields
@@ -242,6 +243,8 @@ export interface DataTableProps<T> {
         dateKey?: string;
         /** Column key for file size */
         fileSizeKey?: string;
+        /** Column key for row number/ID */
+        rowNumberKey?: string;
         /** Show file info (name, size, dimensions) - default true */
         showFileInfo?: boolean;
     };
@@ -253,6 +256,21 @@ export interface DataTableProps<T> {
         projectColors?: Record<string, string>;
         subprojectColors?: Record<string, string>;
     };
+    /** Ad copies for adcopy column type */
+    adCopies?: Array<{
+        id: string;
+        text: string | null;
+        name?: string | null;
+        type: string;
+        row_number?: number;
+    }>;
+    /** Custom gallery card renderer - overrides default CreativeCard rendering */
+    renderGalleryCard?: (props: {
+        item: T;
+        isSelected: boolean;
+        onToggle: () => void;
+        selectable: boolean;
+    }) => React.ReactNode;
 }
 
 // ============ Dropdown Menu (Portal-based) ============
@@ -1051,6 +1069,15 @@ interface SortableRowProps<T> {
     selectable?: boolean;
     isSelected?: boolean;
     onToggleSelect?: () => void;
+    // Ad copy column type
+    adCopies?: Array<{
+        id: string;
+        text: string | null;
+        name?: string | null;
+        type: string;
+        row_number?: number;
+    }>;
+    onAdCopyClick?: (rowId: string, columnKey: string, adCopyType: 'headline' | 'primary_text' | 'description', currentValue: string | null) => void;
 }
 
 function SortableRow<T>({
@@ -1083,6 +1110,8 @@ function SortableRow<T>({
     selectable,
     isSelected,
     onToggleSelect,
+    adCopies,
+    onAdCopyClick,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1173,15 +1202,6 @@ function SortableRow<T>({
                     setDropPosition('after');
                 }}
             >
-                {/* Drag Handle */}
-                {sortable && (
-                    <td className="data-grid-td w-10 px-2">
-                        <div className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
-                            <GripVertical className="w-4 h-4" />
-                        </div>
-                    </td>
-                )}
-
                 {/* Selection Checkbox */}
                 {selectable && (
                     <td className="data-grid-td w-10 px-2">
@@ -1545,6 +1565,67 @@ function SortableRow<T>({
                                     </div>
                                 ) : col.type === 'id' ? (
                                     <span className="text-[11px] text-gray-700 font-medium px-3 h-[34px] flex items-center">{String(value || '-')}</span>
+                                ) : col.type === 'thumbnail' ? (
+                                    <div className="px-2 h-[34px] flex items-center">
+                                        <div className="h-10 w-10 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                                            {value ? (
+                                                <img
+                                                    src={String(value)}
+                                                    alt=""
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span className="text-gray-400 text-[10px]">-</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : col.type === 'filesize' ? (
+                                    <span className="text-[11px] text-gray-500 px-3 h-[34px] flex items-center">
+                                        {value ? (() => {
+                                            const bytes = Number(value);
+                                            if (bytes < 1024) return `${bytes} B`;
+                                            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                                            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+                                        })() : '-'}
+                                    </span>
+                                ) : col.type === 'adcopy' ? (
+                                    (() => {
+                                        const adCopyId = value as string | null;
+                                        const adCopy = adCopyId ? adCopies?.find(c => c.id === adCopyId) : null;
+                                        const displayText = adCopy?.text || null;
+                                        const rowNum = adCopy?.row_number;
+
+                                        return (
+                                            <div
+                                                className={cn(
+                                                    "px-3 h-[34px] flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors",
+                                                    (!wrapLines || wrapLines === '1') && "truncate"
+                                                )}
+                                                onClick={() => col.adCopyType && onAdCopyClick?.(rowId, col.key, col.adCopyType, adCopyId)}
+                                            >
+                                                {displayText ? (
+                                                    <>
+                                                        <span className="text-[10px] font-mono px-1 py-0.5 bg-gray-100 text-gray-600 rounded flex-shrink-0">
+                                                            #{rowNum || '?'}
+                                                        </span>
+                                                        <span className={cn(
+                                                            "text-[13px] text-gray-700",
+                                                            (!wrapLines || wrapLines === '1') && "truncate"
+                                                        )}>
+                                                            {displayText}
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[13px] text-gray-400 italic">
+                                                        Click to select...
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })()
                                 ) : (
                                     <p
                                         className={cn(
@@ -1807,11 +1888,14 @@ export function DataTable<T>({
     // View mode
     viewMode: externalViewMode,
     onViewModeChange,
-    renderCard,
     cardColumns = 4,
     // Gallery configuration for native media preview
     galleryConfig,
-    galleryLookups
+    galleryLookups,
+    // Ad copy data for adcopy column type
+    adCopies,
+    // Custom gallery card renderer
+    renderGalleryCard
 }: DataTableProps<T>) {
     // Initialize wrap rules from preferences
     const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
@@ -1884,6 +1968,15 @@ export function DataTable<T>({
             setInternalViewMode(mode);
         }
     };
+
+    // Ad copy picker modal state
+    const [adCopyModalState, setAdCopyModalState] = useState<{
+        isOpen: boolean;
+        rowId: string;
+        columnKey: string;
+        adCopyType: 'headline' | 'primary_text' | 'description';
+        currentValue: string | null;
+    } | null>(null);
 
     // Handle group by change (toggles or adds)
     const handleGroupByChange = (columnKey: string | null) => {
@@ -2850,9 +2943,10 @@ export function DataTable<T>({
         onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => {
             e.preventDefault();
             const draggedId = e.dataTransfer.getData('text/plain');
-            if (draggedId !== rowId && onReorder) {
-                const oldIndex = data.findIndex(row => getRowId(row) === draggedId);
-                let newIndex = data.findIndex(row => getRowId(row) === rowId);
+            if (draggedId !== rowId) {
+                // Use sortedData for index calculation since that's what's displayed
+                const oldIndex = sortedData.findIndex(row => getRowId(row) === draggedId);
+                let newIndex = sortedData.findIndex(row => getRowId(row) === rowId);
                 if (oldIndex !== -1 && newIndex !== -1) {
                     // Adjust newIndex based on drop position and drag direction
                     if (dropPosition === 'after' && oldIndex < newIndex) {
@@ -2866,19 +2960,20 @@ export function DataTable<T>({
                         // Dragging down, drop before target - decrement index
                         newIndex = newIndex - 1;
                     }
-                    const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
+                    const newOrder = arrayMove(sortedData.map(getRowId), oldIndex, newIndex);
                     setInternalRowOrder(newOrder); // Update internal state for persistence
-                    onReorder(newOrder);
+                    if (onReorder) {
+                        onReorder(newOrder);
+                    }
                 }
             }
             setDraggingRowId(null);
             setDragOverRowId(null);
         },
-    }), [data, getRowId, onReorder, draggingRowId, dragOverRowId]);
+    }), [sortedData, getRowId, onReorder, draggingRowId, dragOverRowId]);
 
     // Calculate total width
     const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0)
-        + (sortable ? 40 : 0)  // Drag handle column (w-10 = 40px)
         + (showRowActions ? 80 : 0);  // Actions column (w-20 = 80px)
 
     // Build combined column order including _actions at the right position
@@ -2929,18 +3024,16 @@ export function DataTable<T>({
 
     return (
         <div className={cn(
-            "bg-white border border-gray-200 shadow-sm",
-            fullscreen ? "flex-1 flex flex-col h-full overflow-hidden min-w-0" : "rounded-xl"
+            "bg-white border border-gray-200 shadow-sm flex flex-col",
+            fullscreen ? "flex-1 h-full overflow-hidden min-w-0" : "rounded-xl"
         )}>
-            {/* Scroll container for toolbar + table */}
-            <div className={cn(
-                "overflow-x-auto min-w-0 max-w-full",
-                fullscreen && "flex-1 overflow-y-auto"
-            )}>
-            {/* Sort/Group Toolbar - scrolls with table */}
-            <div
-                className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0 bg-gray-50 sticky top-0 z-20 shadow-sm flex-nowrap min-w-full"
-            >
+            {/* Single scroll container for toolbar + table/gallery */}
+            <div className="overflow-x-auto flex-1">
+                {/* Toolbar */}
+                <div
+                    className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50 flex-nowrap"
+                    style={{ minWidth: totalWidth }}
+                >
                 {/* Quick Filters */}
                 {quickFilters.map(columnKey => {
                     const col = columns.find(c => c.key === columnKey);
@@ -3745,8 +3838,8 @@ export function DataTable<T>({
                 {/* Spacer to push right buttons to the right edge */}
                 <div className="flex-1 min-w-4" />
 
-                {/* View Mode Toggle - only show if renderCard is provided */}
-                {renderCard && (
+                {/* View Mode Toggle - only show if galleryConfig or renderGalleryCard is provided */}
+                {(galleryConfig || renderGalleryCard) && (
                     <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-0.5 flex-shrink-0">
                         <button
                             onClick={() => setViewMode('gallery')}
@@ -3807,7 +3900,8 @@ export function DataTable<T>({
                         </button>
                     </div>
                 )}
-            </div>
+                </div>
+
                 {/* Table View */}
                 {viewMode === 'table' && (
                 <table
@@ -3832,11 +3926,10 @@ export function DataTable<T>({
                     )}
 
                     {/* Column Header with native HTML5 drag-and-drop */}
-                    <thead className="sticky top-0 z-10 bg-white">
-                        <tr>
-                            {sortable && <th className="data-grid-th w-10"></th>}
+                    <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+                        <tr className="bg-white">
                             {selectable && (
-                                <th className="data-grid-th w-10 px-2">
+                                <th className="data-grid-th w-10 px-2 bg-white">
                                     <div className="flex items-center justify-center">
                                         <input
                                             type="checkbox"
@@ -3869,7 +3962,7 @@ export function DataTable<T>({
                                         <th
                                             key="_actions"
                                             className={cn(
-                                                "data-grid-th w-20 relative group/header cursor-grab active:cursor-grabbing",
+                                                "data-grid-th w-20 relative group/header cursor-grab active:cursor-grabbing bg-white",
                                                 draggingColumnKey === '_actions' && "opacity-50"
                                             )}
                                             draggable
@@ -3936,7 +4029,7 @@ export function DataTable<T>({
                                     <th
                                         key={col.key}
                                         className={cn(
-                                            "data-grid-th relative group/header cursor-grab active:cursor-grabbing",
+                                            "data-grid-th relative group/header cursor-grab active:cursor-grabbing bg-white",
                                             isDraggingThis && "opacity-50"
                                         )}
                                         style={{ width: columnWidths[col.key] }}
@@ -4023,7 +4116,7 @@ export function DataTable<T>({
                             })}
                             {/* Invisible drop zone for dragging columns to the far right */}
                             <th
-                                className="p-0 border-y-0 border-r-0 border-l border-transparent"
+                                className="p-0 border-y-0 border-r-0 border-l border-transparent bg-white"
                                 style={{ width: 8, minWidth: 8, maxWidth: 8 }}
                                 onDragEnter={(e) => e.preventDefault()}
                                 onDragOver={(e) => {
@@ -4151,6 +4244,16 @@ export function DataTable<T>({
                                                                     }
                                                                     onSelectionChange(newSet);
                                                                 }}
+                                                                adCopies={adCopies}
+                                                                onAdCopyClick={(rowId, columnKey, adCopyType, currentValue) => {
+                                                                    setAdCopyModalState({
+                                                                        isOpen: true,
+                                                                        rowId,
+                                                                        columnKey,
+                                                                        adCopyType,
+                                                                        currentValue
+                                                                    });
+                                                                }}
                                                             />
                                                         ))
                                                 )}
@@ -4200,6 +4303,16 @@ export function DataTable<T>({
                                         }
                                         onSelectionChange(newSet);
                                     }}
+                                    adCopies={adCopies}
+                                    onAdCopyClick={(rowId, columnKey, adCopyType, currentValue) => {
+                                        setAdCopyModalState({
+                                            isOpen: true,
+                                            rowId,
+                                            columnKey,
+                                            adCopyType,
+                                            currentValue
+                                        });
+                                    }}
                                 />
                             ))
                         )}
@@ -4238,7 +4351,7 @@ export function DataTable<T>({
                 )}
 
                 {/* Gallery/Card View */}
-                {viewMode === 'gallery' && (renderCard || galleryConfig) && (
+                {viewMode === 'gallery' && (galleryConfig || renderGalleryCard) && (
                     <div className="p-4">
                         {/* Select All Header */}
                         {selectable && (
@@ -4269,12 +4382,14 @@ export function DataTable<T>({
                             </div>
                         ) : (
                             <div
-                                className="grid gap-4"
-                                style={{ gridTemplateColumns: `repeat(${cardColumns}, minmax(0, 1fr))` }}
+                                className="grid gap-4 justify-start"
+                                style={{ gridTemplateColumns: 'repeat(auto-fill, 220px)' }}
                             >
                                 {sortedData.map((item, index) => {
                                     const id = getRowId(item);
                                     const isSelected = selectedIds ? selectedIds.has(id) : false;
+                                    const isDraggingThisCard = draggingRowId === id;
+                                    const isDragOverThisCard = dragOverRowId === id;
                                     const handleToggle = () => {
                                         if (!onSelectionChange || !selectedIds) return;
                                         const newSet = new Set(selectedIds);
@@ -4286,16 +4401,76 @@ export function DataTable<T>({
                                         onSelectionChange(newSet);
                                     };
 
-                                    // Use custom renderCard if provided, otherwise use built-in CreativeCard
-                                    if (renderCard) {
+                                    // Card drag handlers
+                                    const cardDragHandlers = sortable ? {
+                                        draggable: true,
+                                        onDragStart: (e: React.DragEvent<HTMLDivElement>) => {
+                                            e.dataTransfer.setData('text/plain', id);
+                                            e.dataTransfer.effectAllowed = 'move';
+                                            setDraggingRowId(id);
+                                        },
+                                        onDragEnd: () => {
+                                            setDraggingRowId(null);
+                                            setDragOverRowId(null);
+                                        },
+                                        onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = 'move';
+                                            if (draggingRowId && draggingRowId !== id && dragOverRowId !== id) {
+                                                setDragOverRowId(id);
+                                            }
+                                        },
+                                        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
+                                            const relatedTarget = e.relatedTarget as Node | null;
+                                            if (!e.currentTarget.contains(relatedTarget)) {
+                                                if (dragOverRowId === id) {
+                                                    setDragOverRowId(null);
+                                                }
+                                            }
+                                        },
+                                        onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+                                            e.preventDefault();
+                                            const draggedId = e.dataTransfer.getData('text/plain');
+                                            if (draggedId !== id) {
+                                                const oldIndex = sortedData.findIndex(row => getRowId(row) === draggedId);
+                                                const newIndex = sortedData.findIndex(row => getRowId(row) === id);
+                                                if (oldIndex !== -1 && newIndex !== -1) {
+                                                    const newOrder = arrayMove(sortedData.map(getRowId), oldIndex, newIndex);
+                                                    setInternalRowOrder(newOrder);
+                                                    if (onReorder) {
+                                                        onReorder(newOrder);
+                                                    }
+                                                }
+                                            }
+                                            setDraggingRowId(null);
+                                            setDragOverRowId(null);
+                                        },
+                                    } : {};
+
+                                    // Custom gallery card renderer takes priority
+                                    if (renderGalleryCard) {
                                         return (
-                                            <div key={id}>
-                                                {renderCard(item, isSelected, handleToggle)}
+                                            <div
+                                                key={id}
+                                                className={cn(
+                                                    "relative transition-all",
+                                                    sortable && "cursor-grab active:cursor-grabbing",
+                                                    isDraggingThisCard && "opacity-50",
+                                                    isDragOverThisCard && "ring-2 ring-blue-500 ring-offset-2 rounded-lg"
+                                                )}
+                                                {...cardDragHandlers}
+                                            >
+                                                {renderGalleryCard({
+                                                    item,
+                                                    isSelected,
+                                                    onToggle: handleToggle,
+                                                    selectable,
+                                                })}
                                             </div>
                                         );
                                     }
 
-                                    // Default gallery rendering using CreativeCard when galleryConfig is provided
+                                    // Gallery rendering using CreativeCard with galleryConfig
                                     if (galleryConfig) {
                                         // Extract values from item using galleryConfig keys
                                         const itemAny = item as Record<string, unknown>;
@@ -4308,6 +4483,7 @@ export function DataTable<T>({
                                         const userId = galleryConfig.userKey ? itemAny[galleryConfig.userKey] as string | null : null;
                                         const createdAt = galleryConfig.dateKey ? itemAny[galleryConfig.dateKey] as string | null : null;
                                         const fileSize = galleryConfig.fileSizeKey ? itemAny[galleryConfig.fileSizeKey] as number | null : null;
+                                        const rowNumber = galleryConfig.rowNumberKey ? itemAny[galleryConfig.rowNumberKey] as number | null : null;
 
                                         // Get dimensions if available (from dimensions field or storage_path)
                                         const dimensions = itemAny.dimensions as { width?: number; height?: number; thumbnail?: string } | null;
@@ -4324,7 +4500,16 @@ export function DataTable<T>({
                                         ) : (dimensions?.thumbnail ? getCreativeUrl(dimensions.thumbnail) : fileUrl);
 
                                         return (
-                                            <div key={id}>
+                                            <div
+                                                key={id}
+                                                className={cn(
+                                                    "relative transition-all",
+                                                    sortable && "cursor-grab active:cursor-grabbing",
+                                                    isDraggingThisCard && "opacity-50",
+                                                    isDragOverThisCard && "ring-2 ring-blue-500 ring-offset-2 rounded-lg"
+                                                )}
+                                                {...cardDragHandlers}
+                                            >
                                                 <CreativeCard
                                                     creative={{
                                                         id,
@@ -4342,7 +4527,7 @@ export function DataTable<T>({
                                                     isSelected={isSelected}
                                                     onToggle={handleToggle}
                                                     selectable={selectable}
-                                                    rowNumber={index + 1}
+                                                    rowNumber={rowNumber ?? undefined}
                                                     showFileInfo={galleryConfig.showFileInfo !== false}
                                                     projectName={projectId && galleryLookups?.projects?.get(projectId)}
                                                     subprojectName={subprojectId && galleryLookups?.subprojects?.get(subprojectId)}
@@ -4497,6 +4682,24 @@ export function DataTable<T>({
                     </div>
                 )
             }
+
+            {/* Ad Copy Picker Modal */}
+            {adCopyModalState && (
+                <AdCopyPickerModal
+                    isOpen={adCopyModalState.isOpen}
+                    onClose={() => setAdCopyModalState(null)}
+                    onSelect={async (adCopyId) => {
+                        if (onUpdate && adCopyModalState) {
+                            await onUpdate(adCopyModalState.rowId, adCopyModalState.columnKey, adCopyId);
+                        }
+                        setAdCopyModalState(null);
+                    }}
+                    adCopies={adCopies || []}
+                    currentValue={adCopyModalState.currentValue}
+                    title={`Select ${adCopyModalState.adCopyType.replace('_', ' ')}`}
+                    type={adCopyModalState.adCopyType}
+                />
+            )}
         </div >
     );
 }

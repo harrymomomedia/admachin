@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Image, Film } from 'lucide-react';
+import { X } from 'lucide-react';
 import { DataTable, type ColumnDef } from '../DataTable';
 import type { Creative, AdCopy } from '../../lib/supabase-service';
 import { getCreativeUrl } from '../../lib/supabase-service';
@@ -50,95 +50,51 @@ export function SelectItemsModal({
                     key: 'preview',
                     header: 'Preview',
                     width: 60,
-                    render: (_, row) => {
+                    type: 'thumbnail',
+                    getValue: (row) => {
                         const creative = row as Creative;
-                        const url = creative.storage_path ? getCreativeUrl(creative.storage_path) : null;
-                        return (
-                            <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-                                {url ? (
-                                    creative.type === 'video' ? (
-                                        <video
-                                            src={url}
-                                            className="w-full h-full object-cover"
-                                            muted
-                                        />
-                                    ) : (
-                                        <img
-                                            src={url}
-                                            alt={creative.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    )
-                                ) : (
-                                    <Image className="w-4 h-4 text-gray-400" />
-                                )}
-                            </div>
-                        );
+                        return creative.storage_path ? getCreativeUrl(creative.storage_path) : null;
                     },
                 },
                 {
                     key: 'name',
                     header: 'Name',
                     width: 200,
-                    render: (_, row) => {
-                        const creative = row as Creative;
-                        return (
-                            <span className="text-sm text-gray-700">{creative.name}</span>
-                        );
-                    },
+                    type: 'text',
                 },
                 {
                     key: 'type',
                     header: 'Type',
                     width: 80,
-                    render: (_, row) => {
-                        const creative = row as Creative;
-                        return (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-                                {creative.type === 'video' ? (
-                                    <Film className="w-3 h-3" />
-                                ) : (
-                                    <Image className="w-3 h-3" />
-                                )}
-                                {creative.type}
-                            </span>
-                        );
+                    type: 'select',
+                    options: [
+                        { label: 'Image', value: 'image' },
+                        { label: 'Video', value: 'video' },
+                    ],
+                    colorMap: {
+                        'image': 'bg-blue-500 text-white',
+                        'video': 'bg-purple-500 text-white',
                     },
                 },
                 {
                     key: 'dimensions',
                     header: 'Dimensions',
                     width: 100,
-                    render: (_, row) => {
+                    type: 'text',
+                    getValue: (row) => {
                         const creative = row as Creative;
                         const dims = creative.dimensions as { width?: number; height?: number } | null;
                         if (dims?.width && dims?.height) {
-                            return (
-                                <span className="text-xs text-gray-500">
-                                    {dims.width}x{dims.height}
-                                </span>
-                            );
+                            return `${dims.width}x${dims.height}`;
                         }
-                        return <span className="text-xs text-gray-400">-</span>;
+                        return '-';
                     },
                 },
                 {
                     key: 'file_size',
                     header: 'Size',
                     width: 80,
-                    render: (_, row) => {
-                        const creative = row as Creative;
-                        if (creative.file_size) {
-                            const kb = creative.file_size / 1024;
-                            const mb = kb / 1024;
-                            return (
-                                <span className="text-xs text-gray-500">
-                                    {mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(kb)} KB`}
-                                </span>
-                            );
-                        }
-                        return <span className="text-xs text-gray-400">-</span>;
-                    },
+                    type: 'filesize',
                 },
             ];
         } else {
@@ -148,43 +104,19 @@ export function SelectItemsModal({
                     key: 'text',
                     header: 'Text',
                     width: 400,
-                    render: (_, row) => {
-                        const copy = row as AdCopy;
-                        return (
-                            <span className="text-sm text-gray-700 line-clamp-2">
-                                {copy.text || <span className="text-gray-400 italic">Empty</span>}
-                            </span>
-                        );
-                    },
+                    type: 'text',
                 },
                 {
                     key: 'name',
                     header: 'Name',
                     width: 150,
-                    render: (_, row) => {
-                        const copy = row as AdCopy;
-                        return (
-                            <span className="text-xs text-gray-500">
-                                {copy.name || '-'}
-                            </span>
-                        );
-                    },
+                    type: 'text',
                 },
                 {
                     key: 'created_at',
                     header: 'Created',
                     width: 100,
-                    render: (_, row) => {
-                        const copy = row as AdCopy;
-                        if (copy.created_at) {
-                            return (
-                                <span className="text-xs text-gray-500">
-                                    {new Date(copy.created_at).toLocaleDateString()}
-                                </span>
-                            );
-                        }
-                        return <span className="text-xs text-gray-400">-</span>;
-                    },
+                    type: 'date',
                 },
             ];
         }

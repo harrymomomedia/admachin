@@ -57,7 +57,7 @@
   }
 
   .data-grid-th {
-    @apply border-b border-r border-gray-200 bg-gray-50/80 px-3 py-2.5 text-left text-[13px] font-medium text-gray-600 whitespace-nowrap sticky top-0 z-10;
+    @apply border-b border-r border-gray-200 bg-white px-3 py-2.5 text-left text-[13px] font-medium text-gray-600 whitespace-nowrap;
   }
 
   .data-grid-td {

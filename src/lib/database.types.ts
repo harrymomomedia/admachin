@@ -28,6 +28,7 @@ export interface Database {
                     ai_model: string | null
                     created_at: string
                     updated_at: string
+                    row_number: number
                 }
                 Insert: {
                     id?: string
@@ -172,6 +173,7 @@ export interface Database {
                     created_at: string
                     project_id: string | null
                     subproject_id: string | null
+                    row_number: number
                 }
                 Insert: {
                     id?: string
@@ -188,6 +190,7 @@ export interface Database {
                     created_at?: string
                     project_id?: string | null
                     subproject_id?: string | null
+                    row_number?: number
                 }
                 Update: {
                     id?: string
@@ -204,6 +207,7 @@ export interface Database {
                     created_at?: string
                     project_id?: string | null
                     subproject_id?: string | null
+                    row_number?: number
                 }
                 Relationships: [
                     {

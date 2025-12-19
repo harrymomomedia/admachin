@@ -466,7 +466,8 @@ export function AdCreator() {
             navigate('/ads');
         } catch (error) {
             console.error('Error creating ads:', error);
-            alert('Failed to create ads. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to create ads: ${errorMessage}`);
         } finally {
             setIsSaving(false);
         }
@@ -511,23 +512,10 @@ export function AdCreator() {
             width: 60,
             minWidth: 50,
             editable: false,
-            type: 'custom',
-            render: (_value: unknown, row: Creative) => {
+            type: 'thumbnail',
+            getValue: (row: Creative) => {
                 const dims = row.dimensions as { thumbnail?: string } | null;
-                const thumbnailUrl = dims?.thumbnail ? getCreativeUrl(dims.thumbnail) : getCreativeUrl(row.storage_path);
-                return (
-                    <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-                        {thumbnailUrl ? (
-                            <img
-                                src={thumbnailUrl}
-                                alt={row.name || 'Preview'}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <Image className="w-4 h-4 text-gray-400" />
-                        )}
-                    </div>
-                );
+                return dims?.thumbnail ? getCreativeUrl(dims.thumbnail) : getCreativeUrl(row.storage_path);
             },
         },
         {
@@ -763,6 +751,7 @@ export function AdCreator() {
                             userKey: 'user_id',
                             dateKey: 'created_at',
                             fileSizeKey: 'file_size',
+                            rowNumberKey: 'row_number',
                             showFileInfo: false,
                         }}
                         galleryLookups={{

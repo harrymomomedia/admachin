@@ -1,0 +1,27 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Indigo stroke - flows from top-left to bottom-right -->
+  <path
+    d="M20 35 C35 20, 55 25, 60 45 C65 65, 85 70, 100 55 C105 50, 105 65, 95 75 C80 90, 55 85, 50 65 C45 45, 25 40, 15 55 C10 62, 15 50, 20 35Z"
+    fill="#4F46E5"
+    opacity="0.95"
+  />
+
+  <!-- Coral stroke - flows from top-right to bottom-left -->
+  <path
+    d="M100 35 C85 20, 65 25, 60 45 C55 65, 35 70, 20 55 C15 50, 15 65, 25 75 C40 90, 65 85, 70 65 C75 45, 95 40, 105 55 C110 62, 105 50, 100 35Z"
+    fill="#F97316"
+    opacity="0.9"
+  />
+
+  <!-- Center spark/diamond where they meet -->
+  <path
+    d="M60 38 L68 55 L60 72 L52 55 Z"
+    fill="white"
+  />
+
+  <!-- Inner spark glow -->
+  <path
+    d="M60 44 L65 55 L60 66 L55 55 Z"
+    fill="#FEF3C7"
+  />
+</svg>

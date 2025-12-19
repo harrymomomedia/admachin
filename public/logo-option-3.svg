@@ -1,0 +1,7 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Option 3: Abstract A - Stylized letter A made of two triangular shapes -->
+  <path d="M60 15 L95 105 L70 105 L60 75 L50 105 L25 105 Z" fill="#4F46E5"/>
+  <path d="M60 15 L35 85 L85 85 Z" fill="#F97316" opacity="0.9"/>
+  <!-- Negative space crossbar -->
+  <path d="M42 75 L78 75 L72 90 L48 90 Z" fill="white"/>
+</svg>

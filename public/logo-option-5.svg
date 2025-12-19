@@ -1,0 +1,7 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Option 5: Interlocking Squares - Two rounded squares rotated and interlocking -->
+  <rect x="25" y="25" width="50" height="50" rx="8" fill="#4F46E5" transform="rotate(0 50 50)"/>
+  <rect x="45" y="45" width="50" height="50" rx="8" fill="#F97316" opacity="0.9"/>
+  <!-- Spark at intersection -->
+  <circle cx="60" cy="60" r="8" fill="white"/>
+</svg>

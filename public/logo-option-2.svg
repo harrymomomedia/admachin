@@ -1,0 +1,7 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Option 2: Split Diamond - A diamond shape split diagonally with two colors -->
+  <path d="M60 10 L110 60 L60 110 L60 60 Z" fill="#4F46E5"/>
+  <path d="M60 10 L10 60 L60 110 L60 60 Z" fill="#F97316"/>
+  <!-- Small spark at center -->
+  <circle cx="60" cy="60" r="6" fill="white"/>
+</svg>

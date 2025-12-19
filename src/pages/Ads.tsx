@@ -28,6 +28,7 @@ import {
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/DataTable';
+import { AdPreviewCard } from '../components/AdPreviewCard';
 
 export function Ads() {
     const navigate = useNavigate();
@@ -288,18 +289,43 @@ export function Ads() {
         return map;
     }, {} as Record<string, string>);
 
-    // Filter ad copies by type for headline, primary, and description
-    const headlineOptions = adCopies
-        .filter(c => c.type === 'headline')
-        .map(c => ({ label: c.text?.substring(0, 50) + (c.text && c.text.length > 50 ? '...' : '') || '(empty)', value: c.id }));
+    // Lookup maps for gallery view
+    const creativeMap = new Map(creatives.map(c => [c.id, c]));
+    const projectMap = new Map(projects.map(p => [p.id, p]));
+    const subprojectMap = new Map(subprojects.map(s => [s.id, s]));
+    const adCopyMap = new Map(adCopies.map(c => [c.id, c]));
 
-    const primaryOptions = adCopies
-        .filter(c => c.type === 'primary_text')
-        .map(c => ({ label: c.text?.substring(0, 50) + (c.text && c.text.length > 50 ? '...' : '') || '(empty)', value: c.id }));
+    // Gallery card renderer
+    const renderGalleryCard = ({ item, isSelected, onToggle, selectable }: {
+        item: Ad;
+        isSelected: boolean;
+        onToggle: () => void;
+        selectable: boolean;
+    }) => {
+        const creative = item.creative_id ? creativeMap.get(item.creative_id) : null;
+        const project = item.project_id ? projectMap.get(item.project_id) : null;
+        const subproject = item.subproject_id ? subprojectMap.get(item.subproject_id) : null;
+        const headline = item.headline_id ? adCopyMap.get(item.headline_id) : null;
+        const primaryText = item.primary_id ? adCopyMap.get(item.primary_id) : null;
+        const description = item.description_id ? adCopyMap.get(item.description_id) : null;
 
-    const descriptionOptions = adCopies
-        .filter(c => c.type === 'description')
-        .map(c => ({ label: c.text?.substring(0, 50) + (c.text && c.text.length > 50 ? '...' : '') || '(empty)', value: c.id }));
+        return (
+            <AdPreviewCard
+                ad={item}
+                creative={creative}
+                headline={headline}
+                primaryText={primaryText}
+                description={description}
+                project={project}
+                subproject={subproject}
+                isSelected={isSelected}
+                onToggle={onToggle}
+                selectable={selectable}
+                projectColor={item.project_id ? projectColorMap[item.project_id] : undefined}
+                subprojectColor={item.subproject_id ? subprojectColorMap[item.subproject_id] : undefined}
+            />
+        );
+    };
 
     // Creative options
     const creativeOptions = creatives.map(c => ({
@@ -411,29 +437,29 @@ export function Ads() {
         {
             key: 'headline_id',
             header: 'Headline',
-            width: 200,
-            minWidth: 120,
+            width: 280,
+            minWidth: 180,
             editable: true,
-            type: 'select',
-            options: headlineOptions,
+            type: 'adcopy',
+            adCopyType: 'headline',
         },
         {
             key: 'primary_id',
             header: 'Primary',
-            width: 200,
-            minWidth: 120,
+            width: 280,
+            minWidth: 180,
             editable: true,
-            type: 'select',
-            options: primaryOptions,
+            type: 'adcopy',
+            adCopyType: 'primary_text',
         },
         {
             key: 'description_id',
             header: 'Description',
-            width: 200,
-            minWidth: 120,
+            width: 280,
+            minWidth: 180,
             editable: true,
-            type: 'select',
-            options: descriptionOptions,
+            type: 'adcopy',
+            adCopyType: 'description',
         },
     ];
 
@@ -472,6 +498,8 @@ export function Ads() {
                 onPreferencesChange={handlePreferencesChange}
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
+                adCopies={adCopies}
+                renderGalleryCard={renderGalleryCard}
             />
         </DataTablePageLayout>
     );

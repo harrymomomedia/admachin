@@ -1478,16 +1478,7 @@ export async function createAds(ads: Array<{
             project_id: ad.project_id || null,
             subproject_id: ad.subproject_id || null,
         })))
-        .select(`
-            *,
-            creative:creatives (*),
-            project:projects (*),
-            subproject:subprojects (*),
-            user:users (*),
-            headline:ad_copies!ads_headline_id_fkey (*),
-            primary:ad_copies!ads_primary_id_fkey (*),
-            description:ad_copies!ads_description_id_fkey (*)
-        `);
+        .select('*');
 
     if (error) {
         console.error('[Supabase] Error batch creating ads:', error);
