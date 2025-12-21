@@ -222,7 +222,23 @@ async function removeWatermark(
             }
 
             const state = statusData.data.state || statusData.data.status;
-            const cleanVideoUrl = statusData.data.output?.video_url || statusData.data.videoUrl;
+
+            // Parse resultJson to get the clean video URL
+            let cleanVideoUrl: string | null = null;
+            if (statusData.data.resultJson) {
+                try {
+                    const resultJson = JSON.parse(statusData.data.resultJson);
+                    if (resultJson.resultUrls && resultJson.resultUrls.length > 0) {
+                        cleanVideoUrl = resultJson.resultUrls[0];
+                    }
+                } catch {
+                    // Fallback to other formats
+                }
+            }
+            // Fallback to other response formats
+            if (!cleanVideoUrl) {
+                cleanVideoUrl = statusData.data.output?.video_url || statusData.data.videoUrl;
+            }
 
             if (state === 'completed' || state === 'success') {
                 if (cleanVideoUrl) {
@@ -484,6 +500,10 @@ async function generateVideo(
         const initialVideoCount = existingVideoUrls.size;
         logs = await appendLog(task.id, 'info', `→ Initial draft count: ${initialVideoCount}`, logs);
 
+        // Wait initial time for video generation (Sora takes 2-5 minutes)
+        logs = await appendLog(task.id, 'info', '→ Waiting 2 minutes for video generation...', logs);
+        await page.waitForTimeout(120000); // 2 minutes initial wait
+
         // Poll by refreshing the drafts page
         while (Date.now() - startTime < maxWaitTime) {
             const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -518,22 +538,60 @@ async function generateVideo(
                         await firstVideo.click();
                         await page.waitForTimeout(2000);
 
-                        // Get the current page URL - this is the Sora video page URL
-                        // Format: https://sora.chatgpt.com/library/... or https://sora.chatgpt.com/p/...
-                        const currentUrl = page.url();
-                        if (currentUrl.includes('sora.chatgpt.com')) {
-                            logs = await appendLog(task.id, 'info', `→ Sora page URL: ${currentUrl}`, logs);
-                            videoUrl = currentUrl;
+                        // Click "Post" button to publish the video
+                        logs = await appendLog(task.id, 'info', '→ Publishing video (clicking Post)...', logs);
+                        const postButton = page.locator('button:has-text("Post"), button[aria-label*="Post"]').first();
+                        if (await postButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+                            await postButton.click();
+                            await page.waitForTimeout(3000);
+                            logs = await appendLog(task.id, 'success', '✓ Video posted', logs);
+                        } else {
+                            logs = await appendLog(task.id, 'warning', '⚠ Post button not found, trying to continue...', logs);
+                        }
+
+                        // Go to profile page to get the public URL
+                        logs = await appendLog(task.id, 'info', '→ Going to profile page...', logs);
+                        await page.goto('https://sora.chatgpt.com/profile', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                        await page.waitForTimeout(3000);
+
+                        // Wait for the posted video to appear on profile
+                        logs = await appendLog(task.id, 'info', '→ Waiting for video on profile...', logs);
+                        let profileVideoUrl: string | null = null;
+                        const profileWaitStart = Date.now();
+                        const profileMaxWait = 60000; // 1 minute max
+
+                        while (Date.now() - profileWaitStart < profileMaxWait) {
+                            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+                            await page.waitForTimeout(3000);
+
+                            // Click on the first video (most recent)
+                            const profileVideo = page.locator('video').first();
+                            if (await profileVideo.isVisible({ timeout: 3000 }).catch(() => false)) {
+                                await profileVideo.click();
+                                await page.waitForTimeout(2000);
+
+                                // Get the public URL
+                                const publicUrl = page.url();
+                                if (publicUrl.includes('sora.chatgpt.com') && !publicUrl.includes('/profile')) {
+                                    logs = await appendLog(task.id, 'success', `✓ Got public URL: ${publicUrl}`, logs);
+                                    profileVideoUrl = publicUrl;
+                                    break;
+                                }
+                            }
+
+                            const waitElapsed = Math.round((Date.now() - profileWaitStart) / 1000);
+                            logs = await appendLog(task.id, 'info', `⏳ [${waitElapsed}s] Waiting for video on profile...`, logs);
+                        }
+
+                        if (profileVideoUrl) {
+                            videoUrl = profileVideoUrl;
                             break;
                         }
 
-                        // Fallback: Try to download directly
-                        videoUrl = await downloadCurrentVideo(page, task.id, logs);
-                        if (videoUrl) break;
-
-                        // Last resort: use video src directly
-                        if (!videoUrl && src) {
-                            videoUrl = src;
+                        // Fallback to draft URL if profile didn't work
+                        const draftUrl = page.url();
+                        if (draftUrl.includes('sora.chatgpt.com')) {
+                            videoUrl = draftUrl;
                             break;
                         }
                     }
