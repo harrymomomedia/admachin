@@ -169,9 +169,16 @@ Required in `.env.local`:
 
 Never commit `.env` files.
 
-## Changelog (IMPORTANT)
+## Changelog (REQUIRED)
 
-**Always update `CHANGELOG.md` after completing any significant work.**
+**ALWAYS update `CHANGELOG.md` after completing any feature, fix, or significant change - do not wait to be asked.**
+
+When to update:
+- After adding new features or components
+- After fixing bugs
+- After changing UI/UX behavior
+- After API or database changes
+- After dependency updates
 
 Format:
 ```markdown
@@ -190,7 +197,7 @@ Format:
 - Dependencies, configs, internal changes
 ```
 
-Keep entries compact - one line per change. Group related changes together.
+Keep entries compact - one line per change. Group related changes together. Add to the `## [Unreleased]` section at the top.
 
 ## Documentation
 
