@@ -417,12 +417,8 @@ async function generateVideo(
             throw new Error('Could not find prompt input field');
         }
 
-        // Fill the prompt using fill() which handles focus
-        await promptInput.fill(task.metadata.prompt);
-        logs = await appendLog(task.id, 'success', '✓ Prompt entered', logs);
-
+        // STEP 1: Configure settings FIRST (before entering prompt)
         // Click the settings button (sliders icon with aria-label="Settings")
-        // It's located to the left of the gift icon in the prompt bar
         logs = await appendLog(task.id, 'info', '→ Opening settings panel...', logs);
         try {
             let settingsClicked = false;
@@ -536,6 +532,14 @@ async function generateVideo(
         } catch {
             logs = await appendLog(task.id, 'warning', '⚠ Could not set duration', logs);
         }
+
+        // STEP 2: Close settings popup by clicking on prompt area, then enter prompt
+        logs = await appendLog(task.id, 'info', '→ Entering prompt...', logs);
+        await promptInput.click();
+        await page.waitForTimeout(500);
+        await promptInput.fill(task.metadata.prompt);
+        await page.waitForTimeout(500);
+        logs = await appendLog(task.id, 'success', '✓ Prompt entered', logs);
 
         // Record existing video URLs before generating (to detect new ones)
         const existingVideoUrls = new Set<string>();
