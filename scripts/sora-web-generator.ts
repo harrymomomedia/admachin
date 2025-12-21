@@ -417,45 +417,13 @@ async function generateVideo(
             throw new Error('Could not find prompt input field');
         }
 
-        // Clear and fill the prompt
-        await promptInput.click();
+        // Fill the prompt using keyboard (safer than clicking around)
+        // Use fill() which focuses and types without extra clicks
         await promptInput.fill(task.metadata.prompt);
         logs = await appendLog(task.id, 'success', '✓ Prompt entered', logs);
 
-        // Look for aspect ratio selector if available
-        logs = await appendLog(task.id, 'info', `→ Setting aspect ratio: ${task.metadata.aspect_ratio}...`, logs);
-        try {
-            // Try to find aspect ratio buttons/dropdown
-            const aspectMap: Record<string, string[]> = {
-                'landscape': ['16:9', 'Landscape', 'Wide'],
-                'portrait': ['9:16', 'Portrait', 'Vertical'],
-                'square': ['1:1', 'Square'],
-            };
-
-            const aspectLabels = aspectMap[task.metadata.aspect_ratio] || [];
-            for (const label of aspectLabels) {
-                const button = page.getByRole('button', { name: new RegExp(label, 'i') });
-                if (await button.isVisible({ timeout: 1000 }).catch(() => false)) {
-                    await button.click();
-                    logs = await appendLog(task.id, 'success', `✓ Selected ${label}`, logs);
-                    break;
-                }
-            }
-        } catch {
-            logs = await appendLog(task.id, 'warning', '⚠ Could not set aspect ratio, using default', logs);
-        }
-
-        // Look for duration selector if available
-        logs = await appendLog(task.id, 'info', `→ Setting duration: ${task.metadata.duration}s...`, logs);
-        try {
-            const durationButton = page.getByRole('button', { name: new RegExp(`${task.metadata.duration}`, 'i') });
-            if (await durationButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-                await durationButton.click();
-                logs = await appendLog(task.id, 'success', `✓ Selected ${task.metadata.duration}s duration`, logs);
-            }
-        } catch {
-            logs = await appendLog(task.id, 'warning', '⚠ Could not set duration, using default', logs);
-        }
+        // Note: Aspect ratio and duration will use Sora defaults
+        // We avoid clicking other UI elements to prevent mis-clicks
 
         // Record existing video URLs before generating (to detect new ones)
         const existingVideoUrls = new Set<string>();
@@ -467,16 +435,8 @@ async function generateVideo(
         }
         logs = await appendLog(task.id, 'info', `📊 Found ${existingVideoUrls.size} existing video(s) on page`, logs);
 
-        // Simple approach: Focus the prompt and press Enter to generate
-        logs = await appendLog(task.id, 'info', '→ Focusing prompt and pressing Enter to generate...', logs);
-
-        // Click on the prompt textarea to ensure it has focus
-        if (promptInput) {
-            await promptInput.click();
-            await page.waitForTimeout(500);
-        }
-
-        // Press Enter to submit/generate
+        // Press Enter to submit/generate (fill() already set focus)
+        logs = await appendLog(task.id, 'info', '→ Pressing Enter to generate...', logs);
         await page.keyboard.press('Enter');
 
         // Wait a moment for the generation to start
