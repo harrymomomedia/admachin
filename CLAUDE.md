@@ -171,6 +171,8 @@ Never commit `.env` files.
 
 ## Changelog (REQUIRED)
 
+**READ `CHANGELOG.md` at the start of each session** to understand recent changes and context before starting work.
+
 **ALWAYS update `CHANGELOG.md` after completing any feature, fix, or significant change - do not wait to be asked.**
 
 When to update:
