@@ -7,26 +7,40 @@ const supabase = createClient(
 );
 
 async function resetTask() {
-  // Find the failed web task
+  // Find failed or processing web tasks
   const { data: tasks } = await supabase
     .from('video_output')
     .select('id, task_id, task_status')
     .like('task_id', 'web-%')
-    .eq('task_status', 'failed')
+    .in('task_status', ['failed', 'processing'])
     .limit(1);
 
   if (tasks && tasks.length > 0) {
     const task = tasks[0];
-    console.log('Resetting task:', task.id);
-    
+    console.log(`Resetting task: ${task.id} (was: ${task.task_status})`);
+
     await supabase
       .from('video_output')
-      .update({ task_status: 'pending', task_error: null })
+      .update({ task_status: 'pending', task_error: null, logs: [] })
       .eq('id', task.id);
-    
+
+    // Also reset the video_generator status
+    const { data: output } = await supabase
+      .from('video_output')
+      .select('video_generator_id')
+      .eq('id', task.id)
+      .single();
+
+    if (output?.video_generator_id) {
+      await supabase
+        .from('video_generator')
+        .update({ status: 'draft' })
+        .eq('id', output.video_generator_id);
+    }
+
     console.log('Task reset to pending');
   } else {
-    console.log('No failed web tasks found');
+    console.log('No failed/processing web tasks found');
   }
   
   // Also try to create the storage bucket

@@ -31,8 +31,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Persistent browser data directory (stores cookies/session)
 const USER_DATA_DIR = path.join(__dirname, '..', 'playwright-data', 'sora-session');
 
-// Sora web interface URL
+// Sora web interface URLs
 const SORA_URL = 'https://sora.chatgpt.com/';
+const SORA_DRAFTS_URL = 'https://sora.chatgpt.com/drafts';
 
 interface VideoTask {
     id: string;
@@ -185,6 +186,62 @@ async function waitForLogin(page: Page, logs: VideoTask['logs'], taskId: string)
     return logs;
 }
 
+async function downloadCurrentVideo(
+    page: Page,
+    taskId: string,
+    logs: VideoTask['logs']
+): Promise<string | null> {
+    try {
+        // Look for download button
+        const downloadBtn = page.locator('button:has-text("Download"), a[download], button[aria-label*="ownload"]').first();
+        if (await downloadBtn.isVisible({ timeout: 3000 })) {
+            logs = await appendLog(taskId, 'info', '→ Found download button, clicking...', logs);
+
+            // Try to download
+            const [download] = await Promise.all([
+                page.waitForEvent('download', { timeout: 30000 }).catch(() => null),
+                downloadBtn.click(),
+            ]);
+
+            if (download) {
+                logs = await appendLog(taskId, 'info', '→ Downloading video file...', logs);
+
+                // Save to temp file
+                const tempPath = path.join(__dirname, '..', 'temp', `${taskId}.mp4`);
+                await fs.promises.mkdir(path.dirname(tempPath), { recursive: true });
+                await download.saveAs(tempPath);
+
+                // Read the file
+                const videoBuffer = await fs.promises.readFile(tempPath);
+
+                // Upload to Supabase
+                logs = await appendLog(taskId, 'info', '→ Uploading to Supabase...', logs);
+                const { url } = await uploadVideoToSupabase(videoBuffer.buffer, taskId);
+
+                // Cleanup temp file
+                await fs.promises.unlink(tempPath).catch(() => {});
+
+                logs = await appendLog(taskId, 'success', '✓ Video downloaded and uploaded!', logs);
+                return url;
+            }
+        }
+
+        // Fallback: Try to get video src directly
+        const videoElement = page.locator('video[src]').first();
+        if (await videoElement.isVisible({ timeout: 2000 })) {
+            const src = await videoElement.getAttribute('src');
+            if (src) {
+                return src;
+            }
+        }
+
+        return null;
+    } catch (e) {
+        console.error('Download failed:', e);
+        return null;
+    }
+}
+
 async function generateVideo(
     context: BrowserContext,
     task: VideoTask
@@ -201,20 +258,22 @@ async function generateVideo(
         logs = await appendLog(task.id, 'info', '🌐 SORA WEB AUTOMATION', logs);
         logs = await appendLog(task.id, 'info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
 
-        // Navigate to Sora
-        logs = await appendLog(task.id, 'info', `→ Navigating to ${SORA_URL}...`, logs);
-        await page.goto(SORA_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        // Navigate to Sora Drafts page
+        logs = await appendLog(task.id, 'info', `→ Navigating to ${SORA_DRAFTS_URL}...`, logs);
+        await page.goto(SORA_DRAFTS_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         // Check login state
         const isLoggedIn = await checkLoginState(page);
         if (!isLoggedIn) {
             logs = await waitForLogin(page, logs, task.id);
+            // After login, navigate to drafts page
+            await page.goto(SORA_DRAFTS_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
         } else {
             logs = await appendLog(task.id, 'success', '✓ Already logged in', logs);
         }
 
         // Wait a moment for page to fully load
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
         // Find and fill the prompt textarea
         logs = await appendLog(task.id, 'info', '→ Entering prompt...', logs);
@@ -293,190 +352,116 @@ async function generateVideo(
         }
         logs = await appendLog(task.id, 'info', `📊 Found ${existingVideoUrls.size} existing video(s) on page`, logs);
 
-        // Find and click the generate button (up-arrow icon in bottom right)
-        logs = await appendLog(task.id, 'info', '→ Looking for generate button...', logs);
+        // Simple approach: Focus the prompt and press Enter to generate
+        logs = await appendLog(task.id, 'info', '→ Focusing prompt and pressing Enter to generate...', logs);
 
-        // The generate button is a circular button with up-arrow icon
-        // Located at bottom-right of the prompt area
-        let generateButton = null;
-
-        // Try to find the up-arrow/send button
-        const buttonSelectors = [
-            // SVG with up arrow path
-            'button:has(svg path[d*="M12 19V5"])',
-            'button:has(svg[data-icon="arrow-up"])',
-            // Button near textarea with arrow
-            'button:has(svg):near(textarea)',
-            // Generic submit buttons
-            'button[type="submit"]',
-            'form button:last-child',
-        ];
-
-        for (const selector of buttonSelectors) {
-            try {
-                const btn = page.locator(selector).last(); // .last() for bottom-right position
-                if (await btn.isVisible({ timeout: 1000 })) {
-                    generateButton = btn;
-                    logs = await appendLog(task.id, 'info', `Found button with: ${selector}`, logs);
-                    break;
-                }
-            } catch {
-                continue;
-            }
+        // Click on the prompt textarea to ensure it has focus
+        if (promptInput) {
+            await promptInput.click();
+            await page.waitForTimeout(500);
         }
 
-        // Fallback: find circular buttons and click the one that looks like submit
-        if (!generateButton) {
-            logs = await appendLog(task.id, 'info', '→ Using fallback button detection...', logs);
-            const allButtons = page.locator('button:visible');
-            const count = await allButtons.count();
+        // Press Enter to submit/generate
+        await page.keyboard.press('Enter');
 
-            // Look from the end (bottom-right buttons come last)
-            for (let i = count - 1; i >= 0; i--) {
-                const btn = allButtons.nth(i);
-                const text = (await btn.textContent() || '').trim();
+        // Wait a moment for the generation to start
+        await page.waitForTimeout(3000);
 
-                // Skip buttons with text (the submit button usually has just an icon)
-                if (text.length > 5) continue;
-                if (text.toLowerCase().includes('character')) continue;
-                if (text.toLowerCase().includes('create')) continue;
-
-                // Check if it has an SVG (icon button)
-                const hasSvg = await btn.locator('svg').count() > 0;
-                if (hasSvg) {
-                    generateButton = btn;
-                    break;
-                }
-            }
-        }
-
-        if (!generateButton) {
-            throw new Error('Could not find generate button. Please check if the Sora interface has changed.');
-        }
-
-        // Click generate
-        logs = await appendLog(task.id, 'info', '→ Clicking generate button...', logs);
-        await generateButton.click();
-
-        // Wait a moment for the click to register
-        await page.waitForTimeout(2000);
-
-        logs = await appendLog(task.id, 'success', '✓ Generate button clicked', logs);
+        logs = await appendLog(task.id, 'success', '✓ Generation started (Enter pressed)', logs);
 
         logs = await appendLog(task.id, 'info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
         logs = await appendLog(task.id, 'info', '⏳ WAITING FOR VIDEO (2-5 mins)...', logs);
         logs = await appendLog(task.id, 'info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
-        logs = await appendLog(task.id, 'info', '→ Will check Activity panel for completion...', logs);
+        logs = await appendLog(task.id, 'info', '→ Will refresh drafts page to check for completion...', logs);
 
-        // Wait for video to be generated - check Activity panel for completion
+        // Wait for video to be generated by refreshing drafts page
         const maxWaitTime = 10 * 60 * 1000; // 10 minutes max
-        const pollInterval = 20000; // 20 seconds
+        const pollInterval = 30000; // 30 seconds between refreshes
         const startTime = Date.now();
 
         let videoUrl: string | null = null;
 
-        // Wait initial time for generation to start (Sora takes 2-5 minutes)
-        logs = await appendLog(task.id, 'info', '→ Waiting 2 minutes before first check...', logs);
-        await page.waitForTimeout(120000); // 2 minutes initial wait
+        // Get count of existing videos before generation
+        const initialVideoCount = existingVideoUrls.size;
+        logs = await appendLog(task.id, 'info', `→ Initial draft count: ${initialVideoCount}`, logs);
 
+        // Poll by refreshing the drafts page
         while (Date.now() - startTime < maxWaitTime) {
             const elapsed = Math.round((Date.now() - startTime) / 1000);
-            logs = await appendLog(task.id, 'info', `⏳ [${elapsed}s] Checking Activity for completion...`, logs);
+            logs = await appendLog(task.id, 'info', `⏳ [${elapsed}s] Refreshing drafts page...`, logs);
 
             try {
-                // Navigate to profile/drafts to check for new video
-                await page.goto('https://sora.chatgpt.com/profile', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await page.waitForTimeout(2000);
+                // Refresh the drafts page
+                await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.waitForTimeout(3000);
 
-                // Click on Drafts section
-                const draftsButton = page.locator('text=Drafts').first();
-                if (await draftsButton.isVisible({ timeout: 3000 })) {
-                    await draftsButton.click();
-                    await page.waitForTimeout(2000);
+                // Check for new video in top-left (first item)
+                // Look for video elements or thumbnail cards
+                const gridItems = page.locator('[class*="grid"] > div, [class*="gallery"] > div, [role="grid"] > div').first();
+                const firstVideo = page.locator('video').first();
 
-                    // Get the first (most recent) video in the grid
-                    const firstVideo = page.locator('video').first();
-                    if (await firstVideo.isVisible({ timeout: 3000 })) {
-                        // Click on it to open
+                // Check if the first video is new (not in our existing set)
+                if (await firstVideo.isVisible({ timeout: 3000 }).catch(() => false)) {
+                    const src = await firstVideo.getAttribute('src');
+
+                    // Also check if there's a "processing" or loading indicator on first item
+                    const firstItemText = await gridItems.textContent().catch(() => '');
+                    const isProcessing = firstItemText?.toLowerCase().includes('processing') ||
+                                        firstItemText?.toLowerCase().includes('generating') ||
+                                        firstItemText?.toLowerCase().includes('loading');
+
+                    if (isProcessing) {
+                        logs = await appendLog(task.id, 'info', '→ Video still processing...', logs);
+                    } else if (src && !existingVideoUrls.has(src)) {
+                        logs = await appendLog(task.id, 'success', '✓ New video found in drafts!', logs);
+
+                        // Click on the first video to open it
                         await firstVideo.click();
                         await page.waitForTimeout(2000);
 
-                        // Now look for download button or video source
-                        const downloadBtn = page.locator('button:has-text("Download"), a[download]').first();
-                        if (await downloadBtn.isVisible({ timeout: 3000 })) {
-                            logs = await appendLog(task.id, 'success', '✓ Found video in Drafts!', logs);
+                        // Try to download
+                        videoUrl = await downloadCurrentVideo(page, task.id, logs);
+                        if (videoUrl) break;
 
-                            // Try to download
-                            const [download] = await Promise.all([
-                                page.waitForEvent('download', { timeout: 30000 }).catch(() => null),
-                                downloadBtn.click(),
-                            ]);
-
-                            if (download) {
-                                logs = await appendLog(task.id, 'info', '→ Downloading video...', logs);
-
-                                // Save to temp file
-                                const tempPath = path.join(__dirname, '..', 'temp', `${task.id}.mp4`);
-                                await fs.promises.mkdir(path.dirname(tempPath), { recursive: true });
-                                await download.saveAs(tempPath);
-
-                                // Read the file
-                                const videoBuffer = await fs.promises.readFile(tempPath);
-
-                                // Upload to Supabase
-                                logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
-                                const { url } = await uploadVideoToSupabase(videoBuffer.buffer, task.id);
-                                videoUrl = url;
-
-                                // Cleanup temp file
-                                await fs.promises.unlink(tempPath).catch(() => {});
-
-                                logs = await appendLog(task.id, 'success', '✓ Video uploaded!', logs);
-                                break;
-                            }
-                        }
-
-                        // Try getting video src directly
-                        const videoSrc = await firstVideo.getAttribute('src');
-                        if (videoSrc && !existingVideoUrls.has(videoSrc)) {
-                            logs = await appendLog(task.id, 'success', '✓ Found new video URL!', logs);
-                            videoUrl = videoSrc;
+                        // If download didn't work, try getting the src directly
+                        if (!videoUrl && src) {
+                            videoUrl = src;
                             break;
                         }
                     }
                 }
 
-                // Alternative: Check Activity panel
-                const activityButton = page.locator('button[aria-label*="Activity"], button[aria-label*="Notification"]').first();
-                if (await activityButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-                    await activityButton.click();
-                    await page.waitForTimeout(1000);
+                // Alternative: Count total videos and see if count increased
+                const currentVideos = page.locator('video');
+                const currentCount = await currentVideos.count();
+                if (currentCount > initialVideoCount) {
+                    logs = await appendLog(task.id, 'info', `→ Video count increased: ${initialVideoCount} → ${currentCount}`, logs);
 
-                    // Look for "ready" notification at top
-                    const readyNotification = page.locator('text=/ready|준비되었습니다/i').first();
-                    if (await readyNotification.isVisible({ timeout: 2000 }).catch(() => false)) {
-                        logs = await appendLog(task.id, 'info', '→ Found completion notification!', logs);
-                        await readyNotification.click();
-                        await page.waitForTimeout(2000);
-                        // Continue to try download from opened video
+                    // New video should be first, click it
+                    const newVideo = currentVideos.first();
+                    if (await newVideo.isVisible()) {
+                        const newSrc = await newVideo.getAttribute('src');
+                        if (newSrc && !existingVideoUrls.has(newSrc)) {
+                            await newVideo.click();
+                            await page.waitForTimeout(2000);
+                            videoUrl = await downloadCurrentVideo(page, task.id, logs);
+                            if (!videoUrl) videoUrl = newSrc;
+                            if (videoUrl) break;
+                        }
                     }
                 }
 
             } catch (e) {
-                logs = await appendLog(task.id, 'warning', `⚠ Check failed: ${e}`, logs);
+                logs = await appendLog(task.id, 'warning', `⚠ Refresh error: ${e}`, logs);
             }
 
             await page.waitForTimeout(pollInterval);
         }
 
-        // If still no video, check one more time
         if (!videoUrl) {
-            logs = await appendLog(task.id, 'warning', '⚠ Video not found automatically', logs);
-            logs = await appendLog(task.id, 'info', '→ Please manually download from Drafts', logs);
-        }
-
-        if (!videoUrl) {
-            throw new Error('Timeout: Video did not complete within 10 minutes. Check Drafts manually.');
+            logs = await appendLog(task.id, 'warning', '⚠ Could not find new video after 10 minutes', logs);
+            logs = await appendLog(task.id, 'info', '→ Please check Sora drafts manually', logs);
+            throw new Error('Timeout: Video not found. Please check Sora drafts manually.');
         }
 
         // If we got a URL but haven't downloaded yet, fetch it
