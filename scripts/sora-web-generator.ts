@@ -417,13 +417,60 @@ async function generateVideo(
             throw new Error('Could not find prompt input field');
         }
 
-        // Fill the prompt using keyboard (safer than clicking around)
-        // Use fill() which focuses and types without extra clicks
+        // Fill the prompt using fill() which handles focus
         await promptInput.fill(task.metadata.prompt);
         logs = await appendLog(task.id, 'success', '✓ Prompt entered', logs);
 
-        // Note: Aspect ratio and duration will use Sora defaults
-        // We avoid clicking other UI elements to prevent mis-clicks
+        // Click on Orientation setting to change it
+        logs = await appendLog(task.id, 'info', `→ Setting orientation: ${task.metadata.aspect_ratio}...`, logs);
+        try {
+            // Find and click the Orientation row (contains "Orientation" text)
+            const orientationRow = page.locator('text=Orientation').first();
+            if (await orientationRow.isVisible({ timeout: 3000 }).catch(() => false)) {
+                await orientationRow.click();
+                await page.waitForTimeout(1000);
+
+                // Map aspect_ratio to Sora orientation names
+                const orientationMap: Record<string, string> = {
+                    'landscape': 'Landscape',
+                    'portrait': 'Portrait',
+                    'square': 'Square',
+                };
+                const targetOrientation = orientationMap[task.metadata.aspect_ratio] || 'Landscape';
+
+                // Click the target orientation option
+                const orientationOption = page.locator(`text=${targetOrientation}`).first();
+                if (await orientationOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    await orientationOption.click();
+                    await page.waitForTimeout(500);
+                    logs = await appendLog(task.id, 'success', `✓ Orientation set to ${targetOrientation}`, logs);
+                }
+            }
+        } catch {
+            logs = await appendLog(task.id, 'warning', '⚠ Could not set orientation', logs);
+        }
+
+        // Click on Duration setting to change it
+        logs = await appendLog(task.id, 'info', `→ Setting duration: ${task.metadata.duration}s...`, logs);
+        try {
+            // Find and click the Duration row (contains "Duration" text)
+            const durationRow = page.locator('text=Duration').first();
+            if (await durationRow.isVisible({ timeout: 3000 }).catch(() => false)) {
+                await durationRow.click();
+                await page.waitForTimeout(1000);
+
+                // Click the target duration option (e.g., "5s", "10s", "15s", "20s")
+                const targetDuration = `${task.metadata.duration}s`;
+                const durationOption = page.locator(`text=${targetDuration}`).first();
+                if (await durationOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    await durationOption.click();
+                    await page.waitForTimeout(500);
+                    logs = await appendLog(task.id, 'success', `✓ Duration set to ${targetDuration}`, logs);
+                }
+            }
+        } catch {
+            logs = await appendLog(task.id, 'warning', '⚠ Could not set duration', logs);
+        }
 
         // Record existing video URLs before generating (to detect new ones)
         const existingVideoUrls = new Set<string>();
