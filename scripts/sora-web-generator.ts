@@ -581,65 +581,32 @@ async function generateVideo(
             throw new Error('Timeout: Video not found. Please check Sora drafts manually.');
         }
 
-        // Process the video - either Sora page URL or direct video URL
+        // Pass Sora URL to kie.ai for watermark removal and get clean video
         if (videoUrl) {
             try {
-                let finalUrl = '';
-                let finalPath = '';
-
-                // Check if this is a Sora page URL (for watermark removal)
-                const isSoraPageUrl = videoUrl.includes('sora.chatgpt.com');
-
-                if (isSoraPageUrl && KIE_API_KEY) {
-                    // Use Sora page URL for watermark removal
-                    logs = await appendLog(task.id, 'info', '→ Using Sora URL for watermark removal...', logs);
-
-                    const watermarkResult = await removeWatermark(videoUrl, task.id, logs);
-                    if (watermarkResult) {
-                        logs = watermarkResult.logs;
-
-                        // Download clean video from kie.ai and upload to Supabase
-                        if (watermarkResult.url && watermarkResult.url !== videoUrl) {
-                            logs = await appendLog(task.id, 'info', '→ Downloading clean video...', logs);
-
-                            const cleanResponse = await fetch(watermarkResult.url);
-                            if (cleanResponse.ok) {
-                                const cleanBuffer = await cleanResponse.arrayBuffer();
-
-                                logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
-                                const { url: cleanUrl, path: cleanPath } = await uploadVideoToSupabase(cleanBuffer, task.id, '');
-
-                                finalUrl = cleanUrl;
-                                finalPath = cleanPath;
-                                logs = await appendLog(task.id, 'success', '✓ Clean video uploaded', logs);
-                            } else {
-                                logs = await appendLog(task.id, 'warning', '⚠ Could not download clean video', logs);
-                            }
-                        }
-                    }
+                if (!KIE_API_KEY) {
+                    throw new Error('KIE_API_KEY not set - cannot process video');
                 }
 
-                // Fallback: Download directly if no clean video yet
-                if (!finalUrl && !videoUrl.includes('supabase')) {
-                    logs = await appendLog(task.id, 'info', '→ Downloading video directly...', logs);
+                // Send Sora URL to kie.ai watermark remover
+                const watermarkResult = await removeWatermark(videoUrl, task.id, logs);
+                if (!watermarkResult || !watermarkResult.url || watermarkResult.url === videoUrl) {
+                    throw new Error('Watermark removal failed');
+                }
+                logs = watermarkResult.logs;
 
-                    const response = await fetch(videoUrl);
-                    if (response.ok) {
-                        const videoBuffer = await response.arrayBuffer();
-
-                        logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
-                        const { url, path: storagePath } = await uploadVideoToSupabase(videoBuffer, task.id, '');
-
-                        finalUrl = url;
-                        finalPath = storagePath;
-                    } else {
-                        throw new Error(`Failed to download video: ${response.status}`);
-                    }
+                // Download clean video from kie.ai
+                logs = await appendLog(task.id, 'info', '→ Downloading clean video from kie.ai...', logs);
+                const cleanResponse = await fetch(watermarkResult.url);
+                if (!cleanResponse.ok) {
+                    throw new Error(`Failed to download clean video: ${cleanResponse.status}`);
                 }
 
-                if (!finalUrl) {
-                    throw new Error('Could not process video');
-                }
+                const cleanBuffer = await cleanResponse.arrayBuffer();
+
+                // Upload to Supabase
+                logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
+                const { url: finalUrl, path: finalPath } = await uploadVideoToSupabase(cleanBuffer, task.id, '');
 
                 // Update task with final video URL
                 await updateTaskStatus(task.id, 'completed', {
@@ -653,8 +620,8 @@ async function generateVideo(
                 logs = await appendLog(task.id, 'success', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
                 logs = await appendLog(task.id, 'info', `📹 URL: ${finalUrl}`, logs);
 
-            } catch (downloadError) {
-                throw new Error(`Failed to process video: ${downloadError}`);
+            } catch (processError) {
+                throw new Error(`Failed to process video: ${processError}`);
             }
         }
 
