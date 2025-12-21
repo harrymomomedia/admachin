@@ -13,6 +13,7 @@ All notable changes to AdMachin are documented here.
 - EmptyState component with presets (`src/components/EmptyState.tsx`)
 - Skeleton loading components (`src/components/Skeleton.tsx`)
 - E2E production tests with Playwright (`e2e/production.spec.ts`)
+- CLAUDE.md: Auto-read changelog at session start, auto-update after changes
 
 **Changed:**
 - Sidebar: "Ad Text" → "Ad Copy", "AI Video Generated" → "Generated Videos", "Profiles" → "FB Profiles"
