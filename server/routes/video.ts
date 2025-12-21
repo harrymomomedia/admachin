@@ -382,6 +382,7 @@ export async function syncVideoTasks(): Promise<{
 
             // Skip web generation tasks (handled by Playwright script)
             if (task.task_id.startsWith('web-')) {
+                console.log(`[Sync] Skipping web task: ${task.task_id}`);
                 continue;
             }
 
