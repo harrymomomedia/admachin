@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-server
 *.local
 
 # Editor directories and files
@@ -25,3 +26,9 @@ dist-ssr
 .vercel
 .env
 .env*.local
+
+# Playwright browser session data (contains login cookies)
+playwright-data/
+
+# Temp files
+temp/

@@ -1,0 +1,14 @@
+# Nixpacks configuration for Railway
+# Builds frontend + Express server, serves everything from Railway
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build", "npm run build:server"]
+
+[start]
+cmd = "npm run start:server"

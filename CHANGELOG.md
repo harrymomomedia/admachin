@@ -6,6 +6,20 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-22: Sora Web Automation Working
+
+**Added:**
+- Sora Web browser automation fully functional
+- Storage bucket `video-generator` for video uploads
+- Script `scripts/reset-web-task.ts` for resetting failed tasks
+
+**Fixed:**
+- Server sync-tasks now properly skips `web-` prefixed tasks
+- Button selector updated to avoid clicking "Create Character"
+- Video upload to Supabase storage working
+
+---
+
 ### 2025-12-22: UI/UX Improvements & Video API Fixes
 
 **Added:**
