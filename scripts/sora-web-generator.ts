@@ -35,6 +35,10 @@ const USER_DATA_DIR = path.join(__dirname, '..', 'playwright-data', 'sora-sessio
 const SORA_URL = 'https://sora.chatgpt.com/';
 const SORA_DRAFTS_URL = 'https://sora.chatgpt.com/drafts';
 
+// Kie.ai API for watermark removal
+const KIE_API_KEY = process.env.KIE_API_KEY;
+const KIE_API_BASE = 'https://api.kie.ai/api/v1';
+
 interface VideoTask {
     id: string;
     video_generator_id: string;
@@ -123,9 +127,10 @@ async function updateGeneratorStatus(generatorId: string, status: string) {
 
 async function uploadVideoToSupabase(
     videoBuffer: ArrayBuffer,
-    videoOutputId: string
+    videoOutputId: string,
+    suffix: string = ''
 ): Promise<{ path: string; url: string }> {
-    const filename = `${Date.now()}.mp4`;
+    const filename = `${Date.now()}${suffix}.mp4`;
     const filePath = `videos/${videoOutputId}/${filename}`;
 
     const { data, error } = await supabase.storage
@@ -148,6 +153,100 @@ async function uploadVideoToSupabase(
         path: data.path,
         url: urlData.publicUrl,
     };
+}
+
+async function removeWatermark(
+    videoUrl: string,
+    taskId: string,
+    logs: VideoTask['logs']
+): Promise<{ url: string; logs: VideoTask['logs'] } | null> {
+    if (!KIE_API_KEY) {
+        logs = await appendLog(taskId, 'warning', '⚠ KIE_API_KEY not set, skipping watermark removal', logs);
+        return null;
+    }
+
+    try {
+        logs = await appendLog(taskId, 'info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
+        logs = await appendLog(taskId, 'info', '🧹 REMOVING WATERMARK...', logs);
+        logs = await appendLog(taskId, 'info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
+
+        // Start watermark removal task
+        logs = await appendLog(taskId, 'info', '→ Starting watermark removal...', logs);
+
+        const createResponse = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${KIE_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'sora-watermark-remover',
+                input: {
+                    video_url: videoUrl,
+                },
+            }),
+        });
+
+        const createData = await createResponse.json();
+
+        if (createData.code !== 200 || !createData.data?.taskId) {
+            logs = await appendLog(taskId, 'error', `✗ Failed to start: ${createData.msg}`, logs);
+            return { url: videoUrl, logs }; // Return original URL on failure
+        }
+
+        const kieTaskId = createData.data.taskId;
+        logs = await appendLog(taskId, 'success', `✓ Task started: ${kieTaskId}`, logs);
+
+        // Poll for completion
+        const maxWaitTime = 5 * 60 * 1000; // 5 minutes max for watermark removal
+        const pollInterval = 10000; // 10 seconds
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitTime) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+            const statusResponse = await fetch(
+                `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(kieTaskId)}`,
+                {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${KIE_API_KEY}` },
+                }
+            );
+
+            const statusData = await statusResponse.json();
+
+            if (statusData.code !== 200 || !statusData.data) {
+                logs = await appendLog(taskId, 'warning', `⚠ [${elapsed}s] Status check failed`, logs);
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                continue;
+            }
+
+            const state = statusData.data.state || statusData.data.status;
+            const cleanVideoUrl = statusData.data.output?.video_url || statusData.data.videoUrl;
+
+            if (state === 'completed' || state === 'success') {
+                if (cleanVideoUrl) {
+                    logs = await appendLog(taskId, 'success', `✓ Watermark removed! (${elapsed}s)`, logs);
+                    return { url: cleanVideoUrl, logs };
+                }
+            } else if (state === 'failed' || state === 'fail') {
+                const errorMsg = statusData.data.error || statusData.data.failMsg || 'Unknown error';
+                logs = await appendLog(taskId, 'error', `✗ Watermark removal failed: ${errorMsg}`, logs);
+                return { url: videoUrl, logs }; // Return original URL on failure
+            } else {
+                logs = await appendLog(taskId, 'info', `⏳ [${elapsed}s] Processing...`, logs);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+
+        logs = await appendLog(taskId, 'warning', '⚠ Watermark removal timed out, using original', logs);
+        return { url: videoUrl, logs };
+
+    } catch (error) {
+        logs = await appendLog(taskId, 'error', `✗ Watermark removal error: ${error}`, logs);
+        return { url: videoUrl, logs };
+    }
 }
 
 async function checkLoginState(page: Page): Promise<boolean> {
@@ -419,11 +518,20 @@ async function generateVideo(
                         await firstVideo.click();
                         await page.waitForTimeout(2000);
 
-                        // Try to download
+                        // Get the current page URL - this is the Sora video page URL
+                        // Format: https://sora.chatgpt.com/library/... or https://sora.chatgpt.com/p/...
+                        const currentUrl = page.url();
+                        if (currentUrl.includes('sora.chatgpt.com')) {
+                            logs = await appendLog(task.id, 'info', `→ Sora page URL: ${currentUrl}`, logs);
+                            videoUrl = currentUrl;
+                            break;
+                        }
+
+                        // Fallback: Try to download directly
                         videoUrl = await downloadCurrentVideo(page, task.id, logs);
                         if (videoUrl) break;
 
-                        // If download didn't work, try getting the src directly
+                        // Last resort: use video src directly
                         if (!videoUrl && src) {
                             videoUrl = src;
                             break;
@@ -444,6 +552,15 @@ async function generateVideo(
                         if (newSrc && !existingVideoUrls.has(newSrc)) {
                             await newVideo.click();
                             await page.waitForTimeout(2000);
+
+                            // Get Sora page URL
+                            const currentUrl = page.url();
+                            if (currentUrl.includes('sora.chatgpt.com')) {
+                                logs = await appendLog(task.id, 'info', `→ Sora page URL: ${currentUrl}`, logs);
+                                videoUrl = currentUrl;
+                                break;
+                            }
+
                             videoUrl = await downloadCurrentVideo(page, task.id, logs);
                             if (!videoUrl) videoUrl = newSrc;
                             if (videoUrl) break;
@@ -464,35 +581,80 @@ async function generateVideo(
             throw new Error('Timeout: Video not found. Please check Sora drafts manually.');
         }
 
-        // If we got a URL but haven't downloaded yet, fetch it
-        if (videoUrl && !videoUrl.includes('supabase')) {
-            logs = await appendLog(task.id, 'info', '→ Downloading video...', logs);
-
+        // Process the video - either Sora page URL or direct video URL
+        if (videoUrl) {
             try {
-                const response = await fetch(videoUrl);
-                if (!response.ok) {
-                    throw new Error(`Failed to download video: ${response.status}`);
+                let finalUrl = '';
+                let finalPath = '';
+
+                // Check if this is a Sora page URL (for watermark removal)
+                const isSoraPageUrl = videoUrl.includes('sora.chatgpt.com');
+
+                if (isSoraPageUrl && KIE_API_KEY) {
+                    // Use Sora page URL for watermark removal
+                    logs = await appendLog(task.id, 'info', '→ Using Sora URL for watermark removal...', logs);
+
+                    const watermarkResult = await removeWatermark(videoUrl, task.id, logs);
+                    if (watermarkResult) {
+                        logs = watermarkResult.logs;
+
+                        // Download clean video from kie.ai and upload to Supabase
+                        if (watermarkResult.url && watermarkResult.url !== videoUrl) {
+                            logs = await appendLog(task.id, 'info', '→ Downloading clean video...', logs);
+
+                            const cleanResponse = await fetch(watermarkResult.url);
+                            if (cleanResponse.ok) {
+                                const cleanBuffer = await cleanResponse.arrayBuffer();
+
+                                logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
+                                const { url: cleanUrl, path: cleanPath } = await uploadVideoToSupabase(cleanBuffer, task.id, '');
+
+                                finalUrl = cleanUrl;
+                                finalPath = cleanPath;
+                                logs = await appendLog(task.id, 'success', '✓ Clean video uploaded', logs);
+                            } else {
+                                logs = await appendLog(task.id, 'warning', '⚠ Could not download clean video', logs);
+                            }
+                        }
+                    }
                 }
 
-                const videoBuffer = await response.arrayBuffer();
+                // Fallback: Download directly if no clean video yet
+                if (!finalUrl && !videoUrl.includes('supabase')) {
+                    logs = await appendLog(task.id, 'info', '→ Downloading video directly...', logs);
 
-                logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
-                const { url, path: storagePath } = await uploadVideoToSupabase(videoBuffer, task.id);
+                    const response = await fetch(videoUrl);
+                    if (response.ok) {
+                        const videoBuffer = await response.arrayBuffer();
 
-                // Update task with video URL
+                        logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
+                        const { url, path: storagePath } = await uploadVideoToSupabase(videoBuffer, task.id, '');
+
+                        finalUrl = url;
+                        finalPath = storagePath;
+                    } else {
+                        throw new Error(`Failed to download video: ${response.status}`);
+                    }
+                }
+
+                if (!finalUrl) {
+                    throw new Error('Could not process video');
+                }
+
+                // Update task with final video URL
                 await updateTaskStatus(task.id, 'completed', {
-                    final_video_url: url,
-                    output_storage_path: storagePath,
+                    final_video_url: finalUrl,
+                    output_storage_path: finalPath,
                 });
                 await updateGeneratorStatus(task.video_generator_id, 'completed');
 
                 logs = await appendLog(task.id, 'success', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
                 logs = await appendLog(task.id, 'success', '🎉 VIDEO GENERATION COMPLETE!', logs);
                 logs = await appendLog(task.id, 'success', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', logs);
-                logs = await appendLog(task.id, 'info', `📹 URL: ${url}`, logs);
+                logs = await appendLog(task.id, 'info', `📹 URL: ${finalUrl}`, logs);
 
             } catch (downloadError) {
-                throw new Error(`Failed to download/upload video: ${downloadError}`);
+                throw new Error(`Failed to process video: ${downloadError}`);
             }
         }
 
