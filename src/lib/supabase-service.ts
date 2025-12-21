@@ -1523,6 +1523,7 @@ export interface VideoOutput {
     video_generator_id: string | null;
     output_storage_path: string | null;
     final_video_url: string | null;
+    sora_url: string | null;
     transcript: string | null;
     task_id: string | null;
     task_status: 'pending' | 'processing' | 'completed' | 'failed';

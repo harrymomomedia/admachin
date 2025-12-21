@@ -26,6 +26,7 @@ interface VideoOutputRow {
     video_generator_id: string | null;
     output_storage_path: string | null;
     final_video_url: string | null;
+    sora_url: string | null;
     transcript: string | null;
     task_id: string | null;
     task_status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -406,6 +407,14 @@ export function AIVideoGenerated() {
             width: 150,
             minWidth: 120,
             editable: true,
+            type: 'url',
+        },
+        {
+            key: 'sora_url',
+            header: 'Sora URL',
+            width: 150,
+            minWidth: 120,
+            editable: false,
             type: 'url',
         },
         {
