@@ -464,24 +464,23 @@ export function Ads() {
     ];
 
     return (
-        <DataTablePageLayout
-            title="Ads"
-            headerActions={
-                <button
-                    onClick={() => navigate('/ads/create')}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                >
-                    <Layers className="w-3 h-3" />
-                    Create Ads
-                </button>
-            }
-        >
+        <DataTablePageLayout>
             {/* Data Table */}
             <DataTable
                 columns={columns}
                 data={ads}
                 isLoading={isLoading}
                 emptyMessage="No ads found. Create one to get started!"
+                title="Ads"
+                headerActions={
+                    <button
+                        onClick={() => navigate('/ads/create')}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                    >
+                        <Layers className="w-3 h-3" />
+                        Create Ads
+                    </button>
+                }
                 getRowId={(ad) => ad.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}

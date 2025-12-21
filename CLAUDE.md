@@ -133,6 +133,10 @@ Built-in features:
 - Row reordering (drag & drop)
 - Gallery view mode for creatives
 
+**Toolbar Layout:**
+
+Fixed toolbar that doesn't scroll horizontally. Uses `flex-wrap` so when there's not enough space, right-aligned icons wrap to a second row. Only the table/gallery content scrolls horizontally.
+
 ### Contexts
 - `useAuth()` - User authentication state
 - `useFacebook()` - Facebook profiles & ad accounts
@@ -164,3 +168,49 @@ Required in `.env.local`:
 - Facebook API credentials (if using FB features)
 
 Never commit `.env` files.
+
+## Changelog (IMPORTANT)
+
+**Always update `CHANGELOG.md` after completing any significant work.**
+
+Format:
+```markdown
+### YYYY-MM-DD: Brief Title
+
+**Added:**
+- New features
+
+**Changed:**
+- Modifications to existing features
+
+**Fixed:**
+- Bug fixes
+
+**Technical:**
+- Dependencies, configs, internal changes
+```
+
+Keep entries compact - one line per change. Group related changes together.
+
+## Documentation
+
+- `docs/RAILWAY_MIGRATION.md` - Guide for Vercel → Railway migration
+- `CHANGELOG.md` - Log of all major changes
+
+## Server-Side Processing (IMPORTANT)
+
+**All background processes must be server-side.** When any task is triggered:
+
+1. Save the task state to the database immediately
+2. Process the task on the server (via API routes or cron jobs)
+3. Store all progress, logs, and results in the database
+4. Frontend only displays current state from the database
+
+**Never rely on the browser staying open.** If a user closes their browser, refreshes the page, or loses connection, all work must continue uninterrupted on the server.
+
+This applies to:
+- AI generation tasks
+- Video/image processing
+- File uploads and transformations
+- Any long-running operations
+- Status polling (use server cron, not browser polling)

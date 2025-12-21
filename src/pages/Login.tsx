@@ -75,7 +75,7 @@ export function Login() {
                                     className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                 />
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">Leave blank if no password is set</p>
+                            <p className="text-xs text-gray-400 mt-1">Enter your account password</p>
                         </div>
 
                         {/* Error Message */}
@@ -115,7 +115,7 @@ export function Login() {
 
                 {/* Footer */}
                 <p className="text-center text-gray-400 text-xs mt-6">
-                    © 2024 AdMachin. All rights reserved.
+                    © {new Date().getFullYear()} AdMachin. All rights reserved.
                 </p>
             </div>
         </div>

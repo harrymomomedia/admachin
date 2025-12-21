@@ -494,17 +494,16 @@ export function AdCopyLibrary() {
     ];
 
     return (
-        <DataTablePageLayout
-            title="Ad Text"
-            onNewClick={() => setIsCreateModalOpen(true)}
-            newButtonLabel="New"
-        >
+        <DataTablePageLayout>
             {/* Data Table */}
             <DataTable
                 columns={columns}
                 data={copies}
                 isLoading={isLoading}
                 emptyMessage="No ad copies found. Create one for your next campaign!"
+                title="Ad Text"
+                onNewClick={() => setIsCreateModalOpen(true)}
+                newButtonLabel="New"
                 getRowId={(copy) => copy.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}

@@ -512,17 +512,16 @@ export function Creatives() {
     ];
 
     return (
-        <DataTablePageLayout
-            title="Creatives"
-            onNewClick={() => setShowUploader(true)}
-            newButtonLabel="Upload"
-        >
+        <DataTablePageLayout>
             {/* Data Table */}
             <DataTable
                 columns={columns}
                 data={creatives}
                 isLoading={isLoading}
                 emptyMessage="No creatives found. Upload your first media to get started!"
+                title="Creatives"
+                onNewClick={() => setShowUploader(true)}
+                newButtonLabel="Upload"
                 getRowId={(creative) => creative.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}

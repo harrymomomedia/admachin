@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { Sidebar } from "../components/Sidebar";
+import { Breadcrumb } from "../components/Breadcrumb";
 
 const SIDEBAR_COLLAPSED_KEY = 'admachin_sidebar_collapsed';
 
@@ -50,6 +51,11 @@ export function DashboardLayout() {
                         <Menu className="h-5 w-5" />
                     </button>
                     <span className="text-sm font-semibold text-foreground">AdMachin</span>
+                </div>
+
+                {/* Breadcrumb */}
+                <div className="px-6 py-2 border-b border-border bg-card flex-shrink-0">
+                    <Breadcrumb />
                 </div>
 
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen, Megaphone } from "lucide-react";
+import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen, Megaphone, Video } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { UserProfileDropdown } from "./UserProfileDropdown";
@@ -13,7 +13,7 @@ const FacebookIcon = () => (
 );
 
 const mainNavigation = [
-    { name: "Ad Text", href: "/", icon: Type },
+    { name: "Ad Copy", href: "/", icon: Type },
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
     { name: "Ads", href: "/ads", icon: Megaphone },
@@ -25,8 +25,13 @@ const copywritingSubNav = [
     { name: "Saved Personas", href: "/saved-personas", icon: FolderOpen },
 ];
 
+const videoSubNav = [
+    { name: "Video Generator", href: "/video-generator", icon: Video },
+    { name: "Generated Videos", href: "/ai-video-generated", icon: Sparkles },
+];
+
 const facebookSubNav = [
-    { name: "Profiles", href: "/facebook/profiles", icon: User },
+    { name: "FB Profiles", href: "/facebook/profiles", icon: User },
     { name: "Ad Accounts", href: "/facebook/ad-accounts", icon: Database },
 ];
 
@@ -139,11 +144,15 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
     const [isCopywritingExpanded, setIsCopywritingExpanded] = useState(
         location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas'
     );
+    const [isVideoExpanded, setIsVideoExpanded] = useState(
+        location.pathname === '/video-generator' || location.pathname === '/ai-video-generated'
+    );
     const [isFacebookExpanded, setIsFacebookExpanded] = useState(
         location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts'
     );
 
     const isCopywritingActive = location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas';
+    const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated';
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
 
     const handleNavClick = () => {
@@ -276,7 +285,67 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                     </div>
                 )}
 
-                {/* Launch Ad - between Copywriting and Facebook */}
+                {/* Video Section */}
+                {!isCollapsed ? (
+                    <div className="mt-2">
+                        <button
+                            onClick={() => setIsVideoExpanded(!isVideoExpanded)}
+                            className={cn(
+                                "flex w-full items-center justify-between gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                isVideoActive
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                        >
+                            <div className="flex items-center gap-3">
+                                <Video className="h-5 w-5" />
+                                Video
+                            </div>
+                            {isVideoExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </button>
+
+                        {isVideoExpanded && (
+                            <div className="ml-4 mt-1 flex flex-col gap-1">
+                                {videoSubNav.map((item) => {
+                                    const isActive = location.pathname === item.href;
+                                    return (
+                                        <Link
+                                            key={item.name}
+                                            to={item.href}
+                                            onClick={handleNavClick}
+                                            className={cn(
+                                                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                                isActive
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            )}
+                                        >
+                                            <item.icon className="h-4 w-4" />
+                                            {item.name}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    // Collapsed Video - Flyout Menu
+                    <div className="mt-2">
+                        <FlyoutMenu
+                            title="Video"
+                            icon={<Video className="h-5 w-5" />}
+                            items={videoSubNav}
+                            isActive={isVideoActive}
+                            onNavigate={handleNavClick}
+                        />
+                    </div>
+                )}
+
+                {/* Launch Ad - between Video and Facebook */}
                 <Link
                     to="/launch"
                     onClick={handleNavClick}

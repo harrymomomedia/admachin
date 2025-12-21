@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, GripVertical as DragHandle } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil } from 'lucide-react';
 import { SingleSelect, SearchInput } from './fields';
 import {
     DndContext,
@@ -121,6 +121,12 @@ export interface DataTableProps<T> {
     data: T[];
     isLoading?: boolean;
     emptyMessage?: string;
+
+    // Toolbar header (2-row toolbar)
+    title?: string;
+    onNewClick?: () => void;
+    newButtonLabel?: string;
+    headerActions?: React.ReactNode;
 
     // Row identification
     getRowId: (row: T) => string;
@@ -886,7 +892,7 @@ function FieldEditor({
                                 <div key={String(opt.value)} className="flex items-center gap-2 group">
                                     {/* Drag Handle - hidden in colorOnly mode */}
                                     {!colorOnly && (
-                                        <DragHandle className="w-3.5 h-3.5 text-gray-300 cursor-grab" />
+                                        <GripVertical className="w-3.5 h-3.5 text-gray-300 cursor-grab" />
                                     )}
 
                                     {/* Color Picker Button */}
@@ -1132,7 +1138,7 @@ function SortableRow<T>({
                 if ('showPicker' in inputRef.current) {
                     try {
                         (inputRef.current as HTMLSelectElement).showPicker();
-                    } catch (e) {
+                    } catch {
                         // Fallback: trigger click to open dropdown
                         inputRef.current.click();
                     }
@@ -1140,15 +1146,6 @@ function SortableRow<T>({
             }
         }
     }, [editingCell, rowId]);
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            onEditSave();
-        } else if (e.key === 'Escape') {
-            onEditCancel();
-        }
-    };
 
     return (
         <>
@@ -1173,7 +1170,7 @@ function SortableRow<T>({
                 style={{
                     opacity: isDragging ? 0.5 : 1,
                 }}
-                className="group hover:bg-gray-50"
+                className="group hover:bg-gray-50 data-grid-row"
                 draggable={sortable}
                 onDragStart={onRowDragStart}
                 onDragEnd={onRowDragEnd}
@@ -1226,7 +1223,7 @@ function SortableRow<T>({
 
                     // Helper to render the actions cell
                     const actionsCell = showRowActions ? (
-                        <td key="_actions" className="data-grid-td px-2 w-20">
+                        <td key="_actions" className="data-grid-td px-2" style={{ width: columnWidths['_actions'] || 80 }}>
                             <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {onDuplicate && (
                                     <button
@@ -1648,7 +1645,7 @@ function SortableRow<T>({
 
                 {/* Row Actions - only render at end if actionsColumnIndex is -1 or >= columns.length */}
                 {showRowActions && (actionsColumnIndex === -1 || actionsColumnIndex >= columns.length) && (
-                    <td className="data-grid-td px-2 w-20">
+                    <td className="data-grid-td px-2" style={{ width: columnWidths['_actions'] || 80 }}>
                         <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {onDuplicate && (
                                 <button
@@ -1685,6 +1682,8 @@ function SortableRow<T>({
                         </div>
                     </td>
                 )}
+                {/* Empty cell to match header's end drop zone */}
+                <td className="!p-0 !border-0 !bg-transparent" style={{ width: 1, minWidth: 1, maxWidth: 1 }}></td>
             </tr>
         </>
     );
@@ -1708,8 +1707,20 @@ interface QuickFilterProps {
 function QuickFilter({ columnKey, header, options, colorMap, value, onSelect, onClear }: QuickFilterProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Calculate dropdown position when opening
+    useEffect(() => {
+        if (isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + 4,
+                left: Math.max(8, Math.min(rect.left, window.innerWidth - 196)),
+            });
+        }
+    }, [isOpen]);
 
     // Close on click outside
     useEffect(() => {
@@ -1777,13 +1788,13 @@ function QuickFilter({ columnKey, header, options, colorMap, value, onSelect, on
                     {/* Backdrop */}
                     <div className="fixed inset-0 z-[9998]" onClick={() => { setIsOpen(false); setSearch(''); }} />
 
-                    {/* Dropdown */}
+                    {/* Dropdown - positioned within viewport bounds */}
                     <div
                         ref={dropdownRef}
-                        className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] overflow-hidden"
+                        className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[180px] max-w-[calc(100vw-16px)] overflow-hidden"
                         style={{
-                            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
-                            left: buttonRef.current ? buttonRef.current.getBoundingClientRect().left : 0,
+                            top: dropdownPosition.top,
+                            left: dropdownPosition.left,
                         }}
                     >
                         {/* Search Input */}
@@ -1851,6 +1862,11 @@ export function DataTable<T>({
     data,
     isLoading = false,
     emptyMessage = 'No data found.',
+    // Toolbar header
+    title,
+    onNewClick,
+    newButtonLabel = 'New',
+    headerActions,
     getRowId,
     onUpdate,
     onDelete,
@@ -1871,9 +1887,9 @@ export function DataTable<T>({
     onColumnOrderChange,
     savedColumnWidths,
     onColumnWidthsChange,
-    // View persistence props
-    viewId,
-    userId,
+    // View persistence props (viewId and userId kept in interface for future use)
+    viewId: _viewId, // eslint-disable-line @typescript-eslint/no-unused-vars
+    userId: _userId, // eslint-disable-line @typescript-eslint/no-unused-vars
     initialPreferences,
     sharedPreferences,
     onPreferencesChange,
@@ -1888,7 +1904,7 @@ export function DataTable<T>({
     // View mode
     viewMode: externalViewMode,
     onViewModeChange,
-    cardColumns = 4,
+    cardColumns: _cardColumns = 4, // eslint-disable-line @typescript-eslint/no-unused-vars
     // Gallery configuration for native media preview
     galleryConfig,
     galleryLookups,
@@ -2008,6 +2024,8 @@ export function DataTable<T>({
             // Use saved width if available, otherwise use column default or 120px
             widths[col.key] = preferenceWidths?.[col.key] || col.width || 120;
         });
+        // Add actions column width (default 80px = w-20)
+        widths['_actions'] = preferenceWidths?.['_actions'] || 80;
         return widths;
     });
 
@@ -2026,18 +2044,6 @@ export function DataTable<T>({
             });
         }
     }, [savedColumnWidths, initialPreferences?.column_widths]);
-
-    // Notify parent when column widths change (for persistence)
-    const _handleColumnResize = useCallback((key: string, width: number) => {
-        setColumnWidths(prev => {
-            const updated = { ...prev, [key]: width };
-            // Notify parent for persistence
-            if (onColumnWidthsChange) {
-                onColumnWidthsChange(updated);
-            }
-            return updated;
-        });
-    }, [onColumnWidthsChange]);
 
     // Column order state
     const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() =>
@@ -2105,7 +2111,7 @@ export function DataTable<T>({
 
             const newOrder = currentOrderedKeys.filter(k => k !== draggedKey);
             // Insert at actions position, adjusted for before/after
-            let insertAt = actionsColumnIndex === -1 ? newOrder.length : Math.min(actionsColumnIndex, newOrder.length);
+            const insertAt = actionsColumnIndex === -1 ? newOrder.length : Math.min(actionsColumnIndex, newOrder.length);
 
             if (dropPosition === 'after') {
                 // When dropping AFTER actions:
@@ -2129,7 +2135,7 @@ export function DataTable<T>({
         }
 
         const draggedIndex = currentOrderedKeys.indexOf(draggedKey);
-        let targetIndex = currentOrderedKeys.indexOf(targetKey);
+        const targetIndex = currentOrderedKeys.indexOf(targetKey);
 
         if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
 
@@ -2228,6 +2234,10 @@ export function DataTable<T>({
     const [showWrapPanel, setShowWrapPanel] = useState(false);
     const [wrapSearch, setWrapSearch] = useState('');
     const wrapPanelRef = useRef<HTMLDivElement>(null);
+
+    // Team view dropdown visibility
+    const [showTeamViewDropdown, setShowTeamViewDropdown] = useState(false);
+    const teamViewDropdownRef = useRef<HTMLDivElement>(null);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -2364,6 +2374,18 @@ export function DataTable<T>({
         }
         if (!externalWrapRules && sharedPreferences.wrap_config?.length) {
             setInternalWrapRules(sharedPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        }
+        // Apply column widths from shared preferences
+        if (sharedPreferences.column_widths && Object.keys(sharedPreferences.column_widths).length > 0) {
+            setColumnWidths(prev => {
+                const updated = { ...prev };
+                for (const [key, width] of Object.entries(sharedPreferences.column_widths!)) {
+                    if (typeof width === 'number') {
+                        updated[key] = width;
+                    }
+                }
+                return updated;
+            });
         }
         // Apply column order from shared preferences
         if (sharedPreferences.column_order?.length) {
@@ -2637,6 +2659,7 @@ export function DataTable<T>({
         setShowFilterPanel(false);
         setShowGroupPanel(false);
         setShowWrapPanel(false);
+        setShowTeamViewDropdown(false);
     }, []);
 
     // Track if preferences have changed from initial/shared
@@ -2654,11 +2677,49 @@ export function DataTable<T>({
     const isMatchingTeamView = useMemo(() => {
         if (!sharedPreferences) return false;
         const current = getCurrentPreferences();
+
+        // Helper to compare objects with sorted keys (JSON.stringify is key-order sensitive)
+        const sortedStringify = (obj: Record<string, unknown> | undefined | null) => {
+            if (!obj) return '{}';
+            const sorted: Record<string, unknown> = {};
+            Object.keys(obj).sort().forEach(key => { sorted[key] = obj[key]; });
+            return JSON.stringify(sorted);
+        };
+
         const sortMatch = JSON.stringify(current.sort_config || []) === JSON.stringify(sharedPreferences.sort_config || []);
         const filterMatch = JSON.stringify(current.filter_config || []) === JSON.stringify(sharedPreferences.filter_config || []);
         const groupMatch = JSON.stringify(current.group_config || []) === JSON.stringify(sharedPreferences.group_config || []);
         const wrapMatch = JSON.stringify(current.wrap_config || []) === JSON.stringify(sharedPreferences.wrap_config || []);
-        return sortMatch && filterMatch && groupMatch && wrapMatch;
+
+        // Compare column widths excluding _actions (internal column not saved in team views)
+        const currentWidths = { ...current.column_widths };
+        const sharedWidths = { ...(sharedPreferences.column_widths || {}) };
+        delete currentWidths['_actions'];
+        delete sharedWidths['_actions'];
+        const columnWidthsMatch = sortedStringify(currentWidths) === sortedStringify(sharedWidths);
+
+        const columnOrderMatch = JSON.stringify(current.column_order || []) === JSON.stringify(sharedPreferences.column_order || []);
+
+        // Debug logging - remove after fixing
+        if (!sortMatch || !filterMatch || !groupMatch || !wrapMatch || !columnWidthsMatch || !columnOrderMatch) {
+            console.log('TeamView mismatch:', {
+                sortMatch, filterMatch, groupMatch, wrapMatch, columnWidthsMatch, columnOrderMatch,
+                current_sort: JSON.stringify(current.sort_config || []),
+                shared_sort: JSON.stringify(sharedPreferences.sort_config || []),
+                current_filter: JSON.stringify(current.filter_config || []),
+                shared_filter: JSON.stringify(sharedPreferences.filter_config || []),
+                current_group: JSON.stringify(current.group_config || []),
+                shared_group: JSON.stringify(sharedPreferences.group_config || []),
+                current_wrap: JSON.stringify(current.wrap_config || []),
+                shared_wrap: JSON.stringify(sharedPreferences.wrap_config || []),
+                current_widths: sortedStringify(currentWidths),
+                shared_widths: sortedStringify(sharedWidths),
+                current_order: JSON.stringify(current.column_order || []),
+                shared_order: JSON.stringify(sharedPreferences.column_order || []),
+            });
+        }
+
+        return sortMatch && filterMatch && groupMatch && wrapMatch && columnWidthsMatch && columnOrderMatch;
     }, [getCurrentPreferences, sharedPreferences]);
 
     // Auto-save preferences when they change (debounced)
@@ -2740,17 +2801,18 @@ export function DataTable<T>({
                 (sortPanelRef.current && sortPanelRef.current.contains(target)) ||
                 (filterPanelRef.current && filterPanelRef.current.contains(target)) ||
                 (groupPanelRef.current && groupPanelRef.current.contains(target)) ||
-                (wrapPanelRef.current && wrapPanelRef.current.contains(target));
+                (wrapPanelRef.current && wrapPanelRef.current.contains(target)) ||
+                (teamViewDropdownRef.current && teamViewDropdownRef.current.contains(target));
 
             if (!clickedInsideAnyPanel) {
                 closeAllPanels();
             }
         }
-        if (showSortPanel || showFilterPanel || showGroupPanel || showWrapPanel) {
+        if (showSortPanel || showFilterPanel || showGroupPanel || showWrapPanel || showTeamViewDropdown) {
             document.addEventListener('mousedown', handleClickOutside);
             return () => document.removeEventListener('mousedown', handleClickOutside);
         }
-    }, [showSortPanel, showFilterPanel, showGroupPanel, showWrapPanel, closeAllPanels]);
+    }, [showSortPanel, showFilterPanel, showGroupPanel, showWrapPanel, showTeamViewDropdown, closeAllPanels]);
 
     // Handle sort from context menu (adds/replaces sort rule)
     const handleSort = useCallback((columnKey: string, direction: 'asc' | 'desc') => {
@@ -2891,21 +2953,6 @@ export function DataTable<T>({
         }
     }, [onCreateRow, isCreating, filterRules]);
 
-    // Drag end handler
-    const _handleDragEnd = useCallback((event: DragEndEvent) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id || !onReorder) return;
-
-        const oldIndex = data.findIndex(row => getRowId(row) === active.id);
-        const newIndex = data.findIndex(row => getRowId(row) === over.id);
-
-        if (oldIndex !== -1 && newIndex !== -1) {
-            const newOrder = arrayMove(data.map(getRowId), oldIndex, newIndex);
-            setInternalRowOrder(newOrder); // Update internal state for persistence
-            onReorder(newOrder);
-        }
-    }, [data, getRowId, onReorder]);
-
     // Create native drag handlers for a specific row
     const createRowDragHandlers = useCallback((rowId: string) => ({
         onRowDragStart: (e: React.DragEvent<HTMLTableRowElement>) => {
@@ -2972,9 +3019,8 @@ export function DataTable<T>({
         },
     }), [sortedData, getRowId, onReorder, draggingRowId, dragOverRowId]);
 
-    // Calculate total width
-    const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0)
-        + (showRowActions ? 80 : 0);  // Actions column (w-20 = 80px)
+    // Calculate total width (columnWidths now includes _actions)
+    const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0);
 
     // Build combined column order including _actions at the right position
     const columnsWithActions = useMemo(() => {
@@ -2997,8 +3043,6 @@ export function DataTable<T>({
 
         return result;
     }, [orderedColumns, showRowActions, actionsColumnIndex]);
-
-    const _rowIds = sortedData.map(getRowId);
 
     const handleSortDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -3027,57 +3071,86 @@ export function DataTable<T>({
             "bg-white border border-gray-200 shadow-sm flex flex-col",
             fullscreen ? "flex-1 h-full overflow-hidden min-w-0" : "rounded-xl"
         )}>
-            {/* Single scroll container for toolbar + table/gallery */}
-            <div className="overflow-x-auto flex-1">
-                {/* Toolbar */}
-                <div
-                    className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50 flex-nowrap"
-                    style={{ minWidth: totalWidth }}
-                >
-                {/* Quick Filters */}
-                {quickFilters.map(columnKey => {
-                    const col = columns.find(c => c.key === columnKey);
-                    if (!col) return null;
+            {/* Toolbar - fixed, does not scroll horizontally */}
+            <div className="border-b border-gray-200 bg-gray-50 flex-shrink-0">
+                {/* Row 1: Title + Quick Filters + Spacer + Actions - wraps when needed */}
+                <div className="px-3 py-2 flex items-center gap-2 flex-wrap">
+                    {/* Title */}
+                    {title && (
+                        <h1 className="text-sm font-semibold text-gray-900 flex-shrink-0">{title}</h1>
+                    )}
 
-                    // Get options for this column (static options only, not function-based)
-                    const rawOptions = col.filterOptions || (Array.isArray(col.options) ? col.options : []);
-                    if (rawOptions.length === 0) return null;
+                    {/* Quick Filters */}
+                    {quickFilters.map(columnKey => {
+                        const col = columns.find(c => c.key === columnKey);
+                        if (!col) return null;
 
-                    // Find current filter value for this column (look for "is" filter)
-                    const currentFilter = filterRules.find(r => r.field === columnKey && r.operator === 'is');
-                    const currentValue = currentFilter?.value || null;
+                        // Get options for this column (static options only, not function-based)
+                        const rawOptions = col.filterOptions || (Array.isArray(col.options) ? col.options : []);
+                        if (rawOptions.length === 0) return null;
 
-                    return (
-                        <QuickFilter
-                            key={columnKey}
-                            columnKey={columnKey}
-                            header={col.header}
-                            options={rawOptions.map(o => ({ label: o.label, value: o.value }))}
-                            colorMap={col.colorMap}
-                            value={currentValue}
-                            onSelect={(value) => {
-                                // Remove any existing filter for this column, then add new one
-                                const newRules = filterRules.filter(r => r.field !== columnKey);
-                                newRules.push({
-                                    id: Math.random().toString(36).substring(2, 11),
-                                    field: columnKey,
-                                    operator: 'is',
-                                    value: value,
-                                    conjunction: 'and'
-                                });
-                                setFilterRules(newRules);
-                            }}
-                            onClear={() => {
-                                // Remove filter for this column
-                                setFilterRules(filterRules.filter(r => r.field !== columnKey));
-                            }}
-                        />
-                    );
-                })}
+                        // Find current filter value for this column (look for "is" filter)
+                        const currentFilter = filterRules.find(r => r.field === columnKey && r.operator === 'is');
+                        const currentValue = currentFilter?.value || null;
 
-                {/* Separator if there are quick filters */}
-                {quickFilters.length > 0 && quickFilters.some(key => columns.find(c => c.key === key)) && (
-                    <div className="w-px h-5 bg-gray-300 flex-shrink-0" />
+                        return (
+                            <QuickFilter
+                                key={columnKey}
+                                columnKey={columnKey}
+                                header={col.header}
+                                options={rawOptions.map(o => ({ label: o.label, value: o.value }))}
+                                colorMap={col.colorMap}
+                                value={currentValue}
+                                onSelect={(value) => {
+                                    // Remove any existing filter for this column, then add new one
+                                    const newRules = filterRules.filter(r => r.field !== columnKey);
+                                    newRules.push({
+                                        id: Math.random().toString(36).substring(2, 11),
+                                        field: columnKey,
+                                        operator: 'is',
+                                        value: value,
+                                        conjunction: 'and'
+                                    });
+                                    setFilterRules(newRules);
+                                }}
+                                onClear={() => {
+                                    // Remove filter for this column
+                                    setFilterRules(filterRules.filter(r => r.field !== columnKey));
+                                }}
+                            />
+                        );
+                    })}
+
+                    {/* Spacer - pushes right icons to the right */}
+                    <div className="flex-1" />
+
+                    {/* Right icons group - wraps together as a unit */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+
+                {/* View Mode Toggle - only show if galleryConfig or renderGalleryCard is provided */}
+                {(galleryConfig || renderGalleryCard) && (
+                    <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-0.5 flex-shrink-0">
+                        <button
+                            onClick={() => setViewMode('gallery')}
+                            className={cn(
+                                "p-1.5 rounded transition-colors",
+                                viewMode === 'gallery' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                            )}
+                            title="Gallery view"
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={cn(
+                                "p-1.5 rounded transition-colors",
+                                viewMode === 'table' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                            )}
+                            title="Table view"
+                        >
+                            <List className="w-4 h-4" />
+                        </button>
+                    </div>
                 )}
 
                 {/* Sort Button */}
@@ -3088,26 +3161,31 @@ export function DataTable<T>({
                             closeAllPanels();
                             if (!wasOpen) setShowSortPanel(true);
                         }}
+                        title={sortRules.length === 0
+                            ? 'Sort'
+                            : sortRules.length === 1
+                                ? `Sorted by ${columns.find(c => c.key === sortRules[0].key)?.header || sortRules[0].key}`
+                                : `Sorted by ${sortRules.length} fields`}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                            "relative flex items-center justify-center w-8 h-8 text-xs font-medium rounded-md transition-colors",
                             sortRules.length > 0
                                 ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                         )}
                     >
-                        <ArrowUpDown className="w-3.5 h-3.5" />
-                        {sortRules.length === 0
-                            ? 'Sort'
-                            : sortRules.length === 1
-                                ? `Sorted by ${columns.find(c => c.key === sortRules[0].key)?.header || sortRules[0].key}`
-                                : `Sorted by ${sortRules.length} fields`}
+                        <ArrowUpDown className="w-4 h-4" />
+                        {sortRules.length > 0 && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[10px] bg-blue-600 text-white rounded-full">
+                                {sortRules.length}
+                            </span>
+                        )}
                     </button>
 
                     {/* Sort Panel Popup */}
                     {showSortPanel && (
                         <div
                             ref={sortPanelRef}
-                            className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50"
+                            className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] max-w-[calc(100vw-24px)] z-50"
                         >
                             <div className="text-xs font-medium text-gray-500 mb-2">Sort by</div>
 
@@ -3239,35 +3317,29 @@ export function DataTable<T>({
                             closeAllPanels();
                             if (!wasOpen) setShowFilterPanel(true);
                         }}
+                        title={filterRules.length === 0
+                            ? 'Filter'
+                            : filterRules.length === 1
+                                ? `Filtered by ${columns.find(c => c.key === filterRules[0].field)?.header || filterRules[0].field}`
+                                : `Filtered by ${filterRules.length} rules`}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                            "relative flex items-center justify-center w-8 h-8 text-xs font-medium rounded-md transition-colors",
                             filterRules.length > 0
                                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                         )}
                     >
-                        <Filter className="w-3.5 h-3.5" />
-                        {filterRules.length === 0
-                            ? 'Filter'
-                            : filterRules.length === 1
-                                ? `Filtered by ${columns.find(c => c.key === filterRules[0].field)?.header || filterRules[0].field}`
-                                : `Filtered by ${filterRules.length} rules`}
+                        <Filter className="w-4 h-4" />
                         {filterRules.length > 0 && (
-                            <span
-                                className="ml-1 p-0.5 hover:bg-green-200 rounded-full"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setFilterRules([]);
-                                }}
-                            >
-                                <X className="w-3 h-3" />
+                            <span className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[10px] bg-green-600 text-white rounded-full">
+                                {filterRules.length}
                             </span>
                         )}
                     </button>
 
                     {/* Filter Panel Popup */}
                     {showFilterPanel && (
-                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50">
+                        <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] max-w-[calc(100vw-24px)] z-50">
                             <div className="text-xs font-medium text-gray-500 mb-2">
                                 {filterRules.length > 0 ? 'In this view, show records' : 'Filter by'}
                             </div>
@@ -3501,32 +3573,26 @@ export function DataTable<T>({
                 <div ref={groupPanelRef} className="relative flex-shrink-0">
                     <button
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                            "relative flex items-center justify-center w-8 h-8 text-xs font-medium rounded-md transition-colors",
                             groupRules.length > 0
                                 ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                         )}
+                        title={groupRules.length === 0
+                            ? 'Group'
+                            : groupRules.length === 1
+                                ? `Grouped by ${columns.find(c => c.key === groupRules[0].key)?.header || groupRules[0].key}`
+                                : `Grouped by ${groupRules.length} fields`}
                         onClick={() => {
                             const wasOpen = showGroupPanel;
                             closeAllPanels();
                             if (!wasOpen) setShowGroupPanel(true);
                         }}
                     >
-                        <LayoutGrid className="w-3.5 h-3.5" />
-                        {groupRules.length === 0
-                            ? 'Group'
-                            : groupRules.length === 1
-                                ? `Grouped by ${columns.find(c => c.key === groupRules[0].key)?.header || groupRules[0].key}`
-                                : `Grouped by ${groupRules.length} fields`}
+                        <LayoutGrid className="w-4 h-4" />
                         {groupRules.length > 0 && (
-                            <span
-                                className="ml-1 p-0.5 hover:bg-purple-200 rounded-full"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setGroupRules([]);
-                                }}
-                            >
-                                <X className="w-3 h-3" />
+                            <span className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[10px] bg-purple-600 text-white rounded-full">
+                                {groupRules.length}
                             </span>
                         )}
                     </button>
@@ -3534,7 +3600,7 @@ export function DataTable<T>({
                     {/* Group Panel Popup */}
                     {showGroupPanel && (
                         <div
-                            className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] z-50 flex flex-col gap-2"
+                            className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[320px] max-w-[calc(100vw-24px)] z-50 flex flex-col gap-2"
                         >
                             {/* Header with Collapse/Expand */}
                             <div className="flex items-center justify-between">
@@ -3687,17 +3753,17 @@ export function DataTable<T>({
                             closeAllPanels();
                             if (!wasOpen) setShowWrapPanel(true);
                         }}
+                        title={wrapRules.length === 0 ? 'Expand' : `${wrapRules.length} columns expanded`}
                         className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                            "relative flex items-center justify-center w-8 h-8 text-xs font-medium rounded-md transition-colors",
                             wrapRules.length > 0
-                                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                ? "bg-orange-100 text-orange-700 hover:bg-orange-200"
                                 : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                         )}
                     >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        Expand
+                        <Maximize2 className="w-4 h-4" />
                         {wrapRules.length > 0 && (
-                            <span className="text-[10px] bg-blue-200 text-blue-700 px-1.5 rounded-full">
+                            <span className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[10px] bg-orange-600 text-white rounded-full">
                                 {wrapRules.length}
                             </span>
                         )}
@@ -3705,9 +3771,9 @@ export function DataTable<T>({
 
                     {showWrapPanel && (
                         <>
-                            {/* Panel Container */}
+                            {/* Panel Container - right-0 since button is on right side */}
                             <div
-                                className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 w-72"
+                                className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 w-72 max-w-[calc(100vw-24px)]"
                             >
                                 {/* Panel Header */}
                                 <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
@@ -3805,103 +3871,118 @@ export function DataTable<T>({
                     )}
                 </div>
 
-                {/* Collapse/Expand buttons for groups */}
-                {groupRules.length > 0 && groupedData && (
-                    <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const allIds = new Set<string>();
-                                const traverse = (nodes: any[]) => {
-                                    nodes.forEach(n => {
-                                        allIds.add(n.id);
-                                        if (n.children) traverse(n.children);
-                                    });
-                                };
-                                traverse(groupedData);
-                                setCollapsedGroups(allIds);
-                            }}
-                            className="text-gray-500 hover:text-gray-700 underline"
-                        >
-                            Collapse all
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setCollapsedGroups(new Set())}
-                            className="text-gray-500 hover:text-gray-700 underline"
-                        >
-                            Expand all
-                        </button>
-                    </div>
-                )}
-
-                {/* Spacer to push right buttons to the right edge */}
-                <div className="flex-1 min-w-4" />
-
-                {/* View Mode Toggle - only show if galleryConfig or renderGalleryCard is provided */}
-                {(galleryConfig || renderGalleryCard) && (
-                    <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-0.5 flex-shrink-0">
-                        <button
-                            onClick={() => setViewMode('gallery')}
-                            className={cn(
-                                "p-1.5 rounded transition-colors",
-                                viewMode === 'gallery' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
-                            )}
-                            title="Gallery view"
-                        >
-                            <LayoutGrid className="w-4 h-4" />
-                        </button>
-                        <button
-                            onClick={() => setViewMode('table')}
-                            className={cn(
-                                "p-1.5 rounded transition-colors",
-                                viewMode === 'table' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
-                            )}
-                            title="Table view"
-                        >
-                            <List className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-
-                {/* Team View controls - flows naturally, scrolls with toolbar */}
+                {/* Team View Dropdown - single button with dropdown menu */}
                 {onSaveForEveryone && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* Team View Indicator */}
-                        {sharedPreferences && (
-                            <span className={cn(
-                                "text-xs px-2 py-1 rounded-full whitespace-nowrap",
-                                isMatchingTeamView
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-gray-100 text-gray-600"
-                            )}>
-                                {isMatchingTeamView ? "✓ Team View" : "Your View"}
+                    <div ref={teamViewDropdownRef} className="relative flex-shrink-0">
+                        {isMatchingTeamView ? (
+                            /* Just show indicator when on Team View - no dropdown */
+                            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-green-100 text-green-700 whitespace-nowrap">
+                                ✓ Team View
                             </span>
-                        )}
+                        ) : (
+                            /* Show dropdown button when on Your View */
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const wasOpen = showTeamViewDropdown;
+                                        closeAllPanels();
+                                        if (!wasOpen) setShowTeamViewDropdown(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                >
+                                    Your View
+                                    <ChevronDown className="w-3 h-3" />
+                                </button>
 
-                        {/* Load Team View button */}
-                        {sharedPreferences && !isMatchingTeamView && (
-                            <button
-                                type="button"
-                                onClick={handleLoadTeamView}
-                                className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors whitespace-nowrap"
-                            >
-                                Load Team View
-                            </button>
-                        )}
+                                {/* Dropdown Menu */}
+                                {showTeamViewDropdown && (
+                                    <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[160px] max-w-[calc(100vw-24px)] z-50">
+                                        {/* Use Team View */}
+                                        {onResetPreferences && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    // Delete user preferences AND apply team view
+                                                    onResetPreferences();
+                                                    handleLoadTeamView();
+                                                    setShowTeamViewDropdown(false);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+                                            >
+                                                Use Team View
+                                            </button>
+                                        )}
 
-                        {/* Save for Team button */}
-                        <button
-                            type="button"
-                            onClick={handleSaveForEveryone}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors whitespace-nowrap"
-                        >
-                            Save for Team
-                        </button>
+                                        {/* Save as Team View */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                handleSaveForEveryone();
+                                                setShowTeamViewDropdown(false);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+                                        >
+                                            Save as Team View
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
+
+                    {/* Header Actions */}
+                    {headerActions}
+
+                    {/* New Button */}
+                    {onNewClick && (
+                        <button
+                            onClick={onNewClick}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex-shrink-0"
+                        >
+                            <Plus className="w-3 h-3" />
+                            {newButtonLabel}
+                        </button>
+                    )}
+                    </div>{/* End right icons group */}
                 </div>
 
+                {/* Row 2: Collapse/Expand buttons - only show when grouping is active */}
+                {groupRules.length > 0 && groupedData && (
+                    <div className="px-3 py-1.5 flex items-center gap-2 flex-nowrap border-t border-gray-100">
+                        <div className="flex items-center gap-2 text-xs flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const allIds = new Set<string>();
+                                    const traverse = (nodes: any[]) => {
+                                        nodes.forEach(n => {
+                                            allIds.add(n.id);
+                                            if (n.children) traverse(n.children);
+                                        });
+                                    };
+                                    traverse(groupedData);
+                                    setCollapsedGroups(allIds);
+                                }}
+                                className="text-gray-500 hover:text-gray-700 underline"
+                            >
+                                Collapse all
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCollapsedGroups(new Set())}
+                                className="text-gray-500 hover:text-gray-700 underline"
+                            >
+                                Expand all
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Scrollable content area - only table/gallery scrolls horizontally */}
+            <div className="overflow-x-auto flex-1">
                 {/* Table View */}
                 {viewMode === 'table' && (
                 <table
@@ -3955,16 +4036,17 @@ export function DataTable<T>({
                                     </div>
                                 </th>
                             )}
-                            {columnsWithActions.map((item, index) => {
+                            {columnsWithActions.map((item) => {
                                 if (item.type === 'actions') {
                                     // Render Actions column
                                     return (
                                         <th
                                             key="_actions"
                                             className={cn(
-                                                "data-grid-th w-20 relative group/header cursor-grab active:cursor-grabbing bg-white",
+                                                "data-grid-th relative group/header cursor-grab active:cursor-grabbing bg-white",
                                                 draggingColumnKey === '_actions' && "opacity-50"
                                             )}
+                                            style={{ width: columnWidths['_actions'] || 80 }}
                                             draggable
                                             onDragStart={(e) => {
                                                 e.dataTransfer.setData('text/plain', '_actions');
@@ -4017,6 +4099,12 @@ export function DataTable<T>({
                                                 <GripVertical className="w-3 h-3 text-gray-300 group-hover/header:text-gray-500 rotate-90" />
                                                 Actions
                                             </div>
+                                            {resizable && (
+                                                <div
+                                                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                                                    onMouseDown={(e) => handleResizeStart('_actions', e)}
+                                                />
+                                            )}
                                         </th>
                                     );
                                 }
@@ -4116,8 +4204,8 @@ export function DataTable<T>({
                             })}
                             {/* Invisible drop zone for dragging columns to the far right */}
                             <th
-                                className="p-0 border-y-0 border-r-0 border-l border-transparent bg-white"
-                                style={{ width: 8, minWidth: 8, maxWidth: 8 }}
+                                className="!p-0 !border-0 !bg-transparent !border-none"
+                                style={{ width: 1, minWidth: 1, maxWidth: 1, padding: 0 }}
                                 onDragEnter={(e) => e.preventDefault()}
                                 onDragOver={(e) => {
                                     e.preventDefault();
@@ -4162,22 +4250,33 @@ export function DataTable<T>({
                     {/* Table Body - using native HTML5 drag-and-drop for rows */}
                     <tbody>
                         {isLoading ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i} className="animate-pulse">
-                                    {sortable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-6 mx-2"></div></td>}
-                                    {selectable && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-4 mx-2"></div></td>}
-                                    {columns.map((col) => (
+                            Array.from({ length: 8 }).map((_, i) => (
+                                <tr key={i}>
+                                    {sortable && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-4 mx-2"></div></td>}
+                                    {selectable && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-3.5 mx-2"></div></td>}
+                                    {orderedColumns.map((col, colIdx) => (
                                         <td key={col.key} className="data-grid-td">
-                                            <div className="h-4 bg-gray-200 rounded w-3/4 mx-2"></div>
+                                            <div
+                                                className="h-3.5 skeleton-shimmer rounded mx-2"
+                                                style={{
+                                                    width: col.type === 'id' ? '24px' :
+                                                           col.type === 'thumbnail' ? '40px' :
+                                                           col.type === 'select' ? '60px' :
+                                                           col.type === 'date' ? '70px' :
+                                                           `${60 + (colIdx % 3) * 20}%`,
+                                                    animationDelay: `${colIdx * 0.05}s`
+                                                }}
+                                            ></div>
                                         </td>
                                     ))}
-                                    {showRowActions && <td className="data-grid-td"><div className="h-4 bg-gray-200 rounded w-12 mx-2"></div></td>}
+                                    {showRowActions && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-10 mx-2"></div></td>}
+                                    <td className="!p-0 !border-0 !bg-transparent" style={{ width: 1, minWidth: 1, maxWidth: 1 }}></td>
                                 </tr>
                             ))
                         ) : data.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0)}
+                                    colSpan={columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0) + 1}
                                     className="data-grid-td px-4 py-8 text-center text-gray-500 text-xs"
                                 >
                                     {emptyMessage}
@@ -4186,7 +4285,7 @@ export function DataTable<T>({
                         ) : groupedData ? (
                             // Recursive Grouped Rendering
                             (() => {
-                                const colSpan = columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0);
+                                const colSpan = columns.length + (sortable ? 1 : 0) + (selectable ? 1 : 0) + (showRowActions ? 1 : 0) + 1;
 
                                 const renderGroupNodes = (nodes: any[]) => {
                                     return nodes.map((node: any) => {
@@ -4343,7 +4442,7 @@ export function DataTable<T>({
                                         )}
                                     </div>
                                 </td>
-                                {showRowActions && <td className="w-20" />}
+                                {showRowActions && <td style={{ width: columnWidths['_actions'] || 80 }} />}
                             </tr>
                         )}
                     </tbody>
@@ -4385,7 +4484,7 @@ export function DataTable<T>({
                                 className="grid gap-4 justify-start"
                                 style={{ gridTemplateColumns: 'repeat(auto-fill, 220px)' }}
                             >
-                                {sortedData.map((item, index) => {
+                                {sortedData.map((item) => {
                                     const id = getRowId(item);
                                     const isSelected = selectedIds ? selectedIds.has(id) : false;
                                     const isDraggingThisCard = draggingRowId === id;

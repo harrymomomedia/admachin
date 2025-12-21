@@ -227,7 +227,7 @@ export function AiAdCopy() {
                     <div className="bg-slate-900 text-white p-1.5 rounded">
                         <Brain className="w-5 h-5" />
                     </div>
-                    <h1 className="text-lg font-semibold text-slate-800">Legal Compass: Sensitive Case Ad Generator</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Legal Compass: Sensitive Case Ad Generator</h1>
                 </div>
 
                 <div className="flex items-center gap-3 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200 text-sm">

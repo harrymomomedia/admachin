@@ -1,0 +1,487 @@
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { DataTable } from "../components/DataTable";
+import type { ColumnDef } from "../components/DataTable";
+import { DataTablePageLayout } from "../components/DataTablePageLayout";
+import {
+    getVideoOutputs,
+    updateVideoOutput,
+    deleteVideoOutput,
+    getProjects,
+    getSubprojects,
+    getUsers,
+    getUserViewPreferences,
+    saveUserViewPreferences,
+    getSharedViewPreferences,
+    saveSharedViewPreferences,
+    deleteUserViewPreferences,
+    saveRowOrder,
+} from "../lib/supabase-service";
+import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutputWithDetails, VideoGenerator } from "../lib/supabase-service";
+import { useAuth } from "../contexts/AuthContext";
+import { RefreshCw } from "lucide-react";
+
+interface VideoOutputRow {
+    id: string;
+    row_number: number;
+    video_generator_id: string | null;
+    output_storage_path: string | null;
+    final_video_url: string | null;
+    transcript: string | null;
+    task_id: string | null;
+    task_status: 'pending' | 'processing' | 'completed' | 'failed';
+    task_error: string | null;
+    duration_seconds: number | null;
+    file_size: number | null;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+    updated_at: string;
+    // Joined data from video_generator
+    video_generator?: VideoGenerator & {
+        project?: Project;
+        subproject?: Subproject;
+        owner?: User;
+    };
+    // Derived fields for display
+    project_id?: string | null;
+    subproject_id?: string | null;
+    owner_id?: string | null;
+    video_prompt?: string | null;
+}
+
+export function AIVideoGenerated() {
+    const { user } = useAuth();
+    const currentUserId = user?.id;
+
+    const [outputs, setOutputs] = useState<VideoOutputRow[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Projects, subprojects, and users
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [subprojects, setSubprojects] = useState<Subproject[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+
+    // View preferences
+    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
+
+    // Sync state
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    // Color palette for dynamic colorMaps
+    const colorPalette = [
+        'bg-pink-500 text-white',
+        'bg-indigo-500 text-white',
+        'bg-cyan-500 text-white',
+        'bg-amber-500 text-white',
+        'bg-rose-500 text-white',
+        'bg-violet-500 text-white',
+        'bg-teal-500 text-white',
+        'bg-orange-500 text-white',
+        'bg-lime-500 text-white',
+        'bg-fuchsia-500 text-white',
+    ];
+
+    // Generate colorMaps for projects and subprojects
+    const projectColorMap = useMemo(() =>
+        projects.reduce((map, p, i) => {
+            map[p.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [projects]
+    );
+
+    const subprojectColorMap = useMemo(() =>
+        subprojects.reduce((map, s, i) => {
+            map[s.id] = colorPalette[i % colorPalette.length];
+            return map;
+        }, {} as Record<string, string>),
+        [subprojects]
+    );
+
+    // Status color map
+    const statusColorMap: Record<string, string> = {
+        'pending': 'bg-gray-100 text-gray-600',
+        'processing': 'bg-blue-100 text-blue-600',
+        'completed': 'bg-green-100 text-green-600',
+        'failed': 'bg-red-100 text-red-600',
+    };
+
+    // Load data
+    useEffect(() => {
+        async function loadData() {
+            setIsLoading(true);
+            try {
+                const [outputsData, projectsData, subprojectsData, usersData, userPrefs, sharedPrefs] = await Promise.all([
+                    getVideoOutputs(),
+                    getProjects(),
+                    getSubprojects(),
+                    getUsers(),
+                    currentUserId ? getUserViewPreferences(currentUserId, 'ai-video-generated') : null,
+                    getSharedViewPreferences('ai-video-generated'),
+                ]);
+
+                // Map outputs with derived fields from video_generator
+                const mappedOutputs: VideoOutputRow[] = outputsData.map(output => ({
+                    ...output,
+                    project_id: output.video_generator?.project_id,
+                    subproject_id: output.video_generator?.subproject_id,
+                    owner_id: output.video_generator?.owner_id,
+                    video_prompt: output.video_generator?.video_prompt,
+                }));
+
+                // Store shared preferences
+                if (sharedPrefs) {
+                    setSharedPreferences({
+                        sort_config: sharedPrefs.sort_config,
+                        filter_config: sharedPrefs.filter_config,
+                        group_config: sharedPrefs.group_config,
+                        wrap_config: sharedPrefs.wrap_config,
+                        row_order: sharedPrefs.row_order,
+                        column_widths: sharedPrefs.column_widths,
+                        column_order: sharedPrefs.column_order
+                    });
+                }
+
+                // Store user view preferences
+                if (userPrefs) {
+                    setUserPreferences({
+                        sort_config: userPrefs.sort_config,
+                        filter_config: userPrefs.filter_config,
+                        group_config: userPrefs.group_config,
+                        wrap_config: userPrefs.wrap_config,
+                        row_order: userPrefs.row_order,
+                        column_widths: userPrefs.column_widths,
+                        column_order: userPrefs.column_order
+                    });
+                }
+
+                // Apply row order (user's or shared)
+                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
+                let finalOutputs = mappedOutputs;
+                if (rowOrder && rowOrder.length > 0) {
+                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
+                    finalOutputs = [...finalOutputs].sort((a, b) => {
+                        const aIndex = orderMap.get(a.id) ?? Infinity;
+                        const bIndex = orderMap.get(b.id) ?? Infinity;
+                        return aIndex - bIndex;
+                    });
+                }
+
+                setOutputs(finalOutputs);
+                setProjects(projectsData);
+                setSubprojects(subprojectsData);
+                setUsers(usersData);
+            } catch (error) {
+                console.error('[AIVideoGenerated] Failed to load:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        loadData();
+    }, [currentUserId]);
+
+    // View persistence handlers
+    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
+        if (!currentUserId) return;
+        try {
+            await saveUserViewPreferences(currentUserId, 'ai-video-generated', preferences);
+        } catch (error) {
+            console.error('Failed to save view preferences:', error);
+        }
+    };
+
+    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
+        try {
+            const rowOrder = outputs.map(o => o.id);
+            await saveSharedViewPreferences('ai-video-generated', {
+                ...preferences,
+                row_order: rowOrder
+            });
+            setSharedPreferences({
+                ...preferences,
+                row_order: rowOrder
+            });
+        } catch (error) {
+            console.error('Failed to save shared preferences:', error);
+        }
+    };
+
+    const handleResetPreferences = async () => {
+        if (!currentUserId) return;
+        try {
+            await deleteUserViewPreferences(currentUserId, 'ai-video-generated');
+            setUserPreferences(null);
+        } catch (error) {
+            console.error('Failed to reset preferences:', error);
+        }
+    };
+
+    // Delete row
+    const handleDelete = useCallback(async (id: string) => {
+        setOutputs(prev => prev.filter(o => o.id !== id));
+        try {
+            await deleteVideoOutput(id);
+        } catch (err) {
+            console.error('[AIVideoGenerated] Failed to delete:', err);
+        }
+    }, []);
+
+    // Update row
+    const handleUpdate = useCallback(async (id: string, field: string, value: unknown) => {
+        // Update local state
+        setOutputs(prev =>
+            prev.map(o => (o.id === id ? { ...o, [field]: value } : o))
+        );
+
+        // Update in database (only for fields on video_output table)
+        const editableFields = ['transcript', 'final_video_url'];
+        if (editableFields.includes(field)) {
+            try {
+                await updateVideoOutput(id, { [field]: value as string });
+            } catch (err) {
+                console.error('[AIVideoGenerated] Failed to update:', err);
+            }
+        }
+    }, []);
+
+    // Reorder handler
+    const handleReorder = async (newOrder: string[]) => {
+        const reordered = newOrder.map(id => outputs.find(o => o.id === id)!).filter(Boolean);
+        setOutputs(reordered);
+
+        if (currentUserId) {
+            try {
+                await saveRowOrder(currentUserId, 'ai-video-generated', newOrder);
+            } catch (error) {
+                console.error('Failed to save row order:', error);
+            }
+        }
+    };
+
+    // Format file size
+    const formatFileSize = (bytes: number | null): string => {
+        if (!bytes) return '-';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
+    // Format duration
+    const formatDuration = (seconds: number | null): string => {
+        if (!seconds) return '-';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
+    };
+
+    // Handle manual sync - calls the server sync endpoint
+    const handleSync = useCallback(async () => {
+        setIsSyncing(true);
+        try {
+            const response = await fetch('/api/video/sync-tasks', { method: 'POST' });
+            const result = await response.json();
+            console.log('[AIVideoGenerated] Sync result:', result);
+
+            // Refresh data from database after sync
+            const outputsData = await getVideoOutputs();
+            const mappedOutputs: VideoOutputRow[] = outputsData.map(output => ({
+                ...output,
+                project_id: output.video_generator?.project_id,
+                subproject_id: output.video_generator?.subproject_id,
+                owner_id: output.video_generator?.owner_id,
+                video_prompt: output.video_generator?.video_prompt,
+            }));
+            setOutputs(prev => {
+                const prevOrder = prev.map(o => o.id);
+                const freshMap = new Map(mappedOutputs.map(o => [o.id, o]));
+                return prevOrder
+                    .map(id => freshMap.get(id))
+                    .filter((o): o is VideoOutputRow => o !== undefined);
+            });
+        } catch (error) {
+            console.error('[AIVideoGenerated] Sync failed:', error);
+        } finally {
+            setIsSyncing(false);
+        }
+    }, []);
+
+    // Column definitions
+    const columns: ColumnDef<VideoOutputRow>[] = [
+        {
+            key: 'row_number',
+            header: 'ID',
+            width: 50,
+            minWidth: 40,
+            editable: false,
+            type: 'id',
+        },
+        {
+            key: 'video_generator_id',
+            header: 'Generator',
+            width: 100,
+            minWidth: 80,
+            editable: false,
+            type: 'custom',
+            render: (value, row) => {
+                const genId = row.video_generator?.row_number;
+                return genId ? (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                        #{genId}
+                    </span>
+                ) : '-';
+            },
+        },
+        {
+            key: 'project_id',
+            header: 'Project',
+            width: 140,
+            minWidth: 100,
+            editable: false,
+            type: 'select',
+            options: projects.map(p => ({ label: p.name, value: p.id })),
+            colorMap: projectColorMap,
+        },
+        {
+            key: 'subproject_id',
+            header: 'Subproject',
+            width: 140,
+            minWidth: 100,
+            editable: false,
+            type: 'select',
+            options: subprojects.map(s => ({ label: s.name, value: s.id })),
+            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
+            colorMap: subprojectColorMap,
+        },
+        {
+            key: 'owner_id',
+            header: 'Owner',
+            width: 130,
+            minWidth: 100,
+            editable: false,
+            type: 'people',
+            users: users,
+        },
+        {
+            key: 'video_prompt',
+            header: 'Video Prompt',
+            width: 250,
+            minWidth: 180,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'task_id',
+            header: 'Task ID',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'text',
+        },
+        {
+            key: 'task_status',
+            header: 'Status',
+            width: 110,
+            minWidth: 90,
+            editable: false,
+            type: 'select',
+            options: [
+                { label: 'Pending', value: 'pending' },
+                { label: 'Processing', value: 'processing' },
+                { label: 'Completed', value: 'completed' },
+                { label: 'Failed', value: 'failed' },
+            ],
+            colorMap: statusColorMap,
+        },
+        {
+            key: 'transcript',
+            header: 'Transcript',
+            width: 200,
+            minWidth: 150,
+            editable: true,
+            type: 'textarea',
+        },
+        {
+            key: 'final_video_url',
+            header: 'Video URL',
+            width: 150,
+            minWidth: 120,
+            editable: true,
+            type: 'url',
+        },
+        {
+            key: 'duration_seconds',
+            header: 'Duration',
+            width: 80,
+            minWidth: 60,
+            editable: false,
+            type: 'custom',
+            render: (value) => formatDuration(value as number | null),
+        },
+        {
+            key: 'file_size',
+            header: 'Size',
+            width: 80,
+            minWidth: 60,
+            editable: false,
+            type: 'custom',
+            render: (value) => formatFileSize(value as number | null),
+        },
+        {
+            key: 'created_at',
+            header: 'Created',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'date',
+        },
+    ];
+
+    return (
+        <DataTablePageLayout>
+            {/* Sync button */}
+            <div className="mb-3 flex items-center justify-end px-1">
+                <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className={`
+                        flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
+                        transition-colors border
+                        ${isSyncing
+                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }
+                    `}
+                    title="Manually sync task status from kie.ai"
+                >
+                    <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    {isSyncing ? 'Syncing...' : 'Sync'}
+                </button>
+            </div>
+            <DataTable
+                columns={columns}
+                data={outputs}
+                isLoading={isLoading}
+                emptyMessage="No AI-generated videos found."
+                title="AI Video Generated"
+                getRowId={(row) => row.id}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                sortable={true}
+                onReorder={handleReorder}
+                resizable={true}
+                fullscreen={true}
+                quickFilters={['project_id', 'subproject_id', 'task_status']}
+                showRowActions={true}
+                // View persistence
+                viewId="ai-video-generated"
+                userId={currentUserId || undefined}
+                initialPreferences={userPreferences || undefined}
+                sharedPreferences={sharedPreferences || undefined}
+                onPreferencesChange={handlePreferencesChange}
+                onSaveForEveryone={handleSaveForEveryone}
+                onResetPreferences={handleResetPreferences}
+                selectable={true}
+            />
+        </DataTablePageLayout>
+    );
+}

@@ -472,17 +472,16 @@ export function AdPlanning() {
     ];
 
     return (
-        <DataTablePageLayout
-            title="Ad Planning"
-            onNewClick={() => setIsCreateModalOpen(true)}
-            newButtonLabel="New"
-        >
+        <DataTablePageLayout>
             {/* Data Table */}
             <DataTable
                 columns={columns}
                 data={plans}
                 isLoading={isLoading}
                 emptyMessage="No plans found. Create one to get started!"
+                title="Ad Planning"
+                onNewClick={() => setIsCreateModalOpen(true)}
+                newButtonLabel="New"
                 getRowId={(plan) => plan.id}
                 onUpdate={handleUpdate}
                 sortable={true}

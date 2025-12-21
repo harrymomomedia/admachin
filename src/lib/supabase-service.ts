@@ -1488,3 +1488,376 @@ export async function createAds(ads: Array<{
     return data || [];
 }
 
+// ============================================
+// VIDEO GENERATOR
+// ============================================
+
+export interface VideoGenerator {
+    id: string;
+    row_number: number;
+    project_id: string | null;
+    subproject_id: string | null;
+    owner_id: string | null;
+    image_storage_path: string | null;
+    video_prompt: string | null;
+    model: 'sora-2-text-to-video' | 'sora-2-web-t2v';
+    duration: 10 | 15;  // kie.ai Sora 2 API supports 10 or 15 seconds
+    aspect_ratio: 'landscape' | 'portrait' | 'square';  // Sora 2 aspect ratio
+    status: 'pending' | 'generating' | 'completed' | 'failed';
+    middle_frame_path: string | null;
+    transcript: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface VideoOutputLogEntry {
+    id: number;
+    timestamp: string;
+    type: 'info' | 'success' | 'error' | 'warning';
+    message: string;
+}
+
+export interface VideoOutput {
+    id: string;
+    row_number: number;
+    video_generator_id: string | null;
+    output_storage_path: string | null;
+    final_video_url: string | null;
+    transcript: string | null;
+    task_id: string | null;
+    task_status: 'pending' | 'processing' | 'completed' | 'failed';
+    task_error: string | null;
+    duration_seconds: number | null;
+    file_size: number | null;
+    metadata: Record<string, unknown> | null;
+    logs: VideoOutputLogEntry[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface VideoGeneratorWithDetails extends VideoGenerator {
+    project?: Project;
+    subproject?: Subproject;
+    owner?: User;
+    video_outputs?: VideoOutput[];
+}
+
+export interface VideoOutputWithDetails extends VideoOutput {
+    video_generator?: VideoGenerator;
+}
+
+/**
+ * Get all video generator entries with relations
+ */
+export async function getVideoGenerators(): Promise<VideoGeneratorWithDetails[]> {
+    const { data, error } = await supabaseUntyped
+        .from('video_generator')
+        .select(`
+            *,
+            project:projects (*),
+            subproject:subprojects (*),
+            owner:users (*),
+            video_outputs:video_output (*)
+        `)
+        .order('row_number', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching video generators:', error);
+        throw error;
+    }
+    return data || [];
+}
+
+/**
+ * Get a single video generator by ID
+ */
+export async function getVideoGeneratorById(id: string): Promise<VideoGeneratorWithDetails | null> {
+    const { data, error } = await supabaseUntyped
+        .from('video_generator')
+        .select(`
+            *,
+            project:projects (*),
+            subproject:subprojects (*),
+            owner:users (*),
+            video_outputs:video_output (*)
+        `)
+        .eq('id', id)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('[Supabase] Error fetching video generator:', error);
+        throw error;
+    }
+    return data || null;
+}
+
+/**
+ * Create a new video generator entry
+ */
+export async function createVideoGenerator(entry: {
+    project_id?: string | null;
+    subproject_id?: string | null;
+    owner_id?: string | null;
+    image_storage_path?: string | null;
+    video_prompt?: string | null;
+}): Promise<VideoGenerator> {
+    const { data, error } = await supabaseUntyped
+        .from('video_generator')
+        .insert({
+            project_id: entry.project_id || null,
+            subproject_id: entry.subproject_id || null,
+            owner_id: entry.owner_id || null,
+            image_storage_path: entry.image_storage_path || null,
+            video_prompt: entry.video_prompt || null,
+            status: 'pending'
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating video generator:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Update a video generator entry
+ */
+export async function updateVideoGenerator(
+    id: string,
+    updates: Partial<Omit<VideoGenerator, 'id' | 'row_number' | 'created_at'>>
+): Promise<VideoGenerator> {
+    const { data, error } = await supabaseUntyped
+        .from('video_generator')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating video generator:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Delete a video generator entry
+ */
+export async function deleteVideoGenerator(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('video_generator')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting video generator:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// VIDEO OUTPUT
+// ============================================
+
+/**
+ * Get all video outputs with relations
+ */
+export async function getVideoOutputs(): Promise<VideoOutputWithDetails[]> {
+    const { data, error } = await supabaseUntyped
+        .from('video_output')
+        .select(`
+            *,
+            video_generator:video_generator (
+                *,
+                project:projects (*),
+                subproject:subprojects (*),
+                owner:users (*)
+            )
+        `)
+        .order('row_number', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching video outputs:', error);
+        throw error;
+    }
+    return data || [];
+}
+
+/**
+ * Get video outputs for a specific generator
+ */
+export async function getVideoOutputsByGeneratorId(generatorId: string): Promise<VideoOutput[]> {
+    const { data, error } = await supabaseUntyped
+        .from('video_output')
+        .select('*')
+        .eq('video_generator_id', generatorId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching video outputs:', error);
+        throw error;
+    }
+    return data || [];
+}
+
+/**
+ * Create a new video output entry
+ */
+export async function createVideoOutput(entry: {
+    video_generator_id: string;
+    task_id?: string;
+    task_status?: string;
+    output_storage_path?: string;
+    final_video_url?: string;
+    transcript?: string | null;
+    metadata?: Record<string, unknown>;
+}): Promise<VideoOutput> {
+    const { data, error } = await supabaseUntyped
+        .from('video_output')
+        .insert({
+            video_generator_id: entry.video_generator_id,
+            task_id: entry.task_id || null,
+            task_status: entry.task_status || 'pending',
+            output_storage_path: entry.output_storage_path || null,
+            final_video_url: entry.final_video_url || null,
+            transcript: entry.transcript || null,
+            metadata: entry.metadata || null,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating video output:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Update a video output entry
+ */
+export async function updateVideoOutput(
+    id: string,
+    updates: Partial<Omit<VideoOutput, 'id' | 'row_number' | 'created_at'>>
+): Promise<VideoOutput> {
+    const { data, error } = await supabaseUntyped
+        .from('video_output')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating video output:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Delete a video output entry
+ */
+export async function deleteVideoOutput(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('video_output')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting video output:', error);
+        throw error;
+    }
+}
+
+/**
+ * Save all logs to video output (replaces existing logs)
+ */
+export async function saveVideoOutputLogs(
+    id: string,
+    logs: VideoOutputLogEntry[]
+): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('video_output')
+        .update({ logs })
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error saving video output logs:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get video output by id with logs
+ */
+export async function getVideoOutput(id: string): Promise<VideoOutput | null> {
+    const { data, error } = await supabaseUntyped
+        .from('video_output')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error fetching video output:', error);
+        return null;
+    }
+    return data;
+}
+
+/**
+ * Upload a video file to the video-generator bucket
+ * @param buffer - The video file as ArrayBuffer or Uint8Array
+ * @param videoOutputId - The video output ID for organizing storage
+ * @param filename - Optional filename (defaults to timestamp.mp4)
+ * @returns Object with storage path and public URL
+ */
+export async function uploadVideoFile(
+    buffer: ArrayBuffer | Uint8Array,
+    videoOutputId: string,
+    filename?: string
+): Promise<{ path: string; url: string }> {
+    const finalFilename = filename || `${Date.now()}.mp4`;
+    const filePath = `videos/${videoOutputId}/${finalFilename}`;
+
+    const { data, error } = await supabase.storage
+        .from('video-generator')
+        .upload(filePath, buffer, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: 'video/mp4',
+        });
+
+    if (error) {
+        console.error('[Supabase] Error uploading video:', error);
+        throw new Error(error.message || 'Failed to upload video');
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+        .from('video-generator')
+        .getPublicUrl(data.path);
+
+    return {
+        path: data.path,
+        url: urlData.publicUrl,
+    };
+}
+
+/**
+ * Get public URL for a video generator storage path
+ */
+export function getVideoGeneratorStorageUrl(storagePath: string): string {
+    const { data } = supabase.storage
+        .from('video-generator')
+        .getPublicUrl(storagePath);
+    return data.publicUrl;
+}
+

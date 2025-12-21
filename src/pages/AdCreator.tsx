@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Image, Type, FileText, AlignLeft, Filter, X, Search } from 'lucide-react';
+import { ArrowLeft, Image, Type, FileText, AlignLeft, Filter, X, Search, ChevronDown } from 'lucide-react';
 import { DataTable, type ColumnDef } from '../components/DataTable';
 import { PreviewGrid } from '../components/ad-creator/PreviewGrid';
 import {
@@ -14,6 +14,7 @@ import {
     getUserViewPreferences,
     saveUserViewPreferences,
     getSharedViewPreferences,
+    saveSharedViewPreferences,
     getCreativeUrl,
     type Project,
     type Subproject,
@@ -97,8 +98,20 @@ interface FilterPillProps {
 function FilterPill({ label, options, value, onSelect, disabled }: FilterPillProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Calculate dropdown position when opening
+    useEffect(() => {
+        if (isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + 4,
+                left: rect.left,
+            });
+        }
+    }, [isOpen]);
 
     // Close on click outside
     useEffect(() => {
@@ -172,8 +185,8 @@ function FilterPill({ label, options, value, onSelect, disabled }: FilterPillPro
                         ref={dropdownRef}
                         className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[200px] overflow-hidden"
                         style={{
-                            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
-                            left: buttonRef.current ? buttonRef.current.getBoundingClientRect().left : 0,
+                            top: dropdownPosition.top,
+                            left: dropdownPosition.left,
                         }}
                     >
                         {/* Search Input */}
@@ -265,6 +278,16 @@ export function AdCreator() {
     const [primaryPrefs, setPrimaryPrefs] = useState<ViewPreferencesConfig | null>(null);
     const [descriptionsPrefs, setDescriptionsPrefs] = useState<ViewPreferencesConfig | null>(null);
 
+    // Shared/Team column preferences
+    const [sharedCreativesPrefs, setSharedCreativesPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedHeadlinesPrefs, setSharedHeadlinesPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedPrimaryPrefs, setSharedPrimaryPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [sharedDescriptionsPrefs, setSharedDescriptionsPrefs] = useState<ViewPreferencesConfig | null>(null);
+
+    // Team columns dropdown state
+    const [showTeamColumnsDropdown, setShowTeamColumnsDropdown] = useState(false);
+    const teamColumnsDropdownRef = useRef<HTMLDivElement>(null);
+
     // Handle preferences change for each DataTable
     const handleCreativesPrefsChange = async (prefs: ViewPreferencesConfig) => {
         if (!currentUserId) return;
@@ -302,6 +325,131 @@ export function AdCreator() {
         }
     };
 
+    // Handle save columns for team - saves column_widths and column_order for all tables
+    const handleSaveColumnsForTeam = async () => {
+        try {
+            await Promise.all([
+                creativesPrefs?.column_widths || creativesPrefs?.column_order
+                    ? saveSharedViewPreferences('ad-creator-creatives', {
+                        column_widths: creativesPrefs?.column_widths,
+                        column_order: creativesPrefs?.column_order,
+                    })
+                    : Promise.resolve(),
+                headlinesPrefs?.column_widths || headlinesPrefs?.column_order
+                    ? saveSharedViewPreferences('ad-creator-headlines', {
+                        column_widths: headlinesPrefs?.column_widths,
+                        column_order: headlinesPrefs?.column_order,
+                    })
+                    : Promise.resolve(),
+                primaryPrefs?.column_widths || primaryPrefs?.column_order
+                    ? saveSharedViewPreferences('ad-creator-primary', {
+                        column_widths: primaryPrefs?.column_widths,
+                        column_order: primaryPrefs?.column_order,
+                    })
+                    : Promise.resolve(),
+                descriptionsPrefs?.column_widths || descriptionsPrefs?.column_order
+                    ? saveSharedViewPreferences('ad-creator-descriptions', {
+                        column_widths: descriptionsPrefs?.column_widths,
+                        column_order: descriptionsPrefs?.column_order,
+                    })
+                    : Promise.resolve(),
+            ]);
+            // Update shared prefs state
+            setSharedCreativesPrefs(prev => ({
+                ...prev,
+                column_widths: creativesPrefs?.column_widths,
+                column_order: creativesPrefs?.column_order,
+            }));
+            setSharedHeadlinesPrefs(prev => ({
+                ...prev,
+                column_widths: headlinesPrefs?.column_widths,
+                column_order: headlinesPrefs?.column_order,
+            }));
+            setSharedPrimaryPrefs(prev => ({
+                ...prev,
+                column_widths: primaryPrefs?.column_widths,
+                column_order: primaryPrefs?.column_order,
+            }));
+            setSharedDescriptionsPrefs(prev => ({
+                ...prev,
+                column_widths: descriptionsPrefs?.column_widths,
+                column_order: descriptionsPrefs?.column_order,
+            }));
+        } catch (error) {
+            console.error('Failed to save team columns:', error);
+        }
+    };
+
+    // Handle use team columns - loads team column_widths and column_order
+    const handleUseTeamColumns = () => {
+        if (sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order) {
+            setCreativesPrefs(prev => ({
+                ...prev,
+                column_widths: sharedCreativesPrefs?.column_widths,
+                column_order: sharedCreativesPrefs?.column_order,
+            }));
+        }
+        if (sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order) {
+            setHeadlinesPrefs(prev => ({
+                ...prev,
+                column_widths: sharedHeadlinesPrefs?.column_widths,
+                column_order: sharedHeadlinesPrefs?.column_order,
+            }));
+        }
+        if (sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order) {
+            setPrimaryPrefs(prev => ({
+                ...prev,
+                column_widths: sharedPrimaryPrefs?.column_widths,
+                column_order: sharedPrimaryPrefs?.column_order,
+            }));
+        }
+        if (sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order) {
+            setDescriptionsPrefs(prev => ({
+                ...prev,
+                column_widths: sharedDescriptionsPrefs?.column_widths,
+                column_order: sharedDescriptionsPrefs?.column_order,
+            }));
+        }
+    };
+
+    // Check if current columns match team columns
+    const isMatchingTeamColumns = useMemo(() => {
+        const hasTeamColumns = sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order ||
+            sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order ||
+            sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order ||
+            sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order;
+
+        if (!hasTeamColumns) return false;
+
+        const creativesMatch =
+            JSON.stringify(creativesPrefs?.column_widths || {}) === JSON.stringify(sharedCreativesPrefs?.column_widths || {}) &&
+            JSON.stringify(creativesPrefs?.column_order || []) === JSON.stringify(sharedCreativesPrefs?.column_order || []);
+        const headlinesMatch =
+            JSON.stringify(headlinesPrefs?.column_widths || {}) === JSON.stringify(sharedHeadlinesPrefs?.column_widths || {}) &&
+            JSON.stringify(headlinesPrefs?.column_order || []) === JSON.stringify(sharedHeadlinesPrefs?.column_order || []);
+        const primaryMatch =
+            JSON.stringify(primaryPrefs?.column_widths || {}) === JSON.stringify(sharedPrimaryPrefs?.column_widths || {}) &&
+            JSON.stringify(primaryPrefs?.column_order || []) === JSON.stringify(sharedPrimaryPrefs?.column_order || []);
+        const descriptionsMatch =
+            JSON.stringify(descriptionsPrefs?.column_widths || {}) === JSON.stringify(sharedDescriptionsPrefs?.column_widths || {}) &&
+            JSON.stringify(descriptionsPrefs?.column_order || []) === JSON.stringify(sharedDescriptionsPrefs?.column_order || []);
+
+        return creativesMatch && headlinesMatch && primaryMatch && descriptionsMatch;
+    }, [creativesPrefs, headlinesPrefs, primaryPrefs, descriptionsPrefs, sharedCreativesPrefs, sharedHeadlinesPrefs, sharedPrimaryPrefs, sharedDescriptionsPrefs]);
+
+    // Click outside handler for team columns dropdown
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (teamColumnsDropdownRef.current && !teamColumnsDropdownRef.current.contains(event.target as Node)) {
+                setShowTeamColumnsDropdown(false);
+            }
+        }
+        if (showTeamColumnsDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showTeamColumnsDropdown]);
+
     // Load initial data
     useEffect(() => {
         async function loadData() {
@@ -323,10 +471,23 @@ export function AdCreator() {
                 setAdCopies(adCopiesData);
                 setUsers(usersData);
 
+                // Load shared/team preferences for all tables
+                const [sharedCreativesP, sharedHeadlinesP, sharedPrimaryP, sharedDescriptionsP] = await Promise.all([
+                    getSharedViewPreferences('ad-creator-creatives'),
+                    getSharedViewPreferences('ad-creator-headlines'),
+                    getSharedViewPreferences('ad-creator-primary'),
+                    getSharedViewPreferences('ad-creator-descriptions'),
+                ]);
+
+                if (sharedCreativesP) setSharedCreativesPrefs(sharedCreativesP);
+                if (sharedHeadlinesP) setSharedHeadlinesPrefs(sharedHeadlinesP);
+                if (sharedPrimaryP) setSharedPrimaryPrefs(sharedPrimaryP);
+                if (sharedDescriptionsP) setSharedDescriptionsPrefs(sharedDescriptionsP);
+
                 if (user?.id) {
                     setCurrentUserId(user.id);
 
-                    // Load view preferences for each DataTable
+                    // Load user view preferences for each DataTable
                     const [creativesP, headlinesP, primaryP, descriptionsP] = await Promise.all([
                         getUserViewPreferences(user.id, 'ad-creator-creatives'),
                         getUserViewPreferences(user.id, 'ad-creator-headlines'),
@@ -683,7 +844,7 @@ export function AdCreator() {
                         <span className="text-sm font-medium">Back to Ads</span>
                     </button>
                     <div className="h-6 w-px bg-gray-300" />
-                    <h1 className="text-lg font-semibold text-gray-900">Create Ads</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Create Ads</h1>
                 </div>
             </div>
 
@@ -719,6 +880,65 @@ export function AdCreator() {
                     value={createdById}
                     onSelect={setCreatedById}
                 />
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Team Columns Dropdown */}
+                <div ref={teamColumnsDropdownRef} className="relative">
+                    {isMatchingTeamColumns ? (
+                        /* Just show indicator when matching team columns */
+                        <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-green-100 text-green-700 whitespace-nowrap">
+                            ✓ Team Columns
+                        </span>
+                    ) : (
+                        /* Show dropdown button when not matching */
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setShowTeamColumnsDropdown(!showTeamColumnsDropdown)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            >
+                                Your Columns
+                                <ChevronDown className="w-3 h-3" />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showTeamColumnsDropdown && (
+                                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[160px] z-50">
+                                    {/* Use Team Columns */}
+                                    {(sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order ||
+                                      sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order ||
+                                      sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order ||
+                                      sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                handleUseTeamColumns();
+                                                setShowTeamColumnsDropdown(false);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+                                        >
+                                            Use Team Columns
+                                        </button>
+                                    )}
+
+                                    {/* Save Columns for Team */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleSaveColumnsForTeam();
+                                            setShowTeamColumnsDropdown(false);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+                                    >
+                                        Save Columns for Team
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Main Content - Scrollable */}

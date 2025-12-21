@@ -123,7 +123,7 @@ export function FBAdAccounts() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-foreground">Account Overview</h1>
+                    <h1 className="text-2xl font-bold text-foreground">Ad Accounts</h1>
                 </div>
                 {/* Search & Actions */}
                 <div className="flex items-center gap-3">

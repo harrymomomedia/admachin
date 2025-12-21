@@ -64,6 +64,33 @@
     @apply border-b border-r border-gray-100 px-0 py-0 bg-white relative hover:bg-blue-50/30 transition-colors align-middle h-[34px];
   }
 
+  /* Optimized row rendering - browser can skip off-screen rows */
+  .data-grid-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 34px;
+  }
+
+  /* Skeleton shimmer animation */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #f0f0f0 25%,
+      #e8e8e8 50%,
+      #f0f0f0 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
   .data-grid-input {
     @apply w-full h-full px-3 py-2 bg-transparent border-none outline-none text-[13px] text-gray-700 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:inset-0 focus:z-10 placeholder-transparent transition-all;
   }
