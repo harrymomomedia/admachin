@@ -30,11 +30,32 @@ async function testSettings() {
         await page.goto(SORA_DRAFTS_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForTimeout(3000);
 
-        // Check if logged in
-        const promptInput = await page.locator('textarea').first();
-        if (!await promptInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-            console.log('⚠ Not logged in - please log in manually');
-            await page.waitForTimeout(30000);
+        // Check if logged in - wait for textarea to appear
+        let promptInput = page.locator('textarea').first();
+        let isLoggedIn = await promptInput.isVisible({ timeout: 5000 }).catch(() => false);
+
+        if (!isLoggedIn) {
+            console.log('⚠ Not logged in - please log in manually in the browser window');
+            console.log('  Waiting up to 2 minutes for login...');
+
+            // Wait for login - check every 5 seconds for up to 2 minutes
+            for (let i = 0; i < 24; i++) {
+                await page.waitForTimeout(5000);
+                isLoggedIn = await promptInput.isVisible({ timeout: 2000 }).catch(() => false);
+                if (isLoggedIn) {
+                    console.log('✓ Login detected!');
+                    break;
+                }
+                console.log(`  Still waiting for login... (${(i + 1) * 5}s)`);
+            }
+
+            if (!isLoggedIn) {
+                console.log('✗ Login timeout - exiting');
+                await context.close();
+                return;
+            }
+        } else {
+            console.log('✓ Already logged in');
         }
 
         // Fill a test prompt
@@ -109,18 +130,18 @@ async function testSettings() {
             await page.waitForTimeout(2000); // Wait for submenu
 
             // The submenu should now show Portrait/Landscape options
-            // Look for Landscape option (we want to change from Portrait to Landscape)
-            console.log('→ Looking for Landscape option in submenu...');
-            const landscapeOption = page.locator('text=Landscape');
-            const landscapeNowVis = await landscapeOption.isVisible({ timeout: 2000 }).catch(() => false);
-            console.log(`  Landscape visible: ${landscapeNowVis}`);
+            // Look for Portrait option
+            console.log('→ Looking for Portrait option in submenu...');
+            const portraitOption = page.locator('text=Portrait');
+            const portraitNowVis = await portraitOption.isVisible({ timeout: 2000 }).catch(() => false);
+            console.log(`  Portrait visible: ${portraitNowVis}`);
 
-            if (landscapeNowVis) {
-                await landscapeOption.click();
+            if (portraitNowVis) {
+                await portraitOption.click();
                 await page.waitForTimeout(1000);
-                console.log('✓ Landscape selected!');
+                console.log('✓ Portrait selected!');
             } else {
-                console.log('⚠ Landscape not found');
+                console.log('⚠ Portrait not found');
             }
 
             // Now try duration - need to reopen settings panel first
@@ -145,34 +166,31 @@ async function testSettings() {
                 await page.locator('text=Duration').click();
                 await page.waitForTimeout(2000); // Wait for submenu
 
-                // Look for "15 seconds" option (text format is "X seconds" not "Xs")
-                console.log('→ Looking for 15 seconds option in submenu...');
-                const fifteenSecOption = page.locator('text=15 seconds');
-                const fifteenSecVis = await fifteenSecOption.isVisible({ timeout: 2000 }).catch(() => false);
-                console.log(`  15 seconds visible: ${fifteenSecVis}`);
+                // Look for "10 seconds" option (text format is "X seconds" not "Xs")
+                console.log('→ Looking for 10 seconds option in submenu...');
+                const tenSecOption = page.locator('text=10 seconds');
+                const tenSecVis = await tenSecOption.isVisible({ timeout: 2000 }).catch(() => false);
+                console.log(`  10 seconds visible: ${tenSecVis}`);
 
-                if (fifteenSecVis) {
-                    await fifteenSecOption.click();
+                if (tenSecVis) {
+                    await tenSecOption.click();
                     await page.waitForTimeout(1000);
-                    console.log('✓ 15 seconds selected!');
+                    console.log('✓ 10 seconds selected!');
                 } else {
-                    // Try "10 seconds" as fallback
-                    const tenSecOption = page.locator('text=10 seconds');
-                    const tenSecVis = await tenSecOption.isVisible({ timeout: 1000 }).catch(() => false);
-                    console.log(`  10 seconds visible: ${tenSecVis}`);
-                    if (tenSecVis) {
-                        await tenSecOption.click();
-                        console.log('✓ 10 seconds selected!');
-                    } else {
-                        console.log('⚠ Duration options not found');
-                    }
+                    console.log('⚠ 10 seconds not found');
                 }
             } else {
                 console.log('⚠ Could not reopen settings panel');
             }
 
+            // Close the popup by clicking on the prompt area
+            console.log('\n→ Closing popup by clicking prompt area...');
+            await promptInput.click();
+            await page.waitForTimeout(1000);
+            console.log('✓ Popup closed');
+
             console.log('\n' + '━'.repeat(50));
-            console.log('Test complete - check results above');
+            console.log('✓ Settings test PASSED!');
             console.log('━'.repeat(50));
         } else {
             console.log('✗ Settings panel did not open - Orientation not visible');

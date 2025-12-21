@@ -15,10 +15,12 @@ import {
     saveSharedViewPreferences,
     deleteUserViewPreferences,
     saveRowOrder,
+    createSoraCharacter,
 } from "../lib/supabase-service";
 import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutputWithDetails, VideoGenerator } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, UserPlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface VideoOutputRow {
     id: string;
@@ -52,6 +54,7 @@ interface VideoOutputRow {
 export function AIVideoGenerated() {
     const { user } = useAuth();
     const currentUserId = user?.id;
+    const navigate = useNavigate();
 
     const [outputs, setOutputs] = useState<VideoOutputRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +70,9 @@ export function AIVideoGenerated() {
 
     // Sync state
     const [isSyncing, setIsSyncing] = useState(false);
+
+    // Character creation state
+    const [creatingCharacter, setCreatingCharacter] = useState<string | null>(null);
 
     // Color palette for dynamic colorMaps
     const colorPalette = [
@@ -306,6 +312,32 @@ export function AIVideoGenerated() {
         }
     }, []);
 
+    // Create character from video
+    const handleCreateCharacter = useCallback(async (row: VideoOutputRow) => {
+        // Get the video URL (prefer sora_url, then final_video_url)
+        const videoUrl = row.sora_url || row.final_video_url;
+        if (!videoUrl) {
+            alert('No video URL available for this row');
+            return;
+        }
+
+        setCreatingCharacter(row.id);
+        try {
+            await createSoraCharacter({
+                source_video_url: videoUrl,
+                video_output_id: row.id,
+                status: 'pending',
+            });
+            alert('Character creation task added! Run "npm run sora:character" to process it, or view in Sora Characters page.');
+            navigate('/sora-characters');
+        } catch (error) {
+            console.error('[AIVideoGenerated] Failed to create character:', error);
+            alert('Failed to create character task');
+        } finally {
+            setCreatingCharacter(null);
+        }
+    }, [navigate]);
+
     // Column definitions
     const columns: ColumnDef<VideoOutputRow>[] = [
         {
@@ -414,7 +446,7 @@ export function AIVideoGenerated() {
             header: 'Sora URL',
             width: 150,
             minWidth: 120,
-            editable: false,
+            editable: true,
             type: 'url',
         },
         {
@@ -434,6 +466,47 @@ export function AIVideoGenerated() {
             editable: false,
             type: 'custom',
             render: (value) => formatFileSize(value as number | null),
+        },
+        {
+            key: 'create_character',
+            header: 'Character',
+            width: 120,
+            minWidth: 100,
+            editable: false,
+            type: 'custom',
+            render: (_value, row) => {
+                const hasVideo = row.sora_url || row.final_video_url;
+                const isCompleted = row.task_status === 'completed';
+                const isCreating = creatingCharacter === row.id;
+
+                if (!hasVideo || !isCompleted) {
+                    return (
+                        <span className="text-gray-400 text-xs">-</span>
+                    );
+                }
+
+                return (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleCreateCharacter(row);
+                        }}
+                        disabled={isCreating}
+                        className={`
+                            flex items-center gap-1 px-2 py-1 rounded text-xs font-medium
+                            transition-colors
+                            ${isCreating
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                            }
+                        `}
+                        title="Create Sora character from this video"
+                    >
+                        <UserPlus className="w-3 h-3" />
+                        {isCreating ? 'Creating...' : 'Create'}
+                    </button>
+                );
+            },
         },
         {
             key: 'created_at',

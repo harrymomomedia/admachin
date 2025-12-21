@@ -1862,3 +1862,160 @@ export function getVideoGeneratorStorageUrl(storagePath: string): string {
     return data.publicUrl;
 }
 
+// ============================================
+// SORA CHARACTER
+// ============================================
+
+export interface SoraCharacterLogEntry {
+    id: number;
+    timestamp: string;
+    type: 'info' | 'success' | 'error' | 'warning';
+    message: string;
+}
+
+export interface SoraCharacter {
+    id: string;
+    row_number: number;
+    character_name: string | null;
+    sora_character_id: string | null;  // URL slug like "expadz.mayalandma"
+    source_video_url: string | null;
+    video_output_id: string | null;
+    avatar_url: string | null;
+    description: string | null;
+    restrictions: string | null;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    task_error: string | null;
+    logs: SoraCharacterLogEntry[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface SoraCharacterWithDetails extends SoraCharacter {
+    video_output?: VideoOutput;
+}
+
+/**
+ * Get all sora characters
+ */
+export async function getSoraCharacters(): Promise<SoraCharacterWithDetails[]> {
+    const { data, error } = await supabaseUntyped
+        .from('sora_character')
+        .select(`
+            *,
+            video_output:video_output (*)
+        `)
+        .order('row_number', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching sora characters:', error);
+        throw error;
+    }
+    return data || [];
+}
+
+/**
+ * Get a single sora character by ID
+ */
+export async function getSoraCharacterById(id: string): Promise<SoraCharacterWithDetails | null> {
+    const { data, error } = await supabaseUntyped
+        .from('sora_character')
+        .select(`
+            *,
+            video_output:video_output (*)
+        `)
+        .eq('id', id)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('[Supabase] Error fetching sora character:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Create a new sora character
+ */
+export async function createSoraCharacter(character: {
+    source_video_url?: string | null;
+    video_output_id?: string | null;
+    character_name?: string | null;
+    sora_character_id?: string | null;
+    status?: 'pending' | 'processing' | 'completed' | 'failed';
+}): Promise<SoraCharacter> {
+    const { data, error } = await supabaseUntyped
+        .from('sora_character')
+        .insert({
+            source_video_url: character.source_video_url || null,
+            video_output_id: character.video_output_id || null,
+            character_name: character.character_name || null,
+            sora_character_id: character.sora_character_id || null,
+            status: character.status || 'pending',
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating sora character:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Update a sora character
+ */
+export async function updateSoraCharacter(
+    id: string,
+    updates: Partial<Omit<SoraCharacter, 'id' | 'row_number' | 'created_at'>>
+): Promise<SoraCharacter> {
+    const { data, error } = await supabaseUntyped
+        .from('sora_character')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating sora character:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Delete a sora character
+ */
+export async function deleteSoraCharacter(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('sora_character')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting sora character:', error);
+        throw error;
+    }
+}
+
+/**
+ * Save logs to a sora character record
+ */
+export async function saveSoraCharacterLogs(
+    id: string,
+    logs: SoraCharacterLogEntry[]
+): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('sora_character')
+        .update({ logs })
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error saving sora character logs:', error);
+        throw error;
+    }
+}
+

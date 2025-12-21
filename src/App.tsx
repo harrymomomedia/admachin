@@ -18,6 +18,7 @@ import { Login } from "./pages/Login";
 import { UserSettings } from "./pages/UserSettings";
 import { VideoGenerator } from "./pages/VideoGenerator";
 import { AIVideoGenerated } from "./pages/AIVideoGenerated";
+import { SoraCharacters } from "./pages/SoraCharacters";
 import { Loader2 } from "lucide-react";
 
 // Protected route wrapper
@@ -99,6 +100,7 @@ function App() {
               <Route path="ads/create" element={<AdCreator />} />
               <Route path="video-generator" element={<VideoGenerator />} />
               <Route path="ai-video-generated" element={<AIVideoGenerated />} />
+              <Route path="sora-characters" element={<SoraCharacters />} />
               <Route path="ai-copywriting" element={<PersonaAICopy />} />
               <Route path="saved-personas" element={<SavedPersonasLibrary />} />
               <Route path="admin" element={<TeamSettings />} />

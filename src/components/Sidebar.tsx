@@ -28,6 +28,7 @@ const copywritingSubNav = [
 const videoSubNav = [
     { name: "Video Generator", href: "/video-generator", icon: Video },
     { name: "Generated Videos", href: "/ai-video-generated", icon: Sparkles },
+    { name: "Sora Characters", href: "/sora-characters", icon: User },
 ];
 
 const facebookSubNav = [
@@ -145,14 +146,14 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
         location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas'
     );
     const [isVideoExpanded, setIsVideoExpanded] = useState(
-        location.pathname === '/video-generator' || location.pathname === '/ai-video-generated'
+        location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters'
     );
     const [isFacebookExpanded, setIsFacebookExpanded] = useState(
         location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts'
     );
 
     const isCopywritingActive = location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas';
-    const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated';
+    const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters';
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
 
     const handleNavClick = () => {

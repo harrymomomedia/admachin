@@ -1,0 +1,1 @@
+ALTER TABLE video_output ADD COLUMN IF NOT EXISTS sora_url TEXT;
