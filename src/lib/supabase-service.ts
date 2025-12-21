@@ -1502,7 +1502,7 @@ export interface VideoGenerator {
     video_prompt: string | null;
     model: 'sora-2-text-to-video' | 'sora-2-web-t2v';
     duration: 10 | 15;  // kie.ai Sora 2 API supports 10 or 15 seconds
-    aspect_ratio: 'landscape' | 'portrait' | 'square';  // Sora 2 aspect ratio
+    aspect_ratio: 'landscape' | 'portrait';  // Sora 2 only supports landscape and portrait
     status: 'pending' | 'generating' | 'completed' | 'failed';
     middle_frame_path: string | null;
     transcript: string | null;

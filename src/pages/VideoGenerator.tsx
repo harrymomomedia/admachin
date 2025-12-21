@@ -49,7 +49,7 @@ interface VideoGeneratorRow {
     video_prompt: string | null;
     model: 'sora-2-text-to-video' | 'sora-2-web-t2v';
     duration: 10 | 15;  // kie.ai Sora 2 API supports 10 or 15 seconds
-    aspect_ratio: 'landscape' | 'portrait' | 'square';
+    aspect_ratio: 'landscape' | 'portrait';
     status: 'pending' | 'generating' | 'completed' | 'failed';
     middle_frame_path: string | null;
     transcript: string | null;
@@ -978,12 +978,10 @@ export function VideoGenerator() {
             options: [
                 { label: 'Landscape', value: 'landscape' },
                 { label: 'Portrait', value: 'portrait' },
-                { label: 'Square', value: 'square' },
             ],
             colorMap: {
                 'landscape': 'bg-green-100 text-green-700',
                 'portrait': 'bg-orange-100 text-orange-700',
-                'square': 'bg-cyan-100 text-cyan-700',
             },
         },
         {

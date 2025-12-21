@@ -161,21 +161,19 @@ router.post('/generate', async (req: Request, res: Response) => {
         const input: Record<string, unknown> = {
             prompt,
             n_frames: String(requestedFrames), // "10" or "15"
-            remove_watermark: true,
         };
 
-        // Aspect ratio mapping: convert "16:9" format to "landscape"/"portrait"/"square"
+        // Aspect ratio mapping: Sora 2 only supports landscape and portrait
         const aspectRatioMap: Record<string, string> = {
             '16:9': 'landscape',
             '9:16': 'portrait',
-            '1:1': 'square',
         };
 
         if (imageUrl) {
             // Image-to-video mode
             input.image_url = imageUrl;
         } else {
-            // Text-to-video mode - set aspect ratio
+            // Text-to-video mode - set aspect ratio (defaults to landscape)
             input.aspect_ratio = aspectRatioMap[aspectRatio] || 'landscape';
         }
 
