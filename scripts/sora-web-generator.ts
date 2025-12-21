@@ -421,14 +421,58 @@ async function generateVideo(
         await promptInput.fill(task.metadata.prompt);
         logs = await appendLog(task.id, 'success', '✓ Prompt entered', logs);
 
+        // Click the settings button (sliders icon with aria-label="Settings")
+        // It's located to the left of the gift icon in the prompt bar
+        logs = await appendLog(task.id, 'info', '→ Opening settings panel...', logs);
+        try {
+            let settingsClicked = false;
+
+            // Look for the Settings button by aria-label
+            // There may be multiple "Settings" buttons - sidebar (x~2) and prompt bar (x~900+)
+            // We want the one in the prompt bar (higher x position, rightmost)
+            const settingsButtons = page.locator('button[aria-label="Settings"]');
+            const count = await settingsButtons.count();
+
+            if (count > 0) {
+                // Find the one furthest to the right (in the prompt bar area)
+                let rightMostBtn = settingsButtons.first();
+                let maxX = 0;
+
+                for (let i = 0; i < count; i++) {
+                    const btn = settingsButtons.nth(i);
+                    const box = await btn.boundingBox().catch(() => null);
+                    if (box && box.x > maxX) {
+                        maxX = box.x;
+                        rightMostBtn = btn;
+                    }
+                }
+
+                // Click the settings button
+                await rightMostBtn.click();
+                await page.waitForTimeout(1000);
+
+                // Check if the settings panel appeared (look for "Orientation" text)
+                if (await page.locator('text=Orientation').isVisible({ timeout: 2000 }).catch(() => false)) {
+                    settingsClicked = true;
+                    logs = await appendLog(task.id, 'success', '✓ Settings panel opened', logs);
+                }
+            }
+
+            if (!settingsClicked) {
+                logs = await appendLog(task.id, 'warning', '⚠ Could not find settings button', logs);
+            }
+        } catch (e) {
+            logs = await appendLog(task.id, 'warning', `⚠ Could not open settings panel: ${e}`, logs);
+        }
+
         // Click on Orientation setting to change it
         logs = await appendLog(task.id, 'info', `→ Setting orientation: ${task.metadata.aspect_ratio}...`, logs);
         try {
-            // Find and click the Orientation row (contains "Orientation" text)
+            // Click the Orientation row to open submenu
             const orientationRow = page.locator('text=Orientation').first();
             if (await orientationRow.isVisible({ timeout: 3000 }).catch(() => false)) {
                 await orientationRow.click();
-                await page.waitForTimeout(1000);
+                await page.waitForTimeout(2000); // Wait for submenu
 
                 // Map aspect_ratio to Sora orientation names
                 const orientationMap: Record<string, string> = {
@@ -438,11 +482,11 @@ async function generateVideo(
                 };
                 const targetOrientation = orientationMap[task.metadata.aspect_ratio] || 'Landscape';
 
-                // Click the target orientation option
+                // Click the target orientation option in submenu
                 const orientationOption = page.locator(`text=${targetOrientation}`).first();
                 if (await orientationOption.isVisible({ timeout: 2000 }).catch(() => false)) {
                     await orientationOption.click();
-                    await page.waitForTimeout(500);
+                    await page.waitForTimeout(1000);
                     logs = await appendLog(task.id, 'success', `✓ Orientation set to ${targetOrientation}`, logs);
                 }
             }
@@ -451,20 +495,41 @@ async function generateVideo(
         }
 
         // Click on Duration setting to change it
+        // Need to reopen settings panel first (it closes after orientation selection)
         logs = await appendLog(task.id, 'info', `→ Setting duration: ${task.metadata.duration}s...`, logs);
         try {
-            // Find and click the Duration row (contains "Duration" text)
+            // Check if settings panel is still open, if not reopen it
+            let durationVisible = await page.locator('text=Duration').isVisible({ timeout: 1000 }).catch(() => false);
+            if (!durationVisible) {
+                // Reopen settings panel
+                const settingsButtons = page.locator('button[aria-label="Settings"]');
+                const count = await settingsButtons.count();
+                let rightMostBtn = settingsButtons.first();
+                let maxX = 0;
+                for (let i = 0; i < count; i++) {
+                    const btn = settingsButtons.nth(i);
+                    const box = await btn.boundingBox().catch(() => null);
+                    if (box && box.x > maxX) {
+                        maxX = box.x;
+                        rightMostBtn = btn;
+                    }
+                }
+                await rightMostBtn.click();
+                await page.waitForTimeout(1500);
+            }
+
+            // Click the Duration row to open submenu
             const durationRow = page.locator('text=Duration').first();
             if (await durationRow.isVisible({ timeout: 3000 }).catch(() => false)) {
                 await durationRow.click();
-                await page.waitForTimeout(1000);
+                await page.waitForTimeout(2000); // Wait for submenu
 
-                // Click the target duration option (e.g., "5s", "10s", "15s", "20s")
-                const targetDuration = `${task.metadata.duration}s`;
+                // Duration options use "X seconds" format (e.g., "10 seconds", "15 seconds")
+                const targetDuration = `${task.metadata.duration} seconds`;
                 const durationOption = page.locator(`text=${targetDuration}`).first();
                 if (await durationOption.isVisible({ timeout: 2000 }).catch(() => false)) {
                     await durationOption.click();
-                    await page.waitForTimeout(500);
+                    await page.waitForTimeout(1000);
                     logs = await appendLog(task.id, 'success', `✓ Duration set to ${targetDuration}`, logs);
                 }
             }
