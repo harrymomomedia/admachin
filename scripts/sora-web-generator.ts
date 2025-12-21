@@ -742,10 +742,11 @@ async function generateVideo(
                 logs = await appendLog(task.id, 'info', '→ Uploading to Supabase...', logs);
                 const { url: finalUrl, path: finalPath } = await uploadVideoToSupabase(cleanBuffer, task.id, '');
 
-                // Update task with final video URL
+                // Update task with final video URL and Sora URL
                 await updateTaskStatus(task.id, 'completed', {
                     final_video_url: finalUrl,
                     output_storage_path: finalPath,
+                    sora_url: videoUrl, // Store the original Sora public URL
                 });
                 await updateGeneratorStatus(task.video_generator_id, 'completed');
 
