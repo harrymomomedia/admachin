@@ -120,17 +120,12 @@ export function PersonaAICopy() {
     });
 
     const handleSavePersonas = async (personasToSave: Persona[]) => {
-        if (!selectedProjectId) {
-            alert('Please select a project first.');
-            return;
-        }
-
         try {
             // Save to ai_personas table (CopyLibrary)
             const personasData = personasToSave.map(p => ({
                 content: JSON.stringify(p), // Store full persona data as JSON
-                project_id: selectedProjectId,
-                subproject_id: selectedSubprojectId || null,
+                campaign_parameter_id: null, // Optional link to campaign
+                created_by: currentUserId,
             }));
 
             await createAIPersonasBatch(personasData);
@@ -142,17 +137,14 @@ export function PersonaAICopy() {
     };
 
     const handleSaveAngles = async (anglesToSave: Angle[]) => {
-        if (!selectedProjectId) {
-            alert('Please select a project first.');
-            return;
-        }
-
         try {
             // Save to ai_angles table (CopyLibrary)
             const anglesData = anglesToSave.map(a => ({
                 content: JSON.stringify(a), // Store full angle data as JSON
-                project_id: selectedProjectId,
-                subproject_id: selectedSubprojectId || null,
+                campaign_parameter_id: null,
+                persona_id: null,
+                creative_concept_id: null,
+                created_by: currentUserId,
             }));
 
             await createAIAnglesBatch(anglesData);
@@ -164,18 +156,16 @@ export function PersonaAICopy() {
     };
 
     const handleSaveAdCopies = async (adsToSave: AdCopyItem[]) => {
-        if (!selectedProjectId) {
-            alert('Please select a project first.');
-            return;
-        }
-
         try {
             // Save to ai_generated_ads table (CopyLibrary)
             const adsData = adsToSave.map(ad => ({
                 content: ad.copy, // AdCopyItem uses 'copy' not 'content'
-                ad_type: 'general',
-                project_id: selectedProjectId,
-                subproject_id: selectedSubprojectId || null,
+                ad_type: 'FB Ad Text',
+                campaign_parameter_id: null,
+                persona_id: null,
+                angle_id: null,
+                creative_concept_id: null,
+                created_by: currentUserId,
             }));
 
             await createAIGeneratedAdsBatch(adsData);
@@ -1372,7 +1362,7 @@ export function PersonaAICopy() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto pr-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {adCopies.map((adCopy, index) => (
                                     <div
                                         key={adCopy.id}
