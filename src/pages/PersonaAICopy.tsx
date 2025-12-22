@@ -19,17 +19,28 @@ import {
     getProjects,
     getSubprojects,
     createAdCopy,
-    getAICopywritingPresets,
-    createAICopywritingPreset,
-    updateAICopywritingPreset,
-    deleteAICopywritingPreset,
     getUsers,
     createSavedPersona,
+    // CopyLibrary tables (single source of truth)
+    createCampaignParameter,
+    getCampaignParameters,
+    updateCampaignParameter,
+    deleteCampaignParameter,
+    createAIPersonasBatch,
+    createAIAnglesBatch,
+    createAIGeneratedAdsBatch,
+    getAIPersonas,
+    getAIAngles,
+    getAIGeneratedAds,
     type Project,
     type Subproject,
     type Persona,
     type AICopywritingPreset,
     type User,
+    type CampaignParameter,
+    type AIPersona,
+    type AIAngle,
+    type AIGeneratedAd,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { cn } from '../utils/cn';
@@ -88,14 +99,18 @@ export function PersonaAICopy() {
     const swipeFilesRef = useRef<HTMLTextAreaElement>(null);
     const productCustomPromptRef = useRef<HTMLTextAreaElement>(null);
 
-    // Presets (now stored in Supabase for team-level access)
-    const [presets, setPresets] = useState<AICopywritingPreset[]>([]);
+    // Campaign parameters from CopyLibrary (single source of truth)
+    const [campaignParams, setCampaignParams] = useState<CampaignParameter[]>([]);
     const [selectedPreset, setSelectedPreset] = useState<AICopywritingPreset | null>(null);
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [showPresetManager, setShowPresetManager] = useState(false);
     const [newPresetName, setNewPresetName] = useState('');
 
     const [showSavedPersonasModal, setShowSavedPersonasModal] = useState(false);
+    const [showAnglesLibrary, setShowAnglesLibrary] = useState(false);
+    const [showAdCopiesLibrary, setShowAdCopiesLibrary] = useState(false);
+    const [libraryAngles, setLibraryAngles] = useState<AIAngle[]>([]);
+    const [libraryAdCopies, setLibraryAdCopies] = useState<AIGeneratedAd[]>([]);
 
     // Prompt viewer modal state
     const [promptModal, setPromptModal] = useState<PromptModal>({
@@ -105,30 +120,134 @@ export function PersonaAICopy() {
     });
 
     const handleSavePersonas = async (personasToSave: Persona[]) => {
-        if (!currentUserId || !selectedProjectId) {
-            alert('Please allow us to identify your profile and select a project first.');
+        if (!selectedProjectId) {
+            alert('Please select a project first.');
             return;
         }
 
         try {
-            const promises = personasToSave.map(p =>
-                createSavedPersona({
-                    user_id: currentUserId,
-                    project_id: selectedProjectId,
-                    subproject_id: selectedSubprojectId || null,
-                    vertical: productDescription, // Using description as vertical
-                    name: p.name,
-                    role: p.role,
-                    data: p
-                })
-            );
+            // Save to ai_personas table (CopyLibrary)
+            const personasData = personasToSave.map(p => ({
+                content: JSON.stringify(p), // Store full persona data as JSON
+                project_id: selectedProjectId,
+                subproject_id: selectedSubprojectId || null,
+            }));
 
-            await Promise.all(promises);
-            alert(`Successfully saved ${personasToSave.length} persona${personasToSave.length > 1 ? 's' : ''} to library!`);
+            await createAIPersonasBatch(personasData);
+            alert(`Successfully saved ${personasToSave.length} persona${personasToSave.length > 1 ? 's' : ''} to Copy Library!`);
         } catch (error) {
             console.error('Failed to save personas:', error);
             alert('Failed to save personas to library.');
         }
+    };
+
+    const handleSaveAngles = async (anglesToSave: Angle[]) => {
+        if (!selectedProjectId) {
+            alert('Please select a project first.');
+            return;
+        }
+
+        try {
+            // Save to ai_angles table (CopyLibrary)
+            const anglesData = anglesToSave.map(a => ({
+                content: JSON.stringify(a), // Store full angle data as JSON
+                project_id: selectedProjectId,
+                subproject_id: selectedSubprojectId || null,
+            }));
+
+            await createAIAnglesBatch(anglesData);
+            alert(`Successfully saved ${anglesToSave.length} angle${anglesToSave.length > 1 ? 's' : ''} to Copy Library!`);
+        } catch (error) {
+            console.error('Failed to save angles:', error);
+            alert('Failed to save angles to library.');
+        }
+    };
+
+    const handleSaveAdCopies = async (adsToSave: AdCopyItem[]) => {
+        if (!selectedProjectId) {
+            alert('Please select a project first.');
+            return;
+        }
+
+        try {
+            // Save to ai_generated_ads table (CopyLibrary)
+            const adsData = adsToSave.map(ad => ({
+                content: ad.copy, // AdCopyItem uses 'copy' not 'content'
+                ad_type: 'general',
+                project_id: selectedProjectId,
+                subproject_id: selectedSubprojectId || null,
+            }));
+
+            await createAIGeneratedAdsBatch(adsData);
+            alert(`Successfully saved ${adsToSave.length} ad cop${adsToSave.length > 1 ? 'ies' : 'y'} to Copy Library!`);
+        } catch (error) {
+            console.error('Failed to save ad copies:', error);
+            alert('Failed to save ad copies to library.');
+        }
+    };
+
+    // Load from CopyLibrary functions
+    const loadAnglesFromLibrary = async () => {
+        try {
+            const anglesFromDb = await getAIAngles();
+            setLibraryAngles(anglesFromDb);
+            setShowAnglesLibrary(true);
+        } catch (error) {
+            console.error('Failed to load angles from library:', error);
+            alert('Failed to load angles from library.');
+        }
+    };
+
+    const loadAdCopiesFromLibrary = async () => {
+        try {
+            const adsFromDb = await getAIGeneratedAds();
+            setLibraryAdCopies(adsFromDb);
+            setShowAdCopiesLibrary(true);
+        } catch (error) {
+            console.error('Failed to load ad copies from library:', error);
+            alert('Failed to load ad copies from library.');
+        }
+    };
+
+    // Import selected library items into current session
+    const importLibraryAngles = (selectedAngles: AIAngle[]) => {
+        const convertedAngles: Angle[] = selectedAngles.map(a => {
+            // Try to parse stored JSON content, or create a basic angle
+            try {
+                const parsed = JSON.parse(a.content);
+                return {
+                    ...parsed,
+                    id: a.id,
+                    selected: true,
+                };
+            } catch {
+                return {
+                    id: a.id,
+                    angle: a.content,
+                    persona_id: 'library',
+                    persona_name: 'From Library',
+                    pain_point: '',
+                    why_now: '',
+                    selected: true,
+                };
+            }
+        });
+        setAngles(prev => [...prev, ...convertedAngles]);
+        setShowAnglesLibrary(false);
+        setAnglesExpanded(true);
+    };
+
+    const importLibraryAdCopies = (selectedAds: AIGeneratedAd[]) => {
+        const convertedAds: AdCopyItem[] = selectedAds.map(ad => ({
+            id: ad.id,
+            copy: ad.content,
+            angle_ids: ['library'],
+            angle_names: ['From Library'],
+            selected: true,
+        }));
+        setAdCopies(prev => [...prev, ...convertedAds]);
+        setShowAdCopiesLibrary(false);
+        setAdCopiesExpanded(true);
     };
 
     // Auto-fill
@@ -221,15 +340,15 @@ export function PersonaAICopy() {
             const harryUserId = '807f4cb3-fd03-4e02-8828-44436a6d00e5'; // harry@momomedia.io
             setCurrentUserId(user?.id || harryUserId);
 
-            const [projectsData, subprojectsData, presetsData, usersData] = await Promise.all([
+            const [projectsData, subprojectsData, campaignParamsData, usersData] = await Promise.all([
                 getProjects(),
                 getSubprojects(),
-                getAICopywritingPresets(),
+                getCampaignParameters(), // Load from CopyLibrary (single source of truth)
                 getUsers()
             ]);
             setProjects(projectsData);
             setSubprojects(subprojectsData);
-            setPresets(presetsData);
+            setCampaignParams(campaignParamsData);
             setUsers(usersData);
         } catch (error) {
             console.error('Failed to load data:', error);
@@ -243,23 +362,27 @@ export function PersonaAICopy() {
             return;
         }
 
+        if (!selectedProjectId) {
+            alert('Please select a project before saving');
+            return;
+        }
+
         try {
-            const newPreset = await createAICopywritingPreset({
+            // Save to campaign_parameters table (CopyLibrary - single source of truth)
+            const newCampaignParam = await createCampaignParameter({
                 name: newPresetName,
-                product_description: productDescription,
-                persona_input: personaInput,
-                swipe_files: swipeFiles,
-                custom_prompt: productCustomPrompt,
-                project_id: selectedProjectId || undefined,
-                subproject_id: selectedSubprojectId || undefined,
-                ai_model: selectedModel,
-                created_by: currentUserId || undefined,
+                description: productDescription,
+                persona_input: personaInput || null,
+                swipe_files: swipeFiles || null,
+                custom_prompt: productCustomPrompt || null,
+                project_id: selectedProjectId,
+                subproject_id: selectedSubprojectId || null,
             });
 
-            setPresets(prev => [...prev, newPreset]);
-            setSelectedPreset(newPreset);
+            setCampaignParams(prev => [...prev, newCampaignParam]);
             setShowSavePresetModal(false);
             setNewPresetName('');
+            alert('Campaign parameters saved to Copy Library!');
         } catch (error) {
             console.error('Failed to save preset:', error);
             alert('Failed to save preset. Please try again.');
@@ -304,31 +427,40 @@ export function PersonaAICopy() {
         setSelectedPreset(preset);
     };
 
+    // Load from CopyLibrary campaign_parameters table
+    const loadCampaignParam = (param: CampaignParameter) => {
+        setProductDescription(param.description || '');
+        setPersonaInput(param.persona_input || '');
+        setSwipeFiles(param.swipe_files || '');
+        setProductCustomPrompt(param.custom_prompt || '');
+        setSelectedProjectId(param.project_id || '');
+        setSelectedSubprojectId(param.subproject_id || '');
+        setShowPresetManager(false);
+    };
+
+    // Delete from CopyLibrary campaign_parameters table
     const handleDeletePreset = async (presetId: string) => {
         try {
-            await deleteAICopywritingPreset(presetId);
-            setPresets(prev => prev.filter(p => p.id !== presetId));
+            await deleteCampaignParameter(presetId);
+            setCampaignParams(prev => prev.filter(p => p.id !== presetId));
 
             if (selectedPreset?.id === presetId) {
                 setSelectedPreset(null);
             }
         } catch (error) {
-            console.error('Failed to delete preset:', error);
-            alert('Failed to delete preset. Please try again.');
+            console.error('Failed to delete campaign parameter:', error);
+            alert('Failed to delete. Please try again.');
         }
     };
 
+    // Rename in CopyLibrary campaign_parameters table
     const handleRenamePreset = async (presetId: string, newName: string) => {
         try {
-            const updatedPreset = await updateAICopywritingPreset(presetId, { name: newName });
-
-            setPresets(prev => prev.map(p => p.id === presetId ? updatedPreset : p));
-            if (selectedPreset?.id === presetId) {
-                setSelectedPreset(updatedPreset);
-            }
+            const updated = await updateCampaignParameter(presetId, { name: newName });
+            setCampaignParams(prev => prev.map(p => p.id === presetId ? updated : p));
         } catch (error) {
-            console.error('Failed to rename preset:', error);
-            alert('Failed to rename preset. Please try again.');
+            console.error('Failed to rename campaign parameter:', error);
+            alert('Failed to rename. Please try again.');
         }
     };
 
@@ -484,8 +616,8 @@ export function PersonaAICopy() {
 
 
     const generateAngles = async () => {
-        if (selectedPersonas.length === 0) {
-            alert('Please select at least one persona first');
+        if (!productDescription.trim()) {
+            alert('Please enter a product description first');
             return;
         }
 
@@ -525,8 +657,8 @@ export function PersonaAICopy() {
     };
 
     const generateAdCopies = async () => {
-        if (selectedAngles.length === 0) {
-            alert('Please select at least one angle first');
+        if (!productDescription.trim()) {
+            alert('Please enter a product description first');
             return;
         }
 
@@ -607,7 +739,7 @@ export function PersonaAICopy() {
     };
 
     return (
-        <div className="flex flex-col gap-3 bg-gray-50">
+        <div className="flex flex-col gap-3 bg-gray-50 h-full overflow-y-auto pb-8">
             {/* Header with Model Selector */}
             <div className="sticky top-0 z-10 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -884,9 +1016,8 @@ export function PersonaAICopy() {
 
 
 
-            {/* Step 2: Personas */}
-            {(personas.length > 0 || showSavedPersonasModal) && (
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Step 2: Personas - Always visible */}
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <button
                         onClick={() => setPersonasExpanded(!personasExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -984,11 +1115,9 @@ export function PersonaAICopy() {
                         </div>
                     )}
                 </div>
-            )}
 
-            {/* Step 3: Angles */}
-            {angles.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Step 3: Angles - Always visible */}
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <button
                         onClick={() => setAnglesExpanded(!anglesExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -1005,6 +1134,16 @@ export function PersonaAICopy() {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    loadAnglesFromLibrary();
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors flex items-center gap-1.5 mr-2"
+                            >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                Library
+                            </button>
                             {selectedAngles.length > 0 && (
                                 <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-medium rounded">
                                     {selectedAngles.length} selected
@@ -1031,6 +1170,18 @@ export function PersonaAICopy() {
                                     >
                                         Clear
                                     </button>
+                                    {selectedAngles.length > 0 && (
+                                        <>
+                                            <span className="text-gray-300">|</span>
+                                            <button
+                                                onClick={() => handleSaveAngles(selectedAngles)}
+                                                className="text-[10px] text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                                            >
+                                                <Save className="w-3 h-3" />
+                                                Save Selected
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
@@ -1132,7 +1283,7 @@ export function PersonaAICopy() {
                             <div className="flex justify-end">
                                 <button
                                     onClick={generateAdCopies}
-                                    disabled={adCopiesLoading || selectedAngles.length === 0}
+                                    disabled={adCopiesLoading || !productDescription.trim()}
                                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {adCopiesLoading ? (
@@ -1151,11 +1302,9 @@ export function PersonaAICopy() {
                         </div>
                     )}
                 </div>
-            )}
 
-            {/* Step 4: Ad Copies */}
-            {adCopies.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Step 4: Ad Copies - Always visible */}
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <button
                         onClick={() => setAdCopiesExpanded(!adCopiesExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -1172,6 +1321,16 @@ export function PersonaAICopy() {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    loadAdCopiesFromLibrary();
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg transition-colors flex items-center gap-1.5 mr-2"
+                            >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                Library
+                            </button>
                             {selectedAdCopies.length > 0 && (
                                 <span className="px-2 py-1 bg-orange-100 text-orange-700 text-[10px] font-medium rounded">
                                     {selectedAdCopies.length} selected
@@ -1198,6 +1357,18 @@ export function PersonaAICopy() {
                                     >
                                         Clear
                                     </button>
+                                    {selectedAdCopies.length > 0 && (
+                                        <>
+                                            <span className="text-gray-300">|</span>
+                                            <button
+                                                onClick={() => handleSaveAdCopies(selectedAdCopies)}
+                                                className="text-[10px] text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                                            >
+                                                <Save className="w-3 h-3" />
+                                                Save Selected
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
@@ -1290,8 +1461,6 @@ export function PersonaAICopy() {
                         </div>
                     )}
                 </div>
-            )
-            }
 
             {/* Export Button - Only show when ad copies exist */}
             {
@@ -1396,11 +1565,24 @@ export function PersonaAICopy() {
                 )
             }
 
-            {/* Preset Manager Modal */}
+            {/* Preset Manager Modal - uses CopyLibrary campaign_parameters only */}
             <PresetManagerModal
                 isOpen={showPresetManager}
                 onClose={() => setShowPresetManager(false)}
-                presets={presets}
+                presets={campaignParams.map(cp => ({
+                    id: cp.id,
+                    name: cp.name,
+                    product_description: cp.description || '',
+                    persona_input: cp.persona_input || '',
+                    swipe_files: cp.swipe_files || '',
+                    custom_prompt: cp.custom_prompt || '',
+                    project_id: cp.project_id || '',
+                    subproject_id: cp.subproject_id || '',
+                    ai_model: 'claude-sonnet-4.5' as const,
+                    created_by: currentUserId || '',
+                    created_at: cp.created_at || new Date().toISOString(),
+                    updated_at: cp.updated_at || new Date().toISOString(),
+                }))}
                 projects={projects}
                 subprojects={subprojects}
                 users={users}
@@ -1646,6 +1828,109 @@ export function PersonaAICopy() {
                     setProductExpanded(false);
                 }}
             />
+
+            {/* Angles Library Modal */}
+            {showAnglesLibrary && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between p-4 border-b">
+                            <h2 className="text-lg font-bold text-gray-900">Load Angles from Library</h2>
+                            <button onClick={() => setShowAnglesLibrary(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1">
+                            {libraryAngles.length === 0 ? (
+                                <p className="text-gray-500 text-sm text-center py-8">No angles saved in library yet.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {libraryAngles.map(angle => (
+                                        <div
+                                            key={angle.id}
+                                            onClick={() => importLibraryAngles([angle])}
+                                            className="p-3 border border-gray-200 rounded-lg hover:bg-green-50 hover:border-green-300 cursor-pointer transition-colors"
+                                        >
+                                            <p className="text-sm text-gray-900 line-clamp-2">{angle.content}</p>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Created: {new Date(angle.created_at || '').toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowAnglesLibrary(false)}
+                                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => importLibraryAngles(libraryAngles)}
+                                disabled={libraryAngles.length === 0}
+                                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                            >
+                                Import All ({libraryAngles.length})
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Ad Copies Library Modal */}
+            {showAdCopiesLibrary && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between p-4 border-b">
+                            <h2 className="text-lg font-bold text-gray-900">Load Ad Copies from Library</h2>
+                            <button onClick={() => setShowAdCopiesLibrary(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1">
+                            {libraryAdCopies.length === 0 ? (
+                                <p className="text-gray-500 text-sm text-center py-8">No ad copies saved in library yet.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {libraryAdCopies.map(ad => (
+                                        <div
+                                            key={ad.id}
+                                            onClick={() => importLibraryAdCopies([ad])}
+                                            className="p-3 border border-gray-200 rounded-lg hover:bg-orange-50 hover:border-orange-300 cursor-pointer transition-colors"
+                                        >
+                                            <p className="text-sm text-gray-900 line-clamp-3">{ad.content}</p>
+                                            <div className="flex gap-2 mt-1">
+                                                {ad.ad_type && (
+                                                    <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{ad.ad_type}</span>
+                                                )}
+                                                <span className="text-xs text-gray-500">
+                                                    Created: {new Date(ad.created_at || '').toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowAdCopiesLibrary(false)}
+                                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => importLibraryAdCopies(libraryAdCopies)}
+                                disabled={libraryAdCopies.length === 0}
+                                className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                            >
+                                Import All ({libraryAdCopies.length})
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }
