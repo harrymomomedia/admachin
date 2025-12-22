@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { DataTable } from "../components/DataTable";
-import type { ColumnDef } from "../components/DataTable";
+import { DataTable } from "../components/datatable";
+import type { ColumnDef } from "../components/datatable";
 import { DataTablePageLayout } from "../components/DataTablePageLayout";
 import {
     getVideoOutputs,

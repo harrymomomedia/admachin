@@ -5,6 +5,9 @@
  * Can be deployed to Railway or any Node.js hosting.
  */
 
+// Load environment variables first
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

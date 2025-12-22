@@ -27,7 +27,7 @@ import {
     type ViewPreferencesConfig
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
-import { DataTable, type ColumnDef } from '../components/DataTable';
+import { DataTable, type ColumnDef } from '../components/datatable';
 import { AdPreviewCard } from '../components/AdPreviewCard';
 
 export function Ads() {
@@ -470,15 +470,15 @@ export function Ads() {
                 columns={columns}
                 data={ads}
                 isLoading={isLoading}
-                emptyMessage="No ads found. Create one to get started!"
-                title="Ads"
+                emptyMessage="No ad combos found. Create one to get started!"
+                title="Ad Combos"
                 headerActions={
                     <button
                         onClick={() => navigate('/ads/create')}
                         className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
                     >
                         <Layers className="w-3 h-3" />
-                        Create Ads
+                        Create Ad Combo
                     </button>
                 }
                 getRowId={(ad) => ad.id}

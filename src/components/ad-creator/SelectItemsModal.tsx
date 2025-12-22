@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
-import { DataTable, type ColumnDef } from '../DataTable';
+import { DataTable, type ColumnDef } from '../datatable';
 import type { Creative, AdCopy } from '../../lib/supabase-service';
 import { getCreativeUrl } from '../../lib/supabase-service';
 

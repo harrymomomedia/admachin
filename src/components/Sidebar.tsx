@@ -12,17 +12,16 @@ const FacebookIcon = () => (
     </svg>
 );
 
-const mainNavigation = [
+const adsSubNav = [
     { name: "Ad Copy", href: "/", icon: Type },
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
-    { name: "Ads", href: "/ads", icon: Megaphone },
-    { name: "FB Ad Library", href: "/fb-ad-library", icon: Library },
+    { name: "Ad Combos", href: "/ads", icon: Megaphone },
 ];
 
-const copywritingSubNav = [
-    { name: "Persona AI Copy", href: "/ai-copywriting", icon: Sparkles },
-    { name: "Saved Personas", href: "/saved-personas", icon: FolderOpen },
+const aiCopySubNav = [
+    { name: "Copy Wizard", href: "/copy-wizard", icon: Sparkles },
+    { name: "Copy Library", href: "/copy-library", icon: FolderOpen },
 ];
 
 const videoSubNav = [
@@ -47,7 +46,7 @@ interface SidebarProps {
 interface FlyoutMenuProps {
     title: string;
     icon: React.ReactNode;
-    items: typeof copywritingSubNav;
+    items: typeof aiCopySubNav;
     isActive: boolean;
     onNavigate: () => void;
 }
@@ -142,8 +141,11 @@ function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProp
 
 export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
     const location = useLocation();
-    const [isCopywritingExpanded, setIsCopywritingExpanded] = useState(
-        location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas'
+    const [isAdsExpanded, setIsAdsExpanded] = useState(
+        location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ads'
+    );
+    const [isAICopyExpanded, setIsAICopyExpanded] = useState(
+        location.pathname === '/copy-wizard' || location.pathname === '/copy-library'
     );
     const [isVideoExpanded, setIsVideoExpanded] = useState(
         location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters'
@@ -152,7 +154,8 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
         location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts'
     );
 
-    const isCopywritingActive = location.pathname === '/ai-copywriting' || location.pathname === '/saved-personas';
+    const isAdsActive = location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ads';
+    const isAICopyActive = location.pathname === '/copy-wizard' || location.pathname === '/copy-library';
     const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters';
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
 
@@ -203,55 +206,32 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                 )}
             </div>
             <div className="flex-1 flex flex-col gap-1 p-2 overflow-y-auto">
-                {/* Main Navigation */}
-                {mainNavigation.map((item) => {
-                    const isActive = location.pathname === item.href;
-                    return (
-                        <Link
-                            key={item.name}
-                            to={item.href}
-                            onClick={handleNavClick}
-                            title={isCollapsed ? item.name : undefined}
-                            className={cn(
-                                "flex items-center gap-3 rounded-md text-sm font-medium transition-colors",
-                                isCollapsed ? "justify-center p-3" : "px-3 py-2",
-                                isActive
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                            )}
-                        >
-                            <item.icon className="h-5 w-5 flex-shrink-0" />
-                            {!isCollapsed && item.name}
-                        </Link>
-                    );
-                })}
-
-                {/* Copywriting Section */}
+                {/* Ads Section */}
                 {!isCollapsed ? (
-                    <div className="mt-2">
+                    <div>
                         <button
-                            onClick={() => setIsCopywritingExpanded(!isCopywritingExpanded)}
+                            onClick={() => setIsAdsExpanded(!isAdsExpanded)}
                             className={cn(
                                 "flex w-full items-center justify-between gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                                isCopywritingActive
+                                isAdsActive
                                     ? "bg-primary/10 text-primary"
                                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                             )}
                         >
                             <div className="flex items-center gap-3">
-                                <Pen className="h-5 w-5" />
-                                Copywriting
+                                <Megaphone className="h-5 w-5" />
+                                Ads
                             </div>
-                            {isCopywritingExpanded ? (
+                            {isAdsExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
                             ) : (
                                 <ChevronRight className="h-4 w-4" />
                             )}
                         </button>
 
-                        {isCopywritingExpanded && (
+                        {isAdsExpanded && (
                             <div className="ml-4 mt-1 flex flex-col gap-1">
-                                {copywritingSubNav.map((item) => {
+                                {adsSubNav.map((item) => {
                                     const isActive = location.pathname === item.href;
                                     return (
                                         <Link
@@ -274,13 +254,73 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         )}
                     </div>
                 ) : (
-                    // Collapsed Copywriting - Flyout Menu
+                    // Collapsed Ads - Flyout Menu
+                    <div>
+                        <FlyoutMenu
+                            title="Ads"
+                            icon={<Megaphone className="h-5 w-5" />}
+                            items={adsSubNav}
+                            isActive={isAdsActive}
+                            onNavigate={handleNavClick}
+                        />
+                    </div>
+                )}
+
+                {/* AI Copy Section */}
+                {!isCollapsed ? (
+                    <div className="mt-2">
+                        <button
+                            onClick={() => setIsAICopyExpanded(!isAICopyExpanded)}
+                            className={cn(
+                                "flex w-full items-center justify-between gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                isAICopyActive
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                        >
+                            <div className="flex items-center gap-3">
+                                <Pen className="h-5 w-5" />
+                                AI Copy
+                            </div>
+                            {isAICopyExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </button>
+
+                        {isAICopyExpanded && (
+                            <div className="ml-4 mt-1 flex flex-col gap-1">
+                                {aiCopySubNav.map((item) => {
+                                    const isActive = location.pathname === item.href;
+                                    return (
+                                        <Link
+                                            key={item.name}
+                                            to={item.href}
+                                            onClick={handleNavClick}
+                                            className={cn(
+                                                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                                isActive
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            )}
+                                        >
+                                            <item.icon className="h-4 w-4" />
+                                            {item.name}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    // Collapsed AI Copy - Flyout Menu
                     <div className="mt-2">
                         <FlyoutMenu
-                            title="Copywriting"
+                            title="AI Copy"
                             icon={<Pen className="h-5 w-5" />}
-                            items={copywritingSubNav}
-                            isActive={isCopywritingActive}
+                            items={aiCopySubNav}
+                            isActive={isAICopyActive}
                             onNavigate={handleNavClick}
                         />
                     </div>
@@ -300,7 +340,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         >
                             <div className="flex items-center gap-3">
                                 <Video className="h-5 w-5" />
-                                Video
+                                AI Video
                             </div>
                             {isVideoExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -337,7 +377,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                     // Collapsed Video - Flyout Menu
                     <div className="mt-2">
                         <FlyoutMenu
-                            title="Video"
+                            title="AI Video"
                             icon={<Video className="h-5 w-5" />}
                             items={videoSubNav}
                             isActive={isVideoActive}
@@ -363,7 +403,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                     {!isCollapsed && "Launch Ad"}
                 </Link>
 
-                {/* Facebook Section */}
+                {/* Integration Section */}
                 {!isCollapsed ? (
                     <div className="mt-2">
                         <button
@@ -377,7 +417,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         >
                             <div className="flex items-center gap-3">
                                 <FacebookIcon />
-                                Facebook
+                                Integration
                             </div>
                             {isFacebookExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -411,10 +451,10 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         )}
                     </div>
                 ) : (
-                    // Collapsed Facebook - Flyout Menu
+                    // Collapsed Integration - Flyout Menu
                     <div className="mt-2">
                         <FlyoutMenu
-                            title="Facebook"
+                            title="Integration"
                             icon={<FacebookIcon />}
                             items={facebookSubNav}
                             isActive={isFacebookActive}
@@ -422,6 +462,23 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         />
                     </div>
                 )}
+
+                {/* FB Ad Library - at bottom */}
+                <Link
+                    to="/fb-ad-library"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? "FB Ad Library" : undefined}
+                    className={cn(
+                        "flex items-center gap-3 rounded-md text-sm font-medium transition-colors mt-2",
+                        isCollapsed ? "justify-center p-3" : "px-3 py-2",
+                        location.pathname === "/fb-ad-library"
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                >
+                    <Library className="h-5 w-5 flex-shrink-0" />
+                    {!isCollapsed && "FB Ad Library"}
+                </Link>
 
             </div>
 

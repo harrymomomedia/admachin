@@ -5,7 +5,7 @@
     'use strict';
 
     // Configuration - update this to your AdMachin app URL
-    const ADMACHIN_API_URL = 'https://admachin.vercel.app/api/save-fb-ad';
+    const ADMACHIN_API_URL = 'https://admachin-server-production.up.railway.app/api/save-fb-ad';
 
     // Helper: Capture video from a video element using MediaRecorder
     // Records the FULL video duration (max 2 minutes for safety)

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
-import { DataTable } from "../components/DataTable";
-import type { ColumnDef } from "../components/DataTable";
+import { DataTable } from "../components/datatable";
+import type { ColumnDef } from "../components/datatable";
 import { DataTablePageLayout } from "../components/DataTablePageLayout";
 import {
     getSoraCharacters,
@@ -18,22 +18,8 @@ import type { ViewPreferencesConfig, SoraCharacterWithDetails } from "../lib/sup
 import { useAuth } from "../contexts/AuthContext";
 import { ExternalLink, User as UserIcon } from "lucide-react";
 
-interface SoraCharacterRow {
-    id: string;
-    row_number: number;
-    character_name: string | null;
-    sora_character_id: string | null;
-    sora_profile_url: string | null;  // Computed from sora_character_id
-    source_video_url: string | null;
-    video_output_id: string | null;
-    avatar_url: string | null;
-    description: string | null;
-    restrictions: string | null;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    task_error: string | null;
-    created_at: string;
-    updated_at: string;
-}
+// Use SoraCharacter from supabase-service - no need for local interface
+type SoraCharacterRow = SoraCharacterWithDetails;
 
 export function SoraCharacters() {
     const { user } = useAuth();

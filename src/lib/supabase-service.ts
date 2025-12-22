@@ -2019,3 +2019,446 @@ export async function saveSoraCharacterLogs(
     }
 }
 
+// ============================================
+// AI COPY - CAMPAIGN PARAMETERS
+// ============================================
+
+export interface CampaignParameter {
+    id: string;
+    name: string;
+    description: string | null;
+    persona_input: string | null;
+    swipe_files: string | null;
+    custom_prompt: string | null;
+    project_id: string | null;
+    subproject_id: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getCampaignParameters(): Promise<CampaignParameter[]> {
+    const { data, error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching campaign parameters:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function getCampaignParameter(id: string): Promise<CampaignParameter | null> {
+    const { data, error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('[Supabase] Error fetching campaign parameter:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function createCampaignParameter(params: Omit<CampaignParameter, 'id' | 'created_at' | 'updated_at'>): Promise<CampaignParameter> {
+    const { data, error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .insert(params)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating campaign parameter:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function updateCampaignParameter(id: string, updates: Partial<CampaignParameter>): Promise<CampaignParameter> {
+    const { data, error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating campaign parameter:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteCampaignParameter(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting campaign parameter:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// AI COPY - CREATIVE CONCEPTS
+// ============================================
+
+export interface CreativeConcept {
+    id: string;
+    name: string;
+    description: string | null;
+    example: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getCreativeConcepts(): Promise<CreativeConcept[]> {
+    const { data, error } = await supabaseUntyped
+        .from('creative_concepts')
+        .select('*')
+        .order('name', { ascending: true });
+
+    if (error) {
+        console.error('[Supabase] Error fetching creative concepts:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function createCreativeConcept(params: Omit<CreativeConcept, 'id' | 'created_at' | 'updated_at'>): Promise<CreativeConcept> {
+    const { data, error } = await supabaseUntyped
+        .from('creative_concepts')
+        .insert(params)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating creative concept:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function updateCreativeConcept(id: string, updates: Partial<CreativeConcept>): Promise<CreativeConcept> {
+    const { data, error } = await supabaseUntyped
+        .from('creative_concepts')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating creative concept:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteCreativeConcept(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('creative_concepts')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting creative concept:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// AI COPY - PERSONAS
+// ============================================
+
+export interface AIPersona {
+    id: string;
+    campaign_parameter_id: string | null;
+    content: string;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getAIPersonas(campaignParameterId?: string): Promise<AIPersona[]> {
+    let query = supabaseUntyped
+        .from('ai_personas')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (campaignParameterId) {
+        query = query.eq('campaign_parameter_id', campaignParameterId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[Supabase] Error fetching AI personas:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function createAIPersona(params: Omit<AIPersona, 'id' | 'created_at' | 'updated_at'>): Promise<AIPersona> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_personas')
+        .insert(params)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI persona:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function createAIPersonasBatch(personas: Omit<AIPersona, 'id' | 'created_at' | 'updated_at'>[]): Promise<AIPersona[]> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_personas')
+        .insert(personas)
+        .select();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI personas batch:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function updateAIPersona(id: string, updates: Partial<AIPersona>): Promise<AIPersona> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_personas')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating AI persona:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteAIPersona(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('ai_personas')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting AI persona:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// AI COPY - ANGLES
+// ============================================
+
+export interface AIAngle {
+    id: string;
+    campaign_parameter_id: string | null;
+    persona_id: string | null;
+    creative_concept_id: string | null;
+    content: string;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getAIAngles(filters?: { campaignParameterId?: string; personaId?: string }): Promise<AIAngle[]> {
+    let query = supabaseUntyped
+        .from('ai_angles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (filters?.campaignParameterId) {
+        query = query.eq('campaign_parameter_id', filters.campaignParameterId);
+    }
+    if (filters?.personaId) {
+        query = query.eq('persona_id', filters.personaId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[Supabase] Error fetching AI angles:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function createAIAngle(params: Omit<AIAngle, 'id' | 'created_at' | 'updated_at'>): Promise<AIAngle> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_angles')
+        .insert(params)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI angle:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function createAIAnglesBatch(angles: Omit<AIAngle, 'id' | 'created_at' | 'updated_at'>[]): Promise<AIAngle[]> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_angles')
+        .insert(angles)
+        .select();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI angles batch:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function updateAIAngle(id: string, updates: Partial<AIAngle>): Promise<AIAngle> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_angles')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating AI angle:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteAIAngle(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('ai_angles')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting AI angle:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// AI COPY - GENERATED ADS
+// ============================================
+
+export interface AIGeneratedAd {
+    id: string;
+    campaign_parameter_id: string | null;
+    persona_id: string | null;
+    angle_id: string | null;
+    creative_concept_id: string | null;
+    content: string;
+    ad_type: string;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getAIGeneratedAds(filters?: { campaignParameterId?: string; angleId?: string }): Promise<AIGeneratedAd[]> {
+    let query = supabaseUntyped
+        .from('ai_generated_ads')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (filters?.campaignParameterId) {
+        query = query.eq('campaign_parameter_id', filters.campaignParameterId);
+    }
+    if (filters?.angleId) {
+        query = query.eq('angle_id', filters.angleId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[Supabase] Error fetching AI generated ads:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function createAIGeneratedAd(params: Omit<AIGeneratedAd, 'id' | 'created_at' | 'updated_at'>): Promise<AIGeneratedAd> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_generated_ads')
+        .insert(params)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI generated ad:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function createAIGeneratedAdsBatch(ads: Omit<AIGeneratedAd, 'id' | 'created_at' | 'updated_at'>[]): Promise<AIGeneratedAd[]> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_generated_ads')
+        .insert(ads)
+        .select();
+
+    if (error) {
+        console.error('[Supabase] Error creating AI generated ads batch:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function updateAIGeneratedAd(id: string, updates: Partial<AIGeneratedAd>): Promise<AIGeneratedAd> {
+    const { data, error } = await supabaseUntyped
+        .from('ai_generated_ads')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error updating AI generated ad:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteAIGeneratedAd(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('ai_generated_ads')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting AI generated ad:', error);
+        throw error;
+    }
+}
+

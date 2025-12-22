@@ -21,7 +21,7 @@ import {
     type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
-import { DataTable, type ColumnDef } from '../components/DataTable';
+import { DataTable, type ColumnDef } from '../components/datatable';
 
 export function AdPlanning() {
     const [plans, setPlans] = useState<AdPlan[]>([]);

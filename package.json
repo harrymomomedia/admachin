@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "save": "git add . && git commit -m 'Auto-save changes' && git push",
     "status": "git status",
-    "deploy": "npm run save && vercel --prod",
+    "deploy": "npm run save && echo 'Deploy via Railway dashboard or CLI'",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -30,7 +30,6 @@
     "@supabase/supabase-js": "^2.86.2",
     "@tanstack/react-virtual": "^3.13.13",
     "@upstash/redis": "^1.35.7",
-    "@vercel/kv": "^3.0.0",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^5.2.1",
@@ -55,7 +54,6 @@
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
-    "@vercel/node": "^5.5.15",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.22",
@@ -71,7 +69,6 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vercel": "^49.1.2",
     "vite": "^7.2.4",
     "vitest": "^4.0.15"
   }

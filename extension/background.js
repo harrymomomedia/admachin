@@ -125,7 +125,7 @@ async function handleSaveAd(adData) {
             return { success: false, error: 'Supabase key not configured' };
         }
 
-        const baseUrl = apiUrl || 'https://admachin.vercel.app';
+        const baseUrl = apiUrl || 'https://admachin-server-production.up.railway.app';
 
         const response = await fetch(`${baseUrl}/api/save-fb-ad`, {
             method: 'POST',

@@ -10,8 +10,8 @@
     ],
     "host_permissions": [
         "https://www.facebook.com/ads/library/*",
-        "https://admachin.vercel.app/*",
-        "https://*.vercel.app/*",
+        "https://admachin-server-production.up.railway.app/*",
+        "https://*.railway.app/*",
         "https://*.fbcdn.net/*",
         "https://*.facebook.com/*"
     ],

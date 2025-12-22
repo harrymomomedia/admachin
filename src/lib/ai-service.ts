@@ -63,6 +63,8 @@ interface GenerateAdCopiesParams {
 export async function autoFillProductInfo(params: AutoFillProductParams): Promise<AutoFillResult> {
     const { model, briefDescription } = params;
 
+    console.log('[AI Auto-Fill] Starting auto-fill with:', { model, briefDescriptionLength: briefDescription.length });
+
     const systemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into detailed marketing inputs for an ad campaign.
 
 Generate:
@@ -98,6 +100,9 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
     try {
         let response: string;
 
+        console.log('[AI Auto-Fill] Calling AI model:', model);
+        const startTime = Date.now();
+
         switch (model) {
             case 'claude-sonnet-4.5':
             case 'claude-opus-4.5':
@@ -114,6 +119,9 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
                 throw new Error(`Unsupported AI model: ${model}`);
         }
 
+        console.log('[AI Auto-Fill] Response received in', Date.now() - startTime, 'ms');
+        console.log('[AI Auto-Fill] Response length:', response.length);
+
         // Clean up response - remove markdown code blocks if present
         const cleanedResponse = response
             .replace(/^```json\s*/i, '')
@@ -122,9 +130,10 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
             .trim();
 
         const result = JSON.parse(cleanedResponse);
+        console.log('[AI Auto-Fill] Parsed successfully. Keys:', Object.keys(result));
         return result;
     } catch (error) {
-        console.error('Error auto-filling product info:', error);
+        console.error('[AI Auto-Fill] Error:', error);
         throw new Error(`Failed to auto-fill with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }

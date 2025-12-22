@@ -11,9 +11,10 @@ import { TeamSettings } from "./pages/TeamSettings";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
 import { Ads } from "./pages/Ads";
-import { AdCreator } from "./pages/AdCreator";
+import { AdCombos } from "./pages/AdCombos";
 import { PersonaAICopy } from "./pages/PersonaAICopy";
 import { SavedPersonasLibrary } from "./pages/SavedPersonasLibrary";
+import { CopyLibrary } from "./pages/CopyLibrary";
 import { Login } from "./pages/Login";
 import { UserSettings } from "./pages/UserSettings";
 import { VideoGenerator } from "./pages/VideoGenerator";
@@ -97,12 +98,15 @@ function App() {
               <Route path="ad-copies" element={<Navigate to="/" replace />} />
               <Route path="ad-planning" element={<AdPlanning />} />
               <Route path="ads" element={<Ads />} />
-              <Route path="ads/create" element={<AdCreator />} />
+              <Route path="ads/create" element={<AdCombos />} />
               <Route path="video-generator" element={<VideoGenerator />} />
               <Route path="ai-video-generated" element={<AIVideoGenerated />} />
               <Route path="sora-characters" element={<SoraCharacters />} />
-              <Route path="ai-copywriting" element={<PersonaAICopy />} />
-              <Route path="saved-personas" element={<SavedPersonasLibrary />} />
+              <Route path="copy-wizard" element={<PersonaAICopy />} />
+              <Route path="copy-library" element={<CopyLibrary />} />
+              {/* Redirect old routes */}
+              <Route path="ai-copywriting" element={<Navigate to="/copy-wizard" replace />} />
+              <Route path="saved-personas" element={<Navigate to="/copy-library" replace />} />
               <Route path="admin" element={<TeamSettings />} />
               <Route path="settings" element={<UserSettings />} />
             </Route>

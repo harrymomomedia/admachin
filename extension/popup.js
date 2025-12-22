@@ -1,6 +1,6 @@
 // Popup script - handles saving ads to AdMachin
 
-const DEFAULT_API_URL = 'https://admachin.vercel.app';
+const DEFAULT_API_URL = 'https://admachin-server-production.up.railway.app';
 
 // DOM elements
 const statusEl = document.getElementById('status');
