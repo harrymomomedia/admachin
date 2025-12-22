@@ -1448,7 +1448,7 @@ function SortableRow<T>({
                                                                     onEditCancel();
                                                                 }
                                                             }}
-                                                            className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize-none focus:outline-none focus:border-blue-400"
+                                                            className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize focus:outline-none focus:border-blue-400"
                                                             style={{
                                                                 top: showAbove ? undefined : dropdownPosition.top,
                                                                 bottom: showAbove ? `${window.innerHeight - dropdownPosition.top}px` : undefined,
@@ -5155,7 +5155,7 @@ export function DataTable<T>({
 
                         return (
                             <div
-                                className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 whitespace-pre-wrap overflow-y-auto"
+                                className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 whitespace-pre-wrap overflow-y-auto resize overflow-auto"
                                 style={{
                                     top: showAbove ? viewingPosition.top - contentHeight : viewingPosition.top,
                                     left: Math.max(8, Math.min(viewingPosition.left, window.innerWidth - viewingPosition.width - 8)),
