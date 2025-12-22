@@ -5126,11 +5126,20 @@ export function DataTable<T>({
                         const spaceAbove = viewingPosition.top - 50;
                         const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
                         const maxH = Math.min(showAbove ? spaceAbove : spaceBelow, 400);
-                        const lineCount = (viewingCell.value?.split('\n').length || 1);
+
+                        // For longtext, estimate wrapped lines based on character count and column width
+                        const isLongText = viewingCell.type === 'longtext';
+                        const charPerLine = Math.floor(viewingPosition.width / 8); // ~8px per char at 13px font
+                        const estimatedWrappedLines = Math.ceil((viewingCell.value?.length || 0) / charPerLine);
+                        const explicitLineCount = (viewingCell.value?.split('\n').length || 1);
+                        const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
+
                         const lineHeight = 20;
                         const verticalPadding = 14; // 7px top + 7px bottom padding
                         const cellHeight = 34;
-                        const contentHeight = Math.min(Math.max(cellHeight, lineCount * lineHeight + verticalPadding), maxH);
+                        // For longtext, use a minimum height of 120px to show more content
+                        const minHeight = isLongText ? 120 : cellHeight;
+                        const contentHeight = Math.min(Math.max(minHeight, lineCount * lineHeight + verticalPadding), maxH);
 
                         return (
                             <div
@@ -5140,6 +5149,7 @@ export function DataTable<T>({
                                     left: Math.max(8, Math.min(viewingPosition.left, window.innerWidth - viewingPosition.width - 8)),
                                     width: viewingPosition.width,
                                     maxHeight: maxH,
+                                    minHeight: minHeight,
                                     padding: '7px 8px',
                                     lineHeight: '20px',
                                     boxSizing: 'border-box',
