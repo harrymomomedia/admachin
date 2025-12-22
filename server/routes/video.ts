@@ -79,6 +79,56 @@ async function appendLog(
     return updatedLogs;
 }
 
+/**
+ * Download video from URL and upload to Supabase storage
+ */
+async function uploadVideoToSupabase(
+    supabase: SupabaseClient,
+    videoUrl: string,
+    videoOutputId: string
+): Promise<{ path: string; url: string } | null> {
+    try {
+        // Download video from Kie.ai URL
+        const response = await fetch(videoUrl);
+        if (!response.ok) {
+            console.error(`[Upload] Failed to download video: ${response.status}`);
+            return null;
+        }
+
+        const videoBuffer = await response.arrayBuffer();
+        const filename = `${Date.now()}.mp4`;
+        const filePath = `videos/${videoOutputId}/${filename}`;
+
+        // Upload to Supabase storage
+        const { data, error } = await supabase.storage
+            .from('video-generator')
+            .upload(filePath, videoBuffer, {
+                cacheControl: '3600',
+                upsert: true,
+                contentType: 'video/mp4',
+            });
+
+        if (error) {
+            console.error(`[Upload] Failed to upload to Supabase:`, error.message);
+            return null;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+            .from('video-generator')
+            .getPublicUrl(data.path);
+
+        console.log(`[Upload] Video uploaded: ${urlData.publicUrl}`);
+        return {
+            path: data.path,
+            url: urlData.publicUrl,
+        };
+    } catch (err) {
+        console.error(`[Upload] Error uploading video:`, err);
+        return null;
+    }
+}
+
 async function generateTranscriptFromVideo(videoUrl: string): Promise<string | null> {
     if (!GEMINI_API_KEY) return null;
 
@@ -417,11 +467,27 @@ export async function syncVideoTasks(): Promise<{
                 if (state === 'completed' || state === 'success') {
                     if (videoUrl) {
                         logs = await appendLog(supabase, task.id, 'success', '[Server] Video generation completed!', logs);
-                        logs = await appendLog(supabase, task.id, 'info', `[Server] Video URL: ${videoUrl}`, logs);
+                        logs = await appendLog(supabase, task.id, 'info', `[Server] Kie.ai URL: ${videoUrl}`, logs);
 
-                        // Generate transcript
+                        // Upload video to Supabase storage (convert temporary Kie.ai URL to permanent Supabase URL)
+                        logs = await appendLog(supabase, task.id, 'info', '[Server] Uploading video to Supabase storage...', logs);
+                        const uploadResult = await uploadVideoToSupabase(supabase, videoUrl, task.id);
+
+                        let finalVideoUrl = videoUrl; // Fallback to Kie.ai URL if upload fails
+                        let storagePath: string | null = null;
+
+                        if (uploadResult) {
+                            finalVideoUrl = uploadResult.url;
+                            storagePath = uploadResult.path;
+                            logs = await appendLog(supabase, task.id, 'success', '[Server] Video uploaded to Supabase', logs);
+                            logs = await appendLog(supabase, task.id, 'info', `[Server] Supabase URL: ${finalVideoUrl}`, logs);
+                        } else {
+                            logs = await appendLog(supabase, task.id, 'warning', '[Server] Supabase upload failed, using Kie.ai URL', logs);
+                        }
+
+                        // Generate transcript using the final video URL
                         logs = await appendLog(supabase, task.id, 'info', '[Server] Generating transcript...', logs);
-                        const transcript = await generateTranscriptFromVideo(videoUrl);
+                        const transcript = await generateTranscriptFromVideo(finalVideoUrl);
 
                         if (transcript) {
                             logs = await appendLog(supabase, task.id, 'success', '[Server] Transcript generated', logs);
@@ -431,12 +497,13 @@ export async function syncVideoTasks(): Promise<{
 
                         logs = await appendLog(supabase, task.id, 'success', '[Server] ✓ Complete!', logs);
 
-                        // Update video_output
+                        // Update video_output with Supabase URL
                         await supabase
                             .from('video_output')
                             .update({
                                 task_status: 'completed',
-                                final_video_url: videoUrl,
+                                final_video_url: finalVideoUrl,
+                                output_storage_path: storagePath, // Store Supabase storage path
                                 transcript: transcript,
                                 logs: logs,
                             })
@@ -452,7 +519,7 @@ export async function syncVideoTasks(): Promise<{
                             })
                             .eq('id', task.video_generator_id);
 
-                        console.log(`[Sync] Task ${task.task_id}: completed`);
+                        console.log(`[Sync] Task ${task.task_id}: completed, URL: ${finalVideoUrl}`);
                         completed++;
                     }
                 } else if (state === 'failed' || state === 'fail') {

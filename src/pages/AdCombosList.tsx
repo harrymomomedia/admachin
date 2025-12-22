@@ -30,7 +30,7 @@ import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
 import { AdPreviewCard } from '../components/AdPreviewCard';
 
-export function Ads() {
+export function AdCombosList() {
     const navigate = useNavigate();
     const [ads, setAds] = useState<Ad[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);

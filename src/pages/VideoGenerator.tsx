@@ -24,6 +24,7 @@ import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutput, Vid
 import { useAuth } from "../contexts/AuthContext";
 import { generateVideo } from "../lib/video-service";
 import { Play, Loader2, Terminal, X, Minimize2, Maximize2, RefreshCw } from "lucide-react";
+import { VIDEO_MODEL_OPTIONS, VIDEO_MODEL_COLOR_MAP } from "../constants/video";
 
 // Color palette for dynamic colorMaps (defined outside component to avoid recreation)
 const COLOR_PALETTE = [
@@ -935,14 +936,8 @@ export function VideoGenerator() {
             minWidth: 120,
             editable: true,
             type: 'select',
-            options: [
-                { label: 'Sora2 API', value: 'sora-2-text-to-video' },
-                { label: 'Sora2 Web', value: 'sora-2-web-t2v' },
-            ],
-            colorMap: {
-                'sora-2-text-to-video': 'bg-violet-100 text-violet-700',
-                'sora-2-web-t2v': 'bg-emerald-100 text-emerald-700',
-            },
+            options: [...VIDEO_MODEL_OPTIONS],
+            colorMap: VIDEO_MODEL_COLOR_MAP,
         },
         {
             key: 'video_prompt',

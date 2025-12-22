@@ -217,13 +217,20 @@ Generate exactly ${personaCount} detailed customer personas in JSON format.`;
 export async function generateAngles(params: GenerateAnglesParams) {
     const { model, personas, productDescription, angleCount = 3, customPrompt } = params;
 
-    // Calculate distribution: randomly assign angles to personas
-    const personaCount = personas.length;
-    const distributionNote = personaCount > 1
-        ? `Distribute the ${angleCount} total angles randomly across the ${personaCount} personas. Not all personas need the same number of angles - vary the distribution naturally based on which personas have the strongest angle opportunities.`
-        : `Generate all ${angleCount} angles for this single persona.`;
+    const hasPersonas = personas && personas.length > 0;
+    const personaCount = hasPersonas ? personas.length : 0;
 
-    const systemPrompt = `You are an expert copywriter and marketing strategist. Your task is to generate compelling marketing angles tailored to specific customer personas.
+    // Different prompts based on whether personas are provided
+    let systemPrompt: string;
+    let userPrompt: string;
+
+    if (hasPersonas) {
+        // With personas: distribute angles across personas
+        const distributionNote = personaCount > 1
+            ? `Distribute the ${angleCount} total angles randomly across the ${personaCount} personas. Not all personas need the same number of angles - vary the distribution naturally based on which personas have the strongest angle opportunities.`
+            : `Generate all ${angleCount} angles for this single persona.`;
+
+        systemPrompt = `You are an expert copywriter and marketing strategist. Your task is to generate compelling marketing angles tailored to specific customer personas.
 
 Generate exactly ${angleCount} TOTAL unique marketing angles. ${distributionNote}
 
@@ -236,11 +243,11 @@ Each angle should include:
 ${customPrompt ? `\n**IMPORTANT CUSTOM INSTRUCTIONS (YOU MUST FOLLOW THESE):**\n${customPrompt}\n` : ''}
 Return ONLY a valid JSON array, no additional text.`;
 
-    const personasSummary = personas.map(p =>
-        `ID: ${p.id}, Name: ${p.name}, ${p.age}, ${p.role}\nSituation: ${p.current_situation}\nPain Points: ${p.pain_points.join(', ')}\nGoals: ${p.goals.join(', ')}`
-    ).join('\n\n');
+        const personasSummary = personas.map(p =>
+            `ID: ${p.id}, Name: ${p.name}, ${p.age}, ${p.role}\nSituation: ${p.current_situation}\nPain Points: ${p.pain_points.join(', ')}\nGoals: ${p.goals.join(', ')}`
+        ).join('\n\n');
 
-    const userPrompt = `Product/Service: ${productDescription}
+        userPrompt = `Product/Service: ${productDescription}
 
 Target Personas:
 ${personasSummary}
@@ -249,6 +256,28 @@ ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
 Generate exactly ${angleCount} TOTAL marketing angles distributed across these personas. Return as JSON array with format:
 [{ "persona_id": "id", "persona_name": "name", "angle": "...", "pain_point": "...", "why_now": "..." }]`;
+    } else {
+        // Without personas: generate general angles from product description
+        systemPrompt = `You are an expert copywriter and marketing strategist. Your task is to generate compelling marketing angles based on the product/service description.
+
+Generate exactly ${angleCount} unique marketing angles that highlight different aspects, benefits, or use cases of the product.
+
+Each angle should include:
+- angle: The main hook/angle (15-25 words)
+- pain_point: The specific pain point or need this addresses
+- why_now: Why this matters right now / urgency factor
+- persona_id: Use "general" for all angles
+- persona_name: Use "General Audience" for all angles
+${customPrompt ? `\n**IMPORTANT CUSTOM INSTRUCTIONS (YOU MUST FOLLOW THESE):**\n${customPrompt}\n` : ''}
+Return ONLY a valid JSON array, no additional text.`;
+
+        userPrompt = `Product/Service: ${productDescription}
+
+${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
+
+Generate exactly ${angleCount} marketing angles based on the product description. Return as JSON array with format:
+[{ "persona_id": "general", "persona_name": "General Audience", "angle": "...", "pain_point": "...", "why_now": "..." }]`;
+    }
 
     try {
         let response: string;
@@ -302,6 +331,8 @@ Generate exactly ${angleCount} TOTAL marketing angles distributed across these p
 export async function generateAdCopies(params: GenerateAdCopiesParams) {
     const { model, angles, productDescription, count, adCopyType = 'FB Ad Text', customPrompt } = params;
 
+    const hasAngles = angles && angles.length > 0;
+
     // Customize instructions based on ad copy type
     const typeInstructions: Record<typeof adCopyType, string> = {
         'FB Ad Text': `Write ad copy that:
@@ -334,17 +365,22 @@ export async function generateAdCopies(params: GenerateAdCopiesParams) {
 - Format: [VISUAL] description, VO: "dialogue"`
     };
 
-    const systemPrompt = `You are an expert ad copywriter. Your task is to write compelling ${adCopyType} based on specific marketing angles.
+    let systemPrompt: string;
+    let userPrompt: string;
+
+    if (hasAngles) {
+        // With angles: write ad copy based on specific angles
+        systemPrompt = `You are an expert ad copywriter. Your task is to write compelling ${adCopyType} based on specific marketing angles.
 
 ${typeInstructions[adCopyType]}
 
 Return ONLY a valid JSON array, no additional text.`;
 
-    const anglesSummary = angles.map(a =>
-        `Angle: ${a.angle}\nPersona: ${a.persona_name}\nPain Point: ${a.pain_point}\nWhy Now: ${a.why_now}`
-    ).join('\n\n---\n\n');
+        const anglesSummary = angles.map(a =>
+            `Angle: ${a.angle}\nPersona: ${a.persona_name}\nPain Point: ${a.pain_point}\nWhy Now: ${a.why_now}`
+        ).join('\n\n---\n\n');
 
-    const userPrompt = `Product/Service: ${productDescription}
+        userPrompt = `Product/Service: ${productDescription}
 
 Marketing Angles to write for:
 ${anglesSummary}
@@ -353,6 +389,23 @@ ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
 Generate ${count} ad copy variations. Use different angles from the list above. Return as JSON array with format:
 [{ "copy": "...", "angle_id": "id", "angle_name": "..." }]`;
+    } else {
+        // Without angles: generate ad copy directly from product description
+        systemPrompt = `You are an expert ad copywriter. Your task is to write compelling ${adCopyType} based on the product/service description.
+
+${typeInstructions[adCopyType]}
+
+Create ads that highlight different benefits, features, and use cases of the product.
+
+Return ONLY a valid JSON array, no additional text.`;
+
+        userPrompt = `Product/Service: ${productDescription}
+
+${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
+
+Generate ${count} ad copy variations highlighting different aspects of the product. Return as JSON array with format:
+[{ "copy": "...", "angle_id": "direct", "angle_name": "Direct from Product" }]`;
+    }
 
     try {
         let response: string;

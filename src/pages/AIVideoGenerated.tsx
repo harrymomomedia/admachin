@@ -21,6 +21,7 @@ import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutputWithD
 import { useAuth } from "../contexts/AuthContext";
 import { RefreshCw, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { VIDEO_MODEL_OPTIONS, VIDEO_MODEL_COLOR_MAP } from "../constants/video";
 
 interface VideoOutputRow {
     id: string;
@@ -29,6 +30,7 @@ interface VideoOutputRow {
     output_storage_path: string | null;
     final_video_url: string | null;
     sora_url: string | null;
+    new_url: string | null;
     transcript: string | null;
     task_id: string | null;
     task_status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -52,6 +54,8 @@ interface VideoOutputRow {
     // Computed fields for gallery view
     video_url?: string | null;
     media_type?: 'video';
+    // Model used for generation
+    model?: string | null;
 }
 
 export function AIVideoGenerated() {
@@ -116,6 +120,7 @@ export function AIVideoGenerated() {
         'failed': 'bg-red-100 text-red-600',
     };
 
+
     // Load data
     useEffect(() => {
         async function loadData() {
@@ -137,8 +142,9 @@ export function AIVideoGenerated() {
                     subproject_id: output.video_generator?.subproject_id,
                     owner_id: output.video_generator?.owner_id,
                     video_prompt: output.video_generator?.video_prompt,
+                    model: output.video_generator?.model,
                     // Computed fields for gallery view
-                    video_url: output.sora_url || output.final_video_url,
+                    video_url: output.new_url || output.sora_url || output.final_video_url,
                     media_type: 'video' as const,
                 }));
 
@@ -247,7 +253,7 @@ export function AIVideoGenerated() {
         );
 
         // Update in database (only for fields on video_output table)
-        const editableFields = ['transcript', 'final_video_url'];
+        const editableFields = ['transcript', 'final_video_url', 'new_url'];
         if (editableFields.includes(field)) {
             try {
                 await updateVideoOutput(id, { [field]: value as string });
@@ -303,7 +309,8 @@ export function AIVideoGenerated() {
                 subproject_id: output.video_generator?.subproject_id,
                 owner_id: output.video_generator?.owner_id,
                 video_prompt: output.video_generator?.video_prompt,
-                video_url: output.sora_url || output.final_video_url,
+                model: output.video_generator?.model,
+                video_url: output.new_url || output.sora_url || output.final_video_url,
                 media_type: 'video' as const,
             }));
             setOutputs(prev => {
@@ -323,7 +330,7 @@ export function AIVideoGenerated() {
     // Create character from video
     const handleCreateCharacter = useCallback(async (row: VideoOutputRow) => {
         // Get the video URL (prefer sora_url, then final_video_url)
-        const videoUrl = row.sora_url || row.final_video_url;
+        const videoUrl = row.new_url || row.sora_url || row.final_video_url;
         if (!videoUrl) {
             alert('No video URL available for this row');
             return;
@@ -364,7 +371,7 @@ export function AIVideoGenerated() {
             editable: false,
             type: 'media',
             thumbnailSize: 'medium',
-            getValue: (row) => row.sora_url || row.final_video_url,
+            getValue: (row) => row.new_url || row.sora_url || row.final_video_url,
         },
         {
             key: 'video_generator_id',
@@ -402,6 +409,16 @@ export function AIVideoGenerated() {
             options: subprojects.map(s => ({ label: s.name, value: s.id })),
             filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
             colorMap: subprojectColorMap,
+        },
+        {
+            key: 'model',
+            header: 'Model',
+            width: 130,
+            minWidth: 100,
+            editable: false,
+            type: 'select',
+            options: [...VIDEO_MODEL_OPTIONS],
+            colorMap: VIDEO_MODEL_COLOR_MAP,
         },
         {
             key: 'owner_id',
@@ -468,6 +485,14 @@ export function AIVideoGenerated() {
             type: 'url',
         },
         {
+            key: 'new_url',
+            header: 'New URL',
+            width: 150,
+            minWidth: 120,
+            editable: true,
+            type: 'url',
+        },
+        {
             key: 'duration_seconds',
             header: 'Duration',
             width: 80,
@@ -493,7 +518,7 @@ export function AIVideoGenerated() {
             editable: false,
             type: 'custom',
             render: (_value, row) => {
-                const hasVideo = row.sora_url || row.final_video_url;
+                const hasVideo = row.new_url || row.sora_url || row.final_video_url;
                 const isCompleted = row.task_status === 'completed';
                 const isCreating = creatingCharacter === row.id;
 
@@ -597,7 +622,7 @@ export function AIVideoGenerated() {
                 galleryLookups={{
                     projects: new Map(projects.map(p => [p.id, p.name])),
                     subprojects: new Map(subprojects.map(s => [s.id, s.name])),
-                    users: new Map(users.map(u => [u.id, u.full_name || u.email || 'Unknown'])),
+                    users: new Map(users.map(u => [u.id, `${u.first_name} ${u.last_name}`.trim() || u.email || 'Unknown'])),
                     projectColors: projectColorMap,
                     subprojectColors: subprojectColorMap,
                 }}

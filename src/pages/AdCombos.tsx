@@ -670,10 +670,12 @@ export function AdCombos() {
         {
             key: 'preview',
             header: 'Preview',
-            width: 60,
-            minWidth: 50,
+            width: 70,
+            minWidth: 60,
             editable: false,
-            type: 'thumbnail',
+            type: 'media',
+            thumbnailSize: 'small',
+            mediaTypeKey: 'type',
             getValue: (row: Creative) => {
                 const dims = row.dimensions as { thumbnail?: string } | null;
                 return dims?.thumbnail ? getCreativeUrl(dims.thumbnail) : getCreativeUrl(row.storage_path);

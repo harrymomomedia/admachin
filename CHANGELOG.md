@@ -6,6 +6,97 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-22: Video Preview & Supabase Upload
+
+**Added:**
+- New `media` column type in DataTable for video/image previews with click-to-play
+- Configurable thumbnail sizes: small (40px), medium (64px), large (96px), xl (128px)
+- Media preview modal with video player and image viewer
+- Auto-upload Kie.ai videos to Supabase storage on sync completion
+- Thumbnail size selector in column context menu (right-click on media column header)
+- Gallery view for AI Video Generated page (toggle in toolbar)
+
+**Changed:**
+- `syncVideoTasks` now downloads videos from Kie.ai and re-uploads to Supabase storage
+- Video URLs now stored as permanent Supabase URLs instead of temporary Kie.ai URLs
+- AIVideoGenerated page now shows video preview column with click-to-play
+- Creatives page uses new `media` column type instead of `thumbnail`
+- AdCombos page uses new `media` column type for creative previews
+
+**Fixed:**
+- Media column click-to-preview now works correctly (was missing callback from DataTable to SortableRow)
+
+**Technical:**
+- New `uploadVideoToSupabase` function in `server/routes/video.ts`
+- `ThumbnailSize` type, `ThumbnailSizeRule` interface, and `THUMBNAIL_SIZES` config in DataTable types
+- `mediaPreviewState` state for fullscreen preview modal
+- `thumbnailSizeRules` state for per-column size preferences
+- `onMediaPreviewClick` callback passed to SortableRow component
+- Uses existing `video-generator` storage bucket
+- Added computed `video_url` and `media_type` fields to VideoOutputRow for gallery view
+
+---
+
+### 2025-12-22: Copy Wizard - All Sections Always Visible
+
+**Changed:**
+- All sections (Personas, Angles, Ad Copies) now visible from the start
+- Each section has a "Library" button to load existing data from CopyLibrary
+- Can generate Angles without Personas - uses product description only
+- Can generate Ad Copies without Angles - uses product description only
+- Removed dependency chain requirement (was: must generate Personas → then Angles → then Ad Copies)
+
+**Added:**
+- "Library" button in Angles section header → loads angles from CopyLibrary
+- "Library" button in Ad Copies section header → loads ad copies from CopyLibrary
+- Modal dialogs for selecting and importing library items
+- Import functions: click an item to import single, or "Import All" button
+
+**Technical:**
+- Updated `generateAngles()` in ai-service.ts to handle empty personas array
+- Updated `generateAdCopies()` in ai-service.ts to handle empty angles array
+- Added `getAIAngles`, `getAIGeneratedAds` imports for library loading
+- New state: `showAnglesLibrary`, `showAdCopiesLibrary`, `libraryAngles`, `libraryAdCopies`
+
+---
+
+### 2025-12-22: Copy Wizard Save to CopyLibrary
+
+**Fixed:**
+- "Save as New" now saves Campaign Parameters to `campaign_parameters` table (CopyLibrary)
+- "Save Selected" personas now saves to `ai_personas` table (CopyLibrary)
+- Added "Save Selected" button for Angles → saves to `ai_angles` table
+- Added "Save Selected" button for Ad Copies → saves to `ai_generated_ads` table
+- Previously saved to wrong tables (`ai_copywriting_presets`, `saved_personas`)
+
+**Changed:**
+- "Load Preset" modal now only shows CopyLibrary `campaign_parameters` data (removed legacy `ai_copywriting_presets`)
+- Single source of truth: all campaign data now exclusively uses CopyLibrary tables
+
+**Added:**
+- E2E test for Campaign Parameters save functionality
+- Verification test to confirm data appears in CopyLibrary
+
+---
+
+### 2025-12-22: AI Copy E2E Tests Fixed
+
+**Fixed:**
+- E2E tests now properly follow the Copy Wizard UI flow
+- Fixed project dropdown selection (was selecting Model dropdown instead)
+- Tests now wait for sections to appear instead of button state changes
+- Added persona/angle selection step (required before next generation)
+- Deploy script now uses `railway up` instead of Vercel
+
+**Changed:**
+- Deploy command: `npm run deploy` now runs `railway up`
+
+**Technical:**
+- E2E tests use `--workers=1` to avoid Anthropic API rate limits
+- Tests handle dialogs/alerts properly
+
+---
+
 ### 2025-12-22: Sora Web Automation Working
 
 **Added:**

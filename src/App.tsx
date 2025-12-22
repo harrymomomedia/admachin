@@ -10,7 +10,7 @@ import { FBAdLibrary } from './pages/FBAdLibrary';
 import { TeamSettings } from "./pages/TeamSettings";
 import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
-import { Ads } from "./pages/Ads";
+import { AdCombosList } from "./pages/AdCombosList";
 import { AdCombos } from "./pages/AdCombos";
 import { PersonaAICopy } from "./pages/PersonaAICopy";
 import { SavedPersonasLibrary } from "./pages/SavedPersonasLibrary";
@@ -97,7 +97,7 @@ function App() {
               {/* Redirect old ad-copies path to home */}
               <Route path="ad-copies" element={<Navigate to="/" replace />} />
               <Route path="ad-planning" element={<AdPlanning />} />
-              <Route path="ads" element={<Ads />} />
+              <Route path="ads" element={<AdCombosList />} />
               <Route path="ads/create" element={<AdCombos />} />
               <Route path="video-generator" element={<VideoGenerator />} />
               <Route path="ai-video-generated" element={<AIVideoGenerated />} />

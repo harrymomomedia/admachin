@@ -160,6 +160,32 @@ Use `src/lib/supabase-service.ts` for all database operations.
 - Test files: `*.test.tsx` alongside components
 - Run `npm test` before committing
 
+## Mandatory Feature Testing (CRITICAL)
+
+**Every interactive feature MUST be tested immediately after implementation.** Do NOT tell the user to test - YOU must verify it works.
+
+Features that require immediate E2E testing:
+- **Button clicks** - Any button that triggers an action (save, delete, generate, etc.)
+- **Form submissions** - Creating, updating, or saving data
+- **API calls** - Any function that calls the backend or database
+- **File uploads** - Uploading images, videos, or documents
+- **CRUD operations** - Create, Read, Update, Delete on any data
+- **Modal interactions** - Opening modals, selecting items, confirming actions
+- **Navigation flows** - Multi-step wizards, page transitions with state
+
+**Testing process:**
+1. After implementing a feature, immediately run a Playwright E2E test
+2. If no E2E test exists, create one in `e2e/` folder
+3. Verify the data actually persists (check database/UI)
+4. Confirm the user can see the results (e.g., saved item appears in list)
+
+**Example:** After implementing "Save Personas to Library":
+```bash
+npx playwright test copy-wizard-real.spec.ts --grep "Save" --project=chromium
+```
+
+**Never assume code works just because TypeScript compiles.** Database schemas, API responses, and runtime behavior must be verified through actual testing.
+
 ## Environment Variables
 
 Required in `.env.local`:
