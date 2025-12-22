@@ -594,43 +594,74 @@ test.describe('Save Functionality Tests', () => {
         console.log('[Test] Filled product description with Women\'s prison California lawsuit data');
         await page.waitForTimeout(500);
 
-        // Select project "Tort"
-        const projectSelect = page.locator('select').filter({ hasText: 'Select Project' });
-        await expect(projectSelect).toBeVisible({ timeout: 10000 });
+        // Select project "Tort" - find by label near the select
+        const projectLabel = page.locator('text=Project *').first();
+        await expect(projectLabel).toBeVisible({ timeout: 10000 });
+        const projectSelect = projectLabel.locator('..').locator('select').first();
+        await expect(projectSelect).toBeVisible({ timeout: 5000 });
 
         // Wait for options to populate
         await page.waitForTimeout(2000);
         const projectOptions = await projectSelect.locator('option').allTextContents();
         console.log(`[Test] Available projects: ${projectOptions.join(', ')}`);
 
-        // Select "Tort" project
+        // Select "Tort" project using force to ensure change event fires
         await projectSelect.selectOption({ label: 'Tort' });
+        await page.waitForTimeout(500);
+
+        // Dispatch change event manually to ensure React state updates
+        await projectSelect.evaluate(select => {
+            const event = new Event('change', { bubbles: true });
+            select.dispatchEvent(event);
+        });
         console.log('[Test] Selected project: Tort');
         await page.waitForTimeout(1000);
 
-        // Now select subproject "Woman's Prison"
-        const subprojectSelect = page.locator('select').filter({ hasText: 'No Subproject' });
-        if (await subprojectSelect.isVisible()) {
-            await page.waitForTimeout(500);
-            const subprojectOptions = await subprojectSelect.locator('option').allTextContents();
-            console.log(`[Test] Available subprojects: ${subprojectOptions.join(', ')}`);
+        // Verify project selection by checking the selected option text
+        const selectedOption = await projectSelect.evaluate(sel => {
+            const s = sel as HTMLSelectElement;
+            return s.options[s.selectedIndex].text;
+        });
+        console.log(`[Test] Selected option text: ${selectedOption}`);
 
-            // Try to select "Woman's Prison" or similar
-            const womansPrisonOption = subprojectOptions.find(opt =>
-                opt.toLowerCase().includes('woman') || opt.toLowerCase().includes('prison')
-            );
-            if (womansPrisonOption) {
-                await subprojectSelect.selectOption({ label: womansPrisonOption });
-                console.log(`[Test] Selected subproject: ${womansPrisonOption}`);
+        // Now select subproject "Woman's Prison"
+        const subprojectLabel = page.locator('text=Subproject').first();
+        if (await subprojectLabel.isVisible()) {
+            await page.waitForTimeout(500);
+            const subprojectSelect = subprojectLabel.locator('..').locator('select').first();
+
+            if (await subprojectSelect.isEnabled()) {
+                const subprojectOptions = await subprojectSelect.locator('option').allTextContents();
+                console.log(`[Test] Available subprojects: ${subprojectOptions.join(', ')}`);
+
+                // Try to select "Woman's Prison" or similar
+                const womansPrisonOption = subprojectOptions.find(opt =>
+                    opt.toLowerCase().includes('woman') || opt.toLowerCase().includes('prison')
+                );
+                if (womansPrisonOption) {
+                    await subprojectSelect.selectOption({ label: womansPrisonOption });
+                    await subprojectSelect.evaluate(select => {
+                        const event = new Event('change', { bubbles: true });
+                        select.dispatchEvent(event);
+                    });
+                    console.log(`[Test] Selected subproject: ${womansPrisonOption}`);
+                } else {
+                    console.log('[Test] Woman\'s Prison subproject not found, continuing without it');
+                }
             } else {
-                console.log('[Test] Woman\'s Prison subproject not found, continuing without it');
+                console.log('[Test] Subproject select is disabled (project may not have subprojects)');
             }
         }
         await page.waitForTimeout(500);
 
-        // Verify project is selected
+        // Verify project is selected by checking the DOM
         const selectedValue = await projectSelect.inputValue();
-        console.log(`[Test] Project value: ${selectedValue}`);
+        console.log(`[Test] Project value (id): ${selectedValue}`);
+
+        // Double-check the button state
+        const genBtnBefore = page.getByRole('button', { name: /Generate Personas/i });
+        const isDisabled = await genBtnBefore.isDisabled();
+        console.log(`[Test] Generate Personas button disabled: ${isDisabled}`);
 
         // Wait for Generate Personas button to be enabled
         const generatePersonasBtn = page.getByRole('button', { name: /Generate Personas/i });
@@ -639,33 +670,56 @@ test.describe('Save Functionality Tests', () => {
 
         await page.screenshot({ path: 'test-results/before-generate-personas.png' });
 
-        // Click Generate Personas
+        // Click Generate Personas and wait for loading state
         await generatePersonasBtn.click();
         console.log('[Test] Clicked Generate Personas');
 
-        // Wait for personas to be generated - look for persona cards (not just the section header)
-        // The section header "Select Personas" is always there, but persona cards appear after generation
-        const personaCard = page.locator('[class*="persona"], [class*="card"]').filter({ hasText: /\d+ years old|age|Pain Points/i }).first();
-        await expect(personaCard).toBeVisible({ timeout: 120000 });
+        // Wait for button to show "Generating..." state (indicates click was registered)
+        const generatingText = page.locator('text=Generating...');
+        try {
+            await expect(generatingText).toBeVisible({ timeout: 5000 });
+            console.log('[Test] Generation started (button shows Generating...)');
+        } catch {
+            console.log('[Test] WARNING: Button did not show Generating... state');
+            await page.screenshot({ path: 'test-results/no-generating-state.png' });
+
+            // Check if there was an alert
+            const alertText = await page.evaluate(() => {
+                // Check for any error elements
+                const errors = document.querySelectorAll('[class*="error"], [class*="alert"]');
+                return Array.from(errors).map(e => e.textContent).join(', ');
+            });
+            console.log(`[Test] Error elements on page: ${alertText || 'none'}`);
+        }
+
+        // Wait for personas to be generated - look for "Pain Points" text which appears in persona cards
+        const personaIndicators = page.locator('text=Pain Points');
+        console.log('[Test] Waiting for persona indicators (up to 2 minutes)...');
+        await expect(personaIndicators.first()).toBeVisible({ timeout: 120000 });
         console.log('[Test] Persona cards generated!');
 
         await page.screenshot({ path: 'test-results/personas-generated.png' });
 
-        // Expand Personas section if collapsed
-        const personasSection = page.locator('button:has-text("Select Personas")');
-        await personasSection.click();
-        await page.waitForTimeout(500);
+        // The PersonaSelector should already be visible since we waited for "Pain Points"
+        // Now wait for "Select All" link to appear (it's inside the PersonaSelector)
+        const selectAllLink = page.getByText('Select All', { exact: true }).first();
 
-        // Click Select All - look for the link inside the expanded section
-        const selectAllLink = page.locator('button:has-text("Select All"), a:has-text("Select All"), text=Select All').first();
+        // If Select All is not visible, try expanding the Personas section
+        if (!await selectAllLink.isVisible()) {
+            console.log('[Test] Expanding Personas section...');
+            const personasSection = page.locator('button:has-text("Select Personas")');
+            await personasSection.click();
+            await page.waitForTimeout(500);
+        }
+
         await expect(selectAllLink).toBeVisible({ timeout: 5000 });
         await selectAllLink.click();
         console.log('[Test] Selected all personas');
 
         await page.waitForTimeout(500);
 
-        // Click Save Selected button for personas
-        const saveSelectedBtn = page.locator('button:has-text("Save Selected")').first();
+        // Click Save Selected button for personas - button shows "Save N Selected"
+        const saveSelectedBtn = page.getByRole('button', { name: /Save \d+ Selected/i }).first();
         await expect(saveSelectedBtn).toBeVisible({ timeout: 5000 });
         await saveSelectedBtn.click();
         console.log('[Test] Clicked Save Selected');
@@ -698,6 +752,328 @@ test.describe('Save Functionality Tests', () => {
 
         expect(rowCount).toBeGreaterThan(0);
         console.log('\n=== SAVE PERSONAS TEST COMPLETE ===\n');
+    });
+
+    test('Save Angles to CopyLibrary', async ({ page }) => {
+        test.setTimeout(240000); // 4 minute timeout for AI generation (personas + angles)
+        console.log('\n=== SAVE ANGLES TEST ===\n');
+
+        let alertMessage = '';
+        page.on('dialog', async dialog => {
+            alertMessage = dialog.message();
+            console.log(`[Test] Alert: ${alertMessage}`);
+            await dialog.accept();
+        });
+
+        await page.goto('/copy-wizard');
+        await page.waitForTimeout(5000);
+
+        // Expand Campaign Parameters section if needed
+        const campaignSection = page.locator('button:has-text("Campaign Parameters")');
+        const isExpanded = await page.locator('textarea').first().isVisible();
+        if (!isExpanded) {
+            await campaignSection.click();
+            await page.waitForTimeout(500);
+        }
+
+        // Fill product description - Real data for Women's prison California lawsuit
+        const productDescInput = page.locator('textarea').first();
+        await productDescInput.fill('California women\'s prison sexual abuse lawsuit - seeking survivors who experienced abuse while incarcerated in California state prisons. This legal action aims to obtain compensation for victims of sexual assault, harassment, and abuse by prison staff and guards. Survivors may be entitled to significant financial recovery.');
+        console.log('[Test] Filled product description');
+        await page.waitForTimeout(500);
+
+        // Select project "Tort"
+        const projectLabel = page.locator('text=Project *').first();
+        await expect(projectLabel).toBeVisible({ timeout: 10000 });
+        const projectSelect = projectLabel.locator('..').locator('select').first();
+        await expect(projectSelect).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(2000);
+
+        await projectSelect.selectOption({ label: 'Tort' });
+        await projectSelect.evaluate(select => {
+            const event = new Event('change', { bubbles: true });
+            select.dispatchEvent(event);
+        });
+        console.log('[Test] Selected project: Tort');
+        await page.waitForTimeout(1000);
+
+        // Select subproject "Women's Prison"
+        const subprojectLabel = page.locator('text=Subproject').first();
+        if (await subprojectLabel.isVisible()) {
+            const subprojectSelect = subprojectLabel.locator('..').locator('select').first();
+            if (await subprojectSelect.isEnabled()) {
+                const subprojectOptions = await subprojectSelect.locator('option').allTextContents();
+                const womansPrisonOption = subprojectOptions.find(opt =>
+                    opt.toLowerCase().includes('woman') || opt.toLowerCase().includes('prison')
+                );
+                if (womansPrisonOption) {
+                    await subprojectSelect.selectOption({ label: womansPrisonOption });
+                    await subprojectSelect.evaluate(select => {
+                        const event = new Event('change', { bubbles: true });
+                        select.dispatchEvent(event);
+                    });
+                    console.log(`[Test] Selected subproject: ${womansPrisonOption}`);
+                }
+            }
+        }
+        await page.waitForTimeout(500);
+
+        // Step 1: Generate Personas
+        const generatePersonasBtn = page.getByRole('button', { name: /Generate Personas/i });
+        await expect(generatePersonasBtn).toBeEnabled({ timeout: 5000 });
+        await generatePersonasBtn.click();
+        console.log('[Test] Clicked Generate Personas');
+
+        // Wait for personas
+        const personaIndicators = page.locator('text=Pain Points');
+        await expect(personaIndicators.first()).toBeVisible({ timeout: 120000 });
+        console.log('[Test] Personas generated!');
+
+        // Select all personas
+        const selectAllPersonas = page.getByText('Select All', { exact: true }).first();
+        if (!await selectAllPersonas.isVisible()) {
+            const personasSection = page.locator('button:has-text("Select Personas")');
+            await personasSection.click();
+            await page.waitForTimeout(500);
+        }
+        await expect(selectAllPersonas).toBeVisible({ timeout: 5000 });
+        await selectAllPersonas.click();
+        console.log('[Test] Selected all personas');
+
+        await page.screenshot({ path: 'test-results/angles-personas-selected.png' });
+
+        // Step 2: Generate Angles
+        const generateAnglesBtn = page.getByRole('button', { name: /Generate Angles/i });
+        await expect(generateAnglesBtn).toBeEnabled({ timeout: 5000 });
+        await generateAnglesBtn.click();
+        console.log('[Test] Clicked Generate Angles');
+
+        // Wait for angles to be generated - look for angle-specific content
+        const angleIndicators = page.locator('text=Emotional Hook');
+        console.log('[Test] Waiting for angles (up to 2 minutes)...');
+        await expect(angleIndicators.first()).toBeVisible({ timeout: 120000 });
+        console.log('[Test] Angles generated!');
+
+        await page.screenshot({ path: 'test-results/angles-generated.png' });
+
+        // Select all angles
+        const selectAllAngles = page.getByText('Select All', { exact: true }).nth(1);
+        if (!await selectAllAngles.isVisible()) {
+            const anglesSection = page.locator('button:has-text("Select Angles")');
+            await anglesSection.click();
+            await page.waitForTimeout(500);
+        }
+        await expect(selectAllAngles).toBeVisible({ timeout: 5000 });
+        await selectAllAngles.click();
+        console.log('[Test] Selected all angles');
+
+        await page.waitForTimeout(500);
+
+        // Save angles - button shows "Save N Selected"
+        const saveAnglesBtn = page.getByRole('button', { name: /Save \d+ Selected/i }).nth(1);
+        await expect(saveAnglesBtn).toBeVisible({ timeout: 5000 });
+        await saveAnglesBtn.click();
+        console.log('[Test] Clicked Save Selected for angles');
+
+        await page.waitForTimeout(3000);
+        await page.screenshot({ path: 'test-results/save-angles-result.png' });
+
+        // Check alert message
+        console.log(`[Test] Final alert message: "${alertMessage}"`);
+        if (alertMessage.includes('Successfully saved') && alertMessage.includes('angle')) {
+            console.log('[Test] ✅ Angles saved successfully!');
+        } else if (alertMessage.includes('Failed')) {
+            console.log('[Test] ❌ Save failed: ' + alertMessage);
+            throw new Error('Save failed: ' + alertMessage);
+        }
+
+        // Verify in CopyLibrary
+        await page.goto('/copy-library');
+        await page.waitForTimeout(3000);
+
+        const anglesTab = page.locator('button:has-text("Angles")').first();
+        await anglesTab.click();
+        await page.waitForTimeout(2000);
+
+        const tableBody = page.locator('tbody');
+        const rowCount = await tableBody.locator('tr').count();
+        console.log(`[Test] Found ${rowCount} angles in CopyLibrary`);
+
+        await page.screenshot({ path: 'test-results/copy-library-angles.png' });
+
+        expect(rowCount).toBeGreaterThan(0);
+        console.log('\n=== SAVE ANGLES TEST COMPLETE ===\n');
+    });
+
+    test('Save Ad Copies to CopyLibrary', async ({ page }) => {
+        test.setTimeout(360000); // 6 minute timeout for full pipeline (personas + angles + ads)
+        console.log('\n=== SAVE AD COPIES TEST ===\n');
+
+        let alertMessage = '';
+        page.on('dialog', async dialog => {
+            alertMessage = dialog.message();
+            console.log(`[Test] Alert: ${alertMessage}`);
+            await dialog.accept();
+        });
+
+        await page.goto('/copy-wizard');
+        await page.waitForTimeout(5000);
+
+        // Expand Campaign Parameters section if needed
+        const campaignSection = page.locator('button:has-text("Campaign Parameters")');
+        const isExpanded = await page.locator('textarea').first().isVisible();
+        if (!isExpanded) {
+            await campaignSection.click();
+            await page.waitForTimeout(500);
+        }
+
+        // Fill product description - Real data for Women's prison California lawsuit
+        const productDescInput = page.locator('textarea').first();
+        await productDescInput.fill('California women\'s prison sexual abuse lawsuit - seeking survivors who experienced abuse while incarcerated in California state prisons. This legal action aims to obtain compensation for victims of sexual assault, harassment, and abuse by prison staff and guards. Survivors may be entitled to significant financial recovery.');
+        console.log('[Test] Filled product description');
+        await page.waitForTimeout(500);
+
+        // Select project "Tort"
+        const projectLabel = page.locator('text=Project *').first();
+        await expect(projectLabel).toBeVisible({ timeout: 10000 });
+        const projectSelect = projectLabel.locator('..').locator('select').first();
+        await expect(projectSelect).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(2000);
+
+        await projectSelect.selectOption({ label: 'Tort' });
+        await projectSelect.evaluate(select => {
+            const event = new Event('change', { bubbles: true });
+            select.dispatchEvent(event);
+        });
+        console.log('[Test] Selected project: Tort');
+        await page.waitForTimeout(1000);
+
+        // Select subproject "Women's Prison"
+        const subprojectLabel = page.locator('text=Subproject').first();
+        if (await subprojectLabel.isVisible()) {
+            const subprojectSelect = subprojectLabel.locator('..').locator('select').first();
+            if (await subprojectSelect.isEnabled()) {
+                const subprojectOptions = await subprojectSelect.locator('option').allTextContents();
+                const womansPrisonOption = subprojectOptions.find(opt =>
+                    opt.toLowerCase().includes('woman') || opt.toLowerCase().includes('prison')
+                );
+                if (womansPrisonOption) {
+                    await subprojectSelect.selectOption({ label: womansPrisonOption });
+                    await subprojectSelect.evaluate(select => {
+                        const event = new Event('change', { bubbles: true });
+                        select.dispatchEvent(event);
+                    });
+                    console.log(`[Test] Selected subproject: ${womansPrisonOption}`);
+                }
+            }
+        }
+        await page.waitForTimeout(500);
+
+        // Step 1: Generate Personas
+        const generatePersonasBtn = page.getByRole('button', { name: /Generate Personas/i });
+        await expect(generatePersonasBtn).toBeEnabled({ timeout: 5000 });
+        await generatePersonasBtn.click();
+        console.log('[Test] Clicked Generate Personas');
+
+        const personaIndicators = page.locator('text=Pain Points');
+        await expect(personaIndicators.first()).toBeVisible({ timeout: 120000 });
+        console.log('[Test] Personas generated!');
+
+        // Select all personas
+        const selectAllPersonas = page.getByText('Select All', { exact: true }).first();
+        if (!await selectAllPersonas.isVisible()) {
+            const personasSection = page.locator('button:has-text("Select Personas")');
+            await personasSection.click();
+            await page.waitForTimeout(500);
+        }
+        await expect(selectAllPersonas).toBeVisible({ timeout: 5000 });
+        await selectAllPersonas.click();
+        console.log('[Test] Selected all personas');
+
+        // Step 2: Generate Angles
+        const generateAnglesBtn = page.getByRole('button', { name: /Generate Angles/i });
+        await expect(generateAnglesBtn).toBeEnabled({ timeout: 5000 });
+        await generateAnglesBtn.click();
+        console.log('[Test] Clicked Generate Angles');
+
+        const angleIndicators = page.locator('text=Emotional Hook');
+        await expect(angleIndicators.first()).toBeVisible({ timeout: 120000 });
+        console.log('[Test] Angles generated!');
+
+        // Select all angles
+        const selectAllAngles = page.getByText('Select All', { exact: true }).nth(1);
+        if (!await selectAllAngles.isVisible()) {
+            const anglesSection = page.locator('button:has-text("Select Angles")');
+            await anglesSection.click();
+            await page.waitForTimeout(500);
+        }
+        await expect(selectAllAngles).toBeVisible({ timeout: 5000 });
+        await selectAllAngles.click();
+        console.log('[Test] Selected all angles');
+
+        await page.screenshot({ path: 'test-results/ads-angles-selected.png' });
+
+        // Step 3: Generate Ad Copies
+        const generateAdsBtn = page.getByRole('button', { name: /Generate Ad Copies/i });
+        await expect(generateAdsBtn).toBeEnabled({ timeout: 5000 });
+        await generateAdsBtn.click();
+        console.log('[Test] Clicked Generate Ad Copies');
+
+        // Wait for ad copies - look for typical ad copy content
+        const adIndicators = page.locator('text=Primary Text');
+        console.log('[Test] Waiting for ad copies (up to 2 minutes)...');
+        await expect(adIndicators.first()).toBeVisible({ timeout: 120000 });
+        console.log('[Test] Ad copies generated!');
+
+        await page.screenshot({ path: 'test-results/ads-generated.png' });
+
+        // Expand Ad Copies section if needed
+        const adsSection = page.locator('button:has-text("Select Ad Copies")');
+        await adsSection.click();
+        await page.waitForTimeout(500);
+
+        // Select all ad copies
+        const selectAllAds = page.getByText('Select All', { exact: true }).nth(2);
+        await expect(selectAllAds).toBeVisible({ timeout: 5000 });
+        await selectAllAds.click();
+        console.log('[Test] Selected all ad copies');
+
+        await page.waitForTimeout(500);
+
+        // Save ad copies - button shows "Save N Selected"
+        const saveAdsBtn = page.getByRole('button', { name: /Save \d+ Selected/i }).nth(2);
+        await expect(saveAdsBtn).toBeVisible({ timeout: 5000 });
+        await saveAdsBtn.click();
+        console.log('[Test] Clicked Save Selected for ad copies');
+
+        await page.waitForTimeout(3000);
+        await page.screenshot({ path: 'test-results/save-ads-result.png' });
+
+        // Check alert message
+        console.log(`[Test] Final alert message: "${alertMessage}"`);
+        if (alertMessage.includes('Successfully saved') && (alertMessage.includes('ad') || alertMessage.includes('cop'))) {
+            console.log('[Test] ✅ Ad copies saved successfully!');
+        } else if (alertMessage.includes('Failed')) {
+            console.log('[Test] ❌ Save failed: ' + alertMessage);
+            throw new Error('Save failed: ' + alertMessage);
+        }
+
+        // Verify in CopyLibrary
+        await page.goto('/copy-library');
+        await page.waitForTimeout(3000);
+
+        const adsTab = page.locator('button:has-text("Ads")').first();
+        await adsTab.click();
+        await page.waitForTimeout(2000);
+
+        const tableBody = page.locator('tbody');
+        const rowCount = await tableBody.locator('tr').count();
+        console.log(`[Test] Found ${rowCount} ad copies in CopyLibrary`);
+
+        await page.screenshot({ path: 'test-results/copy-library-ads.png' });
+
+        expect(rowCount).toBeGreaterThan(0);
+        console.log('\n=== SAVE AD COPIES TEST COMPLETE ===\n');
     });
 
     test('Verify saved Campaign Parameters appear in CopyLibrary', async ({ page }) => {

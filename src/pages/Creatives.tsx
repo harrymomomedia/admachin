@@ -70,7 +70,6 @@ function saveMediaToCache(items: Creative[]): void {
     try {
         const simplified = items.map(m => ({
             id: m.id,
-            name: m.name,
             type: m.type,
             preview: m.preview,
             url: m.url,
@@ -412,12 +411,12 @@ export function Creatives() {
             mediaPlaybackKey: 'url', // Use actual video/image URL for playback
         },
         {
-            key: 'name',
-            header: 'Name',
-            width: 250,
+            key: 'url',
+            header: 'URL',
+            width: 200,
             minWidth: 150,
             editable: false,
-            type: 'text',
+            type: 'url',
         },
         {
             key: 'row_number',
@@ -549,7 +548,6 @@ export function Creatives() {
                     mediaUrlKey: 'url',
                     thumbnailKey: 'preview',
                     mediaTypeKey: 'type',
-                    nameKey: 'name',
                     projectKey: 'project_id',
                     subprojectKey: 'subproject_id',
                     userKey: 'user_id',

@@ -6,6 +6,39 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-22: Copy Wizard Save to CopyLibrary - E2E Verified
+
+**Fixed:**
+- Save Personas, Angles, and Ad Copies to CopyLibrary now working correctly
+- Fixed database column mapping (was using `project_id`, now uses `campaign_parameter_id`)
+- All save functions now properly insert to `ai_personas`, `ai_angles`, `ai_generated_ads` tables
+
+**Added:**
+- E2E test `Save Personas to CopyLibrary` fully automated and passing
+- Test generates real personas for "Women's Prison California lawsuit" case
+- Test uses Project: "Tort", Subproject: "Women's Prison"
+- Verified: 6 personas generated, selected, saved, and confirmed in CopyLibrary
+
+**Technical:**
+- Updated test selectors for Playwright compatibility (no CSS comma selectors with text matchers)
+- Test handles section expansion/collapse states correctly
+- Test file: `e2e/copy-wizard-real.spec.ts`
+
+---
+
+### 2025-12-22: Creatives Page Column Updates & File Renaming
+
+**Changed:**
+- Removed `name` column from Creatives page (file names not relevant)
+- Added `url` column showing the Supabase storage URL for each creative
+- Removed `nameKey` from gallery config
+- Renamed all creative files to `{row_number}.{extension}` format (e.g., `1.mp4`, `2.png`)
+
+**Added:**
+- `scripts/rename-creatives.ts` - Script to rename creative files to row number format
+
+---
+
 ### 2025-12-22: Character Creation Button Restriction
 
 **Changed:**

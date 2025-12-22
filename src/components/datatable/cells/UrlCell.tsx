@@ -28,8 +28,9 @@ export function UrlCell({
 
     // Remove protocol for display
     const displayUrl = urlStr.replace(/^https?:\/\//, '');
+    // Show end of URL with ellipsis at start (right-aligned truncation)
     const truncated = displayUrl.length > maxLength
-        ? `${displayUrl.slice(0, maxLength)}...`
+        ? `...${displayUrl.slice(-maxLength)}`
         : displayUrl;
 
     return (

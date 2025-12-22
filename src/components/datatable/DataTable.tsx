@@ -1550,8 +1550,17 @@ function SortableRow<T>({
                                     </span>
                                 ) : col.type === 'url' ? (
                                     <div
-                                        className="px-2 h-[34px] flex items-center"
-                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                        className={cn(
+                                            "px-2 h-[34px] flex items-center",
+                                            (col.editable || col.viewable !== false) && "cursor-pointer"
+                                        )}
+                                        onClick={(e) => {
+                                            if (col.editable) {
+                                                onEditStart(row, col.key, e);
+                                            } else if (col.viewable !== false && value) {
+                                                onViewStart(row, col.key, e);
+                                            }
+                                        }}
                                     >
                                         <UrlColumn value={value} maxLength={col.urlMaxLength} />
                                     </div>
@@ -2355,7 +2364,7 @@ export function DataTable<T>({
     const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number; cellHeight: number }>({ top: 0, left: 0, width: 200, cellHeight: 34 });
 
     // Viewing state (for read-only text popup)
-    const [viewingCell, setViewingCell] = useState<{ id: string; field: string; value: string } | null>(null);
+    const [viewingCell, setViewingCell] = useState<{ id: string; field: string; value: string; type?: string } | null>(null);
     const [viewingPosition, setViewingPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 400 });
 
     // Copy state
@@ -3101,8 +3110,8 @@ export function DataTable<T>({
         const col = columns.find(c => c.key === field);
         if (!col) return;
 
-        // Check if viewable (default true for text/longtext when not editable)
-        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext');
+        // Check if viewable (default true for text/longtext/url when not editable)
+        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'url');
         if (!isViewable) return;
 
         // Calculate position from the clicked element (cell)
@@ -3116,7 +3125,7 @@ export function DataTable<T>({
         });
 
         const value = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[field] ?? '');
-        setViewingCell({ id: getRowId(row), field, value: String(value || '') });
+        setViewingCell({ id: getRowId(row), field, value: String(value || ''), type: col.type });
     }, [columns, getRowId]);
 
     const handleViewClose = useCallback(() => {
@@ -5136,7 +5145,19 @@ export function DataTable<T>({
                                     boxSizing: 'border-box',
                                 }}
                             >
-                                {viewingCell.value || '-'}
+                                {viewingCell.type === 'url' ? (
+                                    <a
+                                        href={viewingCell.value}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {viewingCell.value || '-'}
+                                    </a>
+                                ) : (
+                                    viewingCell.value || '-'
+                                )}
                             </div>
                         );
                     })()}

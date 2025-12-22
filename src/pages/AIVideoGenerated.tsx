@@ -473,7 +473,7 @@ export function AIVideoGenerated() {
             header: 'Video URL',
             width: 150,
             minWidth: 120,
-            editable: true,
+            editable: false,
             type: 'url',
         },
         {
