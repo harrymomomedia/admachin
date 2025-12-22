@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "save": "git add . && git commit -m 'Auto-save changes' && git push",
     "status": "git status",
-    "deploy": "npm run save && echo 'Deploy via Railway dashboard or CLI'",
+    "deploy": "npm run save && railway up",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
