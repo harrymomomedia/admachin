@@ -459,7 +459,7 @@ export function AdPlanning() {
             width: 200,
             minWidth: 100,
             editable: true,
-            type: 'textarea',
+            type: 'longtext',
         },
         {
             key: 'created_at',

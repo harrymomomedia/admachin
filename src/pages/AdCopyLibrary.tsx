@@ -392,7 +392,7 @@ export function AdCopyLibrary() {
             width: 400,
             minWidth: 150,
             editable: true,
-            type: 'textarea',
+            type: 'longtext',
         },
         {
             key: 'type',

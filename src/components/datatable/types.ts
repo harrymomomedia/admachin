@@ -46,13 +46,31 @@ export interface GroupRule {
 
 // ============ Column Definition ============
 
+/** Thumbnail size options for media column type */
+export type ThumbnailSize = 'small' | 'medium' | 'large' | 'xl';
+
+/** Thumbnail size rule for media columns - stored per column */
+export interface ThumbnailSizeRule {
+    columnKey: string;
+    size: ThumbnailSize;
+}
+
+/** Size configuration for thumbnails */
+export const THUMBNAIL_SIZES: Record<ThumbnailSize, { width: number; height: number; className: string }> = {
+    small: { width: 40, height: 40, className: 'h-10 w-10' },
+    medium: { width: 64, height: 64, className: 'h-16 w-16' },
+    large: { width: 96, height: 96, className: 'h-24 w-24' },
+    xl: { width: 128, height: 128, className: 'h-32 w-32' },
+};
+
 export interface ColumnDef<T> {
     key: string;
     header: string;
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'textarea' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'custom';
+    viewable?: boolean; // For text/longtext types - allows clicking to view full text in a read-only popup (default: true when not editable)
+    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -64,6 +82,10 @@ export interface ColumnDef<T> {
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
     users?: PeopleOption[]; // For people type - list of users to select from
     adCopyType?: 'headline' | 'primary_text' | 'description'; // For adcopy type - which type of ad copy
+    // Media column type options
+    thumbnailSize?: ThumbnailSize; // For media type - size of thumbnail (default: 'small')
+    mediaTypeKey?: string; // For media type - key to get media type ('image' or 'video') from row
+    mediaPlaybackKey?: string; // For media type - key to get the actual video/image URL for playback (if different from thumbnail)
     // Column dependency - when this column's value is set, auto-set the parent column value
     // Used for subproject -> project relationships where selecting a subproject should auto-select its project
     dependsOn?: {
@@ -79,6 +101,7 @@ export interface ViewPreferences {
     filter_config?: FilterRule[];
     group_config?: GroupRule[];
     wrap_config?: StoredWrapRule[];  // Uses StoredWrapRule for persistence compatibility
+    thumbnail_size_config?: ThumbnailSizeRule[];  // Per-column thumbnail sizes for media columns
     row_order?: string[];
     column_widths?: Record<string, number>;
     column_order?: string[];
@@ -175,6 +198,10 @@ export interface DataTableProps<T> {
     // Wrap - per-column line wrapping
     wrapRules?: WrapRule[];
     onWrapRulesChange?: (rules: WrapRule[]) => void;
+
+    // Thumbnail sizes - per-column thumbnail sizes for media columns
+    thumbnailSizeRules?: ThumbnailSizeRule[];
+    onThumbnailSizeRulesChange?: (rules: ThumbnailSizeRule[]) => void;
 
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;

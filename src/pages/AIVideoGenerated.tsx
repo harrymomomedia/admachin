@@ -49,6 +49,9 @@ interface VideoOutputRow {
     subproject_id?: string | null;
     owner_id?: string | null;
     video_prompt?: string | null;
+    // Computed fields for gallery view
+    video_url?: string | null;
+    media_type?: 'video';
 }
 
 export function AIVideoGenerated() {
@@ -134,6 +137,9 @@ export function AIVideoGenerated() {
                     subproject_id: output.video_generator?.subproject_id,
                     owner_id: output.video_generator?.owner_id,
                     video_prompt: output.video_generator?.video_prompt,
+                    // Computed fields for gallery view
+                    video_url: output.sora_url || output.final_video_url,
+                    media_type: 'video' as const,
                 }));
 
                 // Store shared preferences
@@ -297,6 +303,8 @@ export function AIVideoGenerated() {
                 subproject_id: output.video_generator?.subproject_id,
                 owner_id: output.video_generator?.owner_id,
                 video_prompt: output.video_generator?.video_prompt,
+                video_url: output.sora_url || output.final_video_url,
+                media_type: 'video' as const,
             }));
             setOutputs(prev => {
                 const prevOrder = prev.map(o => o.id);
@@ -349,8 +357,18 @@ export function AIVideoGenerated() {
             type: 'id',
         },
         {
+            key: 'video_preview',
+            header: 'Preview',
+            width: 80,
+            minWidth: 70,
+            editable: false,
+            type: 'media',
+            thumbnailSize: 'medium',
+            getValue: (row) => row.sora_url || row.final_video_url,
+        },
+        {
             key: 'video_generator_id',
-            header: 'Generator',
+            header: 'Generator Link',
             width: 100,
             minWidth: 80,
             editable: false,
@@ -400,7 +418,7 @@ export function AIVideoGenerated() {
             width: 250,
             minWidth: 180,
             editable: false,
-            type: 'text',
+            type: 'longtext',
         },
         {
             key: 'task_id',
@@ -431,7 +449,7 @@ export function AIVideoGenerated() {
             width: 200,
             minWidth: 150,
             editable: true,
-            type: 'textarea',
+            type: 'longtext',
         },
         {
             key: 'final_video_url',
@@ -563,6 +581,26 @@ export function AIVideoGenerated() {
                 onSaveForEveryone={handleSaveForEveryone}
                 onResetPreferences={handleResetPreferences}
                 selectable={true}
+                // Gallery view configuration
+                galleryConfig={{
+                    mediaUrlKey: 'video_url',
+                    mediaTypeKey: 'media_type',
+                    nameKey: 'video_prompt',
+                    projectKey: 'project_id',
+                    subprojectKey: 'subproject_id',
+                    userKey: 'owner_id',
+                    dateKey: 'created_at',
+                    fileSizeKey: 'file_size',
+                    rowNumberKey: 'row_number',
+                    showFileInfo: true,
+                }}
+                galleryLookups={{
+                    projects: new Map(projects.map(p => [p.id, p.name])),
+                    subprojects: new Map(subprojects.map(s => [s.id, s.name])),
+                    users: new Map(users.map(u => [u.id, u.full_name || u.email || 'Unknown'])),
+                    projectColors: projectColorMap,
+                    subprojectColors: subprojectColorMap,
+                }}
             />
         </DataTablePageLayout>
     );

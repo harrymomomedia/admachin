@@ -25,7 +25,8 @@ import { getCreativeUrl } from '../../lib/supabase-service';
 import { AdCopyPickerModal } from '../AdCopyPickerModal';
 
 // Import types from extracted modules
-import type { ColumnDef, DataTableProps, PeopleOption, SortRule } from './types';
+import type { ColumnDef, DataTableProps, PeopleOption, SortRule, ThumbnailSize, ThumbnailSizeRule } from './types';
+import { THUMBNAIL_SIZES } from './types';
 // Cell components - using local versions for now until full refactoring is complete
 import { UrlCell as UrlColumn, PriorityCell as PriorityColumn, PeopleCell as PeopleColumn } from './cells';
 // SortableSortRule from extracted components
@@ -48,7 +49,7 @@ interface LocalColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'textarea' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'custom';
+    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -60,6 +61,9 @@ interface LocalColumnDef<T> {
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
     users?: PeopleOption[]; // For people type - list of users to select from
     adCopyType?: 'headline' | 'primary_text' | 'description'; // For adcopy type - which type of ad copy
+    // Media column type options
+    thumbnailSize?: ThumbnailSize; // For media type - size of thumbnail (default: 'small')
+    mediaTypeKey?: string; // For media type - key to get media type ('image' or 'video') from row
     // Column dependency - when this column's value is set, auto-set the parent column value
     // Used for subproject -> project relationships where selecting a subproject should auto-select its project
     dependsOn?: {
@@ -555,6 +559,7 @@ interface ColumnContextMenuProps {
     columnKey: string;
     columnHeader: string;
     columnType?: string;
+    columnEditable?: boolean;
     position: { top: number; left: number };
     onGroupBy: (columnKey: string) => void;
     onSort: (columnKey: string, direction: 'asc' | 'desc') => void;
@@ -563,12 +568,16 @@ interface ColumnContextMenuProps {
     onClose: () => void;
     isGroupedBy: boolean;
     sortRules: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
+    // Media column thumbnail size
+    currentThumbnailSize?: ThumbnailSize;
+    onThumbnailSizeChange?: (size: ThumbnailSize) => void;
 }
 
 function ColumnContextMenu({
     columnKey,
     columnHeader,
     columnType,
+    columnEditable,
     position,
     onGroupBy,
     onSort,
@@ -576,7 +585,9 @@ function ColumnContextMenu({
     onEditField,
     onClose,
     isGroupedBy,
-    sortRules
+    sortRules,
+    currentThumbnailSize,
+    onThumbnailSizeChange
 }: ColumnContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -608,7 +619,7 @@ function ColumnContextMenu({
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider">Field type: </span>
                 <span className="text-[10px] text-gray-600 font-medium">
                     {columnType === 'select' ? 'Single Select' :
-                        columnType === 'textarea' ? 'Long Text' :
+                        columnType === 'longtext' ? (columnEditable ? 'Long Text' : 'Long Text (Read-Only)') :
                             columnType === 'text' ? 'Text' :
                                 columnType === 'date' ? 'Date' :
                                     columnType === 'number' ? 'Number' :
@@ -687,6 +698,45 @@ function ColumnContextMenu({
                         <Pencil className="w-4 h-4 text-gray-400" />
                         Edit this field
                     </button>
+                </>
+            )}
+
+            {/* Thumbnail Size (only for media type) */}
+            {columnType === 'media' && onThumbnailSizeChange && (
+                <>
+                    <div className="my-1 border-t border-gray-100" />
+                    <div className="px-3 py-1.5">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider">Preview Size</span>
+                    </div>
+                    {(['small', 'medium', 'large', 'xl'] as ThumbnailSize[]).map((size) => (
+                        <button
+                            key={size}
+                            onClick={() => {
+                                onThumbnailSizeChange(size);
+                                onClose();
+                            }}
+                            className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left",
+                                currentThumbnailSize === size ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                            )}
+                        >
+                            <div
+                                className={cn(
+                                    "rounded bg-gray-200 flex-shrink-0",
+                                    size === 'small' && "w-3 h-3",
+                                    size === 'medium' && "w-4 h-4",
+                                    size === 'large' && "w-5 h-5",
+                                    size === 'xl' && "w-6 h-6"
+                                )}
+                            />
+                            {size === 'small' ? 'Small (40px)' :
+                             size === 'medium' ? 'Medium (64px)' :
+                             size === 'large' ? 'Large (96px)' : 'Extra Large (128px)'}
+                            {currentThumbnailSize === size && (
+                                <Check className="w-3.5 h-3.5 text-blue-600 ml-auto" />
+                            )}
+                        </button>
+                    ))}
                 </>
             )}
         </div>,
@@ -1010,6 +1060,7 @@ interface SortableRowProps<T> {
     onEditChange: (value: string) => void;
     onEditSave: (value?: string) => void;
     onEditCancel: () => void;
+    onViewStart: (row: T, field: string, event: React.MouseEvent) => void;
     onDelete?: (id: string) => void;
     onCopy?: (row: T) => void;
     onDuplicate?: (row: T) => void;
@@ -1036,6 +1087,9 @@ interface SortableRowProps<T> {
         row_number?: number;
     }>;
     onAdCopyClick?: (rowId: string, columnKey: string, adCopyType: 'headline' | 'primary_text' | 'description', currentValue: string | null) => void;
+    onMediaPreviewClick?: (url: string, isVideo: boolean, title?: string) => void;
+    // Thumbnail size rules for media columns
+    thumbnailSizeRules?: ThumbnailSizeRule[];
 }
 
 function SortableRow<T>({
@@ -1054,6 +1108,7 @@ function SortableRow<T>({
     onEditChange,
     onEditSave,
     onEditCancel,
+    onViewStart,
     onDelete,
     onCopy,
     onDuplicate,
@@ -1070,6 +1125,8 @@ function SortableRow<T>({
     onToggleSelect,
     adCopies,
     onAdCopyClick,
+    onMediaPreviewClick,
+    thumbnailSizeRules,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1319,7 +1376,7 @@ function SortableRow<T>({
                                             document.body
                                         )}
                                     </>
-                                ) : col.type === 'textarea' || col.type === 'text' ? (
+                                ) : col.type === 'longtext' || col.type === 'text' ? (
                                     <>
                                         {/* Popup editor via portal - overlays the cell */}
                                         {createPortal(
@@ -1531,6 +1588,100 @@ function SortableRow<T>({
                                             )}
                                         </div>
                                     </div>
+                                ) : col.type === 'media' ? (
+                                    (() => {
+                                        const mediaUrl = value ? String(value) : null;
+                                        // Get size from rules first, then column default, then 'small'
+                                        const sizeFromRule = thumbnailSizeRules?.find(r => r.columnKey === col.key)?.size;
+                                        const size = sizeFromRule || col.thumbnailSize || 'small';
+                                        const sizeConfig = THUMBNAIL_SIZES[size];
+                                        // Determine if video by checking mediaTypeKey or URL extension
+                                        const mediaTypeValue = col.mediaTypeKey ? (row as Record<string, unknown>)[col.mediaTypeKey] : null;
+                                        const isVideo = mediaTypeValue === 'video' ||
+                                            (mediaUrl && (mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.webm') || mediaUrl.endsWith('.mov')));
+                                        // Get playback URL (may be different from thumbnail if mediaPlaybackKey is specified)
+                                        const playbackUrl = col.mediaPlaybackKey
+                                            ? String((row as Record<string, unknown>)[col.mediaPlaybackKey] || mediaUrl || '')
+                                            : mediaUrl;
+
+                                        return (
+                                            <div className="px-2 py-1 flex items-center">
+                                                <div
+                                                    className={cn(
+                                                        "rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer relative group",
+                                                        sizeConfig.className
+                                                    )}
+                                                    onClick={() => playbackUrl && onMediaPreviewClick?.(playbackUrl, !!isVideo, col.header)}
+                                                >
+                                                    {mediaUrl ? (
+                                                        <>
+                                                            {isVideo ? (
+                                                                // For videos: check if URL is a thumbnail image or video file
+                                                                (() => {
+                                                                    const isImageUrl = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(mediaUrl);
+                                                                    if (isImageUrl) {
+                                                                        // It's a thumbnail image for the video
+                                                                        return (
+                                                                            <img
+                                                                                src={mediaUrl}
+                                                                                alt=""
+                                                                                className="w-full h-full object-cover"
+                                                                                onError={(e) => {
+                                                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                                                }}
+                                                                            />
+                                                                        );
+                                                                    }
+                                                                    // It's a video URL - show video element with poster fallback
+                                                                    return (
+                                                                        <>
+                                                                            <video
+                                                                                src={mediaUrl}
+                                                                                className="w-full h-full object-cover"
+                                                                                muted
+                                                                                preload="metadata"
+                                                                                onLoadedMetadata={(e) => {
+                                                                                    // Seek to first frame to show thumbnail
+                                                                                    (e.target as HTMLVideoElement).currentTime = 0.1;
+                                                                                }}
+                                                                            />
+                                                                            {/* Fallback video icon (shown behind video if it doesn't load) */}
+                                                                            <div className="absolute inset-0 flex items-center justify-center bg-gray-200 -z-10">
+                                                                                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                                                </svg>
+                                                                            </div>
+                                                                        </>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                <img
+                                                                    src={mediaUrl}
+                                                                    alt=""
+                                                                    className="w-full h-full object-cover"
+                                                                    onError={(e) => {
+                                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                                    }}
+                                                                />
+                                                            )}
+                                                            {/* Bottom-right icon overlay: Play for videos, Expand for images */}
+                                                            <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <div className="w-5 h-5 rounded bg-black/50 flex items-center justify-center">
+                                                                    {isVideo ? (
+                                                                        <div className="w-0 h-0 border-l-[6px] border-l-white border-y-[4px] border-y-transparent ml-0.5" />
+                                                                    ) : (
+                                                                        <Maximize2 className="w-3 h-3 text-white" />
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-gray-400 text-[10px]">-</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()
                                 ) : col.type === 'filesize' ? (
                                     <span className="text-[11px] text-gray-500 px-3 h-[34px] flex items-center">
                                         {value ? (() => {
@@ -1578,13 +1729,21 @@ function SortableRow<T>({
                                 ) : (
                                     <p
                                         className={cn(
-                                            "text-[13px] text-gray-700 cursor-pointer hover:text-blue-600 transition-colors px-3",
+                                            "text-[13px] text-gray-700 transition-colors px-3",
+                                            // Clickable if editable OR viewable (text/longtext)
+                                            (col.editable || (col.viewable !== false && (col.type === 'text' || col.type === 'longtext'))) && "cursor-pointer hover:text-blue-600",
                                             (!wrapLines || wrapLines === '1') && "truncate leading-[34px]",
                                             wrapLines === '2' && "line-clamp-2 leading-[28px]",
                                             wrapLines === '3' && "line-clamp-3 leading-[25px]",
                                             wrapLines === 'full' && "whitespace-pre-wrap py-2 leading-relaxed"
                                         )}
-                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                        onClick={(e) => {
+                                            if (col.editable) {
+                                                onEditStart(row, col.key, e);
+                                            } else if (col.viewable !== false && (col.type === 'text' || col.type === 'longtext')) {
+                                                onViewStart(row, col.key, e);
+                                            }
+                                        }}
                                     >
                                         {String(value || '-')}
                                     </p>
@@ -1835,6 +1994,8 @@ export function DataTable<T>({
     resizable = true,
     wrapRules: externalWrapRules,
     onWrapRulesChange,
+    thumbnailSizeRules: externalThumbnailSizeRules,
+    onThumbnailSizeRulesChange,
     fullscreen = false,
     quickFilters = [],
     groupRules: externalGroupRules,
@@ -1889,6 +2050,48 @@ export function DataTable<T>({
         } else {
             setInternalWrapRules(newRules);
         }
+    };
+
+    // Initialize thumbnail size rules from preferences
+    const getInitialThumbnailSizeRules = (): ThumbnailSizeRule[] => {
+        if (initialPreferences?.thumbnail_size_config && initialPreferences.thumbnail_size_config.length > 0) {
+            return initialPreferences.thumbnail_size_config;
+        }
+        if (sharedPreferences?.thumbnail_size_config && sharedPreferences.thumbnail_size_config.length > 0) {
+            return sharedPreferences.thumbnail_size_config;
+        }
+        return [];
+    };
+
+    // Thumbnail size state (per-column thumbnail sizes for media columns)
+    const [internalThumbnailSizeRules, setInternalThumbnailSizeRules] = useState<ThumbnailSizeRule[]>(getInitialThumbnailSizeRules);
+    const thumbnailSizeRules = externalThumbnailSizeRules || internalThumbnailSizeRules;
+    const setThumbnailSizeRules = (newRulesOrUpdater: ThumbnailSizeRule[] | ((prev: ThumbnailSizeRule[]) => ThumbnailSizeRule[])) => {
+        const newRules = typeof newRulesOrUpdater === 'function'
+            ? newRulesOrUpdater(thumbnailSizeRules)
+            : newRulesOrUpdater;
+        if (onThumbnailSizeRulesChange) {
+            onThumbnailSizeRulesChange(newRules);
+        } else {
+            setInternalThumbnailSizeRules(newRules);
+        }
+    };
+
+    // Helper to get thumbnail size for a column (from rules or column default)
+    const getThumbnailSize = (columnKey: string, columnDefault?: ThumbnailSize): ThumbnailSize => {
+        const rule = thumbnailSizeRules.find(r => r.columnKey === columnKey);
+        return rule?.size || columnDefault || 'small';
+    };
+
+    // Helper to set thumbnail size for a column
+    const handleThumbnailSizeChange = (columnKey: string, size: ThumbnailSize) => {
+        setThumbnailSizeRules((prev: ThumbnailSizeRule[]) => {
+            const existing = prev.find((r: ThumbnailSizeRule) => r.columnKey === columnKey);
+            if (existing) {
+                return prev.map((r: ThumbnailSizeRule) => r.columnKey === columnKey ? { ...r, size } : r);
+            }
+            return [...prev, { columnKey, size }];
+        });
     };
 
     // Initialize group rules from preferences
@@ -1948,6 +2151,14 @@ export function DataTable<T>({
         columnKey: string;
         adCopyType: 'headline' | 'primary_text' | 'description';
         currentValue: string | null;
+    } | null>(null);
+
+    // Media preview modal state
+    const [mediaPreviewState, setMediaPreviewState] = useState<{
+        isOpen: boolean;
+        url: string;
+        isVideo: boolean;
+        title?: string;
     } | null>(null);
 
     // Handle group by change (toggles or adds)
@@ -2142,6 +2353,10 @@ export function DataTable<T>({
     const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState<string>('');
     const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number; cellHeight: number }>({ top: 0, left: 0, width: 200, cellHeight: 34 });
+
+    // Viewing state (for read-only text popup)
+    const [viewingCell, setViewingCell] = useState<{ id: string; field: string; value: string } | null>(null);
+    const [viewingPosition, setViewingPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 400 });
 
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -2372,6 +2587,7 @@ export function DataTable<T>({
         columnKey: string;
         columnHeader: string;
         columnType?: string;
+        columnEditable?: boolean;
         position: { top: number; left: number };
     } | null>(null);
 
@@ -2796,6 +3012,8 @@ export function DataTable<T>({
         setContextMenu({
             columnKey: col.key,
             columnHeader: col.header,
+            columnType: col.type,
+            columnEditable: col.editable,
             position: { top: e.clientY, left: e.clientX }
         });
     }, []);
@@ -2876,6 +3094,33 @@ export function DataTable<T>({
     const handleEditCancel = useCallback(() => {
         setEditingCell(null);
         setEditingValue('');
+    }, []);
+
+    // View handlers (for read-only text viewing)
+    const handleViewStart = useCallback((row: T, field: string, event: React.MouseEvent) => {
+        const col = columns.find(c => c.key === field);
+        if (!col) return;
+
+        // Check if viewable (default true for text/longtext when not editable)
+        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext');
+        if (!isViewable) return;
+
+        // Calculate position from the clicked element (cell)
+        const target = event.currentTarget as HTMLElement;
+        const cellElement = target.closest('td');
+        const cellRect = cellElement ? cellElement.getBoundingClientRect() : target.getBoundingClientRect();
+        setViewingPosition({
+            top: cellRect.top,
+            left: cellRect.left,
+            width: Math.max(cellRect.width, 400), // minimum 400px width for viewing
+        });
+
+        const value = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[field] ?? '');
+        setViewingCell({ id: getRowId(row), field, value: String(value || '') });
+    }, [columns, getRowId]);
+
+    const handleViewClose = useCallback(() => {
+        setViewingCell(null);
     }, []);
 
     // Copy handler
@@ -4173,6 +4418,7 @@ export function DataTable<T>({
                                                         columnKey: col.key,
                                                         columnHeader: col.header,
                                                         columnType: col.type,
+                                                        columnEditable: col.editable,
                                                         position: { top: e.currentTarget.getBoundingClientRect().bottom + 4, left: e.currentTarget.getBoundingClientRect().left }
                                                     });
                                                 }}
@@ -4311,6 +4557,7 @@ export function DataTable<T>({
                                                                 onEditChange={setEditingValue}
                                                                 onEditSave={handleEditSave}
                                                                 onEditCancel={handleEditCancel}
+                                                                onViewStart={handleViewStart}
                                                                 onDelete={onDelete}
                                                                 onCopy={handleCopy}
                                                                 onDuplicate={onDuplicate}
@@ -4341,6 +4588,15 @@ export function DataTable<T>({
                                                                         currentValue
                                                                     });
                                                                 }}
+                                                                onMediaPreviewClick={(url, isVideo, title) => {
+                                                                    setMediaPreviewState({
+                                                                        isOpen: true,
+                                                                        url,
+                                                                        isVideo,
+                                                                        title
+                                                                    });
+                                                                }}
+                                                                thumbnailSizeRules={thumbnailSizeRules}
                                                             />
                                                         ))
                                                 )}
@@ -4370,6 +4626,7 @@ export function DataTable<T>({
                                     onEditChange={setEditingValue}
                                     onEditSave={handleEditSave}
                                     onEditCancel={handleEditCancel}
+                                    onViewStart={handleViewStart}
                                     onDelete={onDelete}
                                     onCopy={handleCopy}
                                     onDuplicate={onDuplicate}
@@ -4400,6 +4657,15 @@ export function DataTable<T>({
                                             currentValue
                                         });
                                     }}
+                                    onMediaPreviewClick={(url, isVideo, title) => {
+                                        setMediaPreviewState({
+                                            isOpen: true,
+                                            url,
+                                            isVideo,
+                                            title
+                                        });
+                                    }}
+                                    thumbnailSizeRules={thumbnailSizeRules}
                                 />
                             ))
                         )}
@@ -4641,6 +4907,7 @@ export function DataTable<T>({
                         columnKey={contextMenu.columnKey}
                         columnHeader={contextMenu.columnHeader}
                         columnType={contextMenu.columnType}
+                        columnEditable={contextMenu.columnEditable}
                         position={contextMenu.position}
                         onGroupBy={(colKey) => {
                             // onGroupBy usage from Context Menu should ADD the group
@@ -4688,6 +4955,8 @@ export function DataTable<T>({
                         onClose={() => setContextMenu(null)}
                         isGroupedBy={groupRules.some(r => r.key === contextMenu.columnKey)}
                         sortRules={sortRules}
+                        currentThumbnailSize={contextMenu.columnType === 'media' ? getThumbnailSize(contextMenu.columnKey, columns.find(c => c.key === contextMenu.columnKey)?.thumbnailSize) : undefined}
+                        onThumbnailSizeChange={contextMenu.columnType === 'media' ? (size) => handleThumbnailSizeChange(contextMenu.columnKey, size) : undefined}
                     />
                 )
             }
@@ -4786,6 +5055,93 @@ export function DataTable<T>({
                     title={`Select ${adCopyModalState.adCopyType.replace('_', ' ')}`}
                     type={adCopyModalState.adCopyType}
                 />
+            )}
+
+
+            {/* Media Preview Modal */}
+            {mediaPreviewState && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
+                    onClick={() => setMediaPreviewState(null)}
+                >
+                    {/* Close button */}
+                    <button
+                        onClick={() => setMediaPreviewState(null)}
+                        className="absolute top-4 right-4 p-2 text-white/80 hover:text-white transition-colors"
+                    >
+                        <X className="w-8 h-8" />
+                    </button>
+
+                    {/* Title */}
+                    {mediaPreviewState.title && (
+                        <div className="absolute top-4 left-4 text-white font-medium">
+                            {mediaPreviewState.title}
+                        </div>
+                    )}
+
+                    {/* Media */}
+                    <div
+                        className="max-w-[90vw] max-h-[85vh] relative"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {mediaPreviewState.isVideo ? (
+                            <video
+                                src={mediaPreviewState.url}
+                                className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+                                controls
+                                autoPlay
+                            />
+                        ) : (
+                            <img
+                                src={mediaPreviewState.url}
+                                alt=""
+                                className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+                            />
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Read-only Text Viewer Popup */}
+            {viewingCell && createPortal(
+                <>
+                    {/* Backdrop */}
+                    <div
+                        className="fixed inset-0 z-[9998]"
+                        onClick={handleViewClose}
+                    />
+                    {/* Popup - read-only viewer (matches edit popup style) */}
+                    {(() => {
+                        const spaceBelow = window.innerHeight - viewingPosition.top - 50;
+                        const spaceAbove = viewingPosition.top - 50;
+                        const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
+                        const maxH = Math.min(showAbove ? spaceAbove : spaceBelow, 400);
+                        const lineCount = (viewingCell.value?.split('\n').length || 1);
+                        const lineHeight = 20;
+                        const verticalPadding = 14; // 7px top + 7px bottom padding
+                        const cellHeight = 34;
+                        const contentHeight = Math.min(Math.max(cellHeight, lineCount * lineHeight + verticalPadding), maxH);
+
+                        return (
+                            <div
+                                className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 whitespace-pre-wrap overflow-y-auto"
+                                style={{
+                                    top: showAbove ? viewingPosition.top - contentHeight : viewingPosition.top,
+                                    left: Math.max(8, Math.min(viewingPosition.left, window.innerWidth - viewingPosition.width - 8)),
+                                    width: viewingPosition.width,
+                                    maxHeight: maxH,
+                                    padding: '7px 8px',
+                                    lineHeight: '20px',
+                                    boxSizing: 'border-box',
+                                }}
+                            >
+                                {viewingCell.value || '-'}
+                            </div>
+                        );
+                    })()}
+                </>,
+                document.body
             )}
         </div >
     );

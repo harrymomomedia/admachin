@@ -404,9 +404,12 @@ export function Creatives() {
             key: 'preview',
             header: 'Preview',
             width: 80,
-            minWidth: 60,
+            minWidth: 70,
             editable: false,
-            type: 'thumbnail',
+            type: 'media',
+            thumbnailSize: 'medium',
+            mediaTypeKey: 'type',
+            mediaPlaybackKey: 'url', // Use actual video/image URL for playback
         },
         {
             key: 'name',

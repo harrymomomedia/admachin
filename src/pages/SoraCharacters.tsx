@@ -280,7 +280,7 @@ export function SoraCharacters() {
             width: 250,
             minWidth: 180,
             editable: true,
-            type: 'textarea',
+            type: 'longtext',
         },
         {
             key: 'status',

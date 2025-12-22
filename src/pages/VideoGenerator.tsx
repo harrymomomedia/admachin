@@ -950,7 +950,7 @@ export function VideoGenerator() {
             width: 300,
             minWidth: 200,
             editable: true,
-            type: 'textarea',
+            type: 'longtext',
         },
         {
             key: 'duration',

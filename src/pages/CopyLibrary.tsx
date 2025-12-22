@@ -113,31 +113,31 @@ export function CopyLibrary() {
     // Column definitions for each tab
     const campaignColumns: ColumnDef<CampaignParameter>[] = [
         { key: 'name', header: 'Name', editable: true, width: 200 },
-        { key: 'description', header: 'Description', editable: true, type: 'textarea', width: 300 },
-        { key: 'persona_input', header: 'Persona Input', editable: true, type: 'textarea', width: 200 },
-        { key: 'swipe_files', header: 'Swipe Files', editable: true, type: 'textarea', width: 200 },
-        { key: 'custom_prompt', header: 'Custom Prompt', editable: true, type: 'textarea', width: 200 },
+        { key: 'description', header: 'Description', editable: true, type: 'longtext', width: 300 },
+        { key: 'persona_input', header: 'Persona Input', editable: true, type: 'longtext', width: 200 },
+        { key: 'swipe_files', header: 'Swipe Files', editable: true, type: 'longtext', width: 200 },
+        { key: 'custom_prompt', header: 'Custom Prompt', editable: true, type: 'longtext', width: 200 },
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
 
     const personaColumns: ColumnDef<AIPersona>[] = [
-        { key: 'content', header: 'Content', editable: true, type: 'textarea', width: 500 },
+        { key: 'content', header: 'Content', editable: true, type: 'longtext', width: 500 },
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
 
     const angleColumns: ColumnDef<AIAngle>[] = [
-        { key: 'content', header: 'Content', editable: true, type: 'textarea', width: 500 },
+        { key: 'content', header: 'Content', editable: true, type: 'longtext', width: 500 },
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
 
     const conceptColumns: ColumnDef<CreativeConcept>[] = [
         { key: 'name', header: 'Name', editable: true, width: 150 },
-        { key: 'description', header: 'Description', editable: true, type: 'textarea', width: 300 },
-        { key: 'example', header: 'Example', editable: true, type: 'textarea', width: 300 },
+        { key: 'description', header: 'Description', editable: true, type: 'longtext', width: 300 },
+        { key: 'example', header: 'Example', editable: true, type: 'longtext', width: 300 },
     ];
 
     const adColumns: ColumnDef<AIGeneratedAd>[] = [
-        { key: 'content', header: 'Content', editable: true, type: 'textarea', width: 400 },
+        { key: 'content', header: 'Content', editable: true, type: 'longtext', width: 400 },
         { key: 'ad_type', header: 'Type', editable: true, width: 150 },
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
@@ -215,6 +215,8 @@ export function CopyLibrary() {
                         tabs={tabs}
                         activeTab={activeTab}
                         onTabChange={(id) => setActiveTab(id as TabId)}
+                        showRowActions={true}
+                        fullscreen={true}
                     />
                 );
             case 'personas':
@@ -230,6 +232,8 @@ export function CopyLibrary() {
                         tabs={tabs}
                         activeTab={activeTab}
                         onTabChange={(id) => setActiveTab(id as TabId)}
+                        showRowActions={true}
+                        fullscreen={true}
                     />
                 );
             case 'angles':
@@ -245,6 +249,8 @@ export function CopyLibrary() {
                         tabs={tabs}
                         activeTab={activeTab}
                         onTabChange={(id) => setActiveTab(id as TabId)}
+                        showRowActions={true}
+                        fullscreen={true}
                     />
                 );
             case 'concepts':
@@ -260,6 +266,8 @@ export function CopyLibrary() {
                         tabs={tabs}
                         activeTab={activeTab}
                         onTabChange={(id) => setActiveTab(id as TabId)}
+                        showRowActions={true}
+                        fullscreen={true}
                     />
                 );
             case 'ads':
@@ -275,6 +283,8 @@ export function CopyLibrary() {
                         tabs={tabs}
                         activeTab={activeTab}
                         onTabChange={(id) => setActiveTab(id as TabId)}
+                        showRowActions={true}
+                        fullscreen={true}
                     />
                 );
         }
