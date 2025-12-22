@@ -1410,10 +1410,8 @@ function SortableRow<T>({
                                                                     const estimatedWrappedLines = Math.ceil((editingValue?.length || 0) / charPerLine);
                                                                     const explicitLineCount = (editingValue?.split('\n').length || 1);
                                                                     const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
-                                                                    // Minimum 120px for longtext columns
-                                                                    const minHeight = col.type === 'longtext' ? 120 : cellHeight;
                                                                     const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                    const newHeight = Math.min(Math.max(minHeight, contentHeight), maxH);
+                                                                    const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
                                                                     el.style.height = `${newHeight}px`;
                                                                     el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                     if (showAbove) {
@@ -1433,10 +1431,8 @@ function SortableRow<T>({
                                                                 const estimatedWrappedLines = Math.ceil((e.target.value?.length || 0) / charPerLine);
                                                                 const explicitLineCount = (e.target.value?.split('\n').length || 1);
                                                                 const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
-                                                                // Minimum 120px for longtext columns
-                                                                const minHeight = col.type === 'longtext' ? 120 : cellHeight;
                                                                 const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                const newHeight = Math.min(Math.max(minHeight, contentHeight), maxH);
+                                                                const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
                                                                 el.style.height = `${newHeight}px`;
                                                                 el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                 if (showAbove) {
@@ -5139,8 +5135,7 @@ export function DataTable<T>({
                         const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
                         const maxH = Math.min(showAbove ? spaceAbove : spaceBelow, 400);
 
-                        // For longtext, estimate wrapped lines based on character count and column width
-                        const isLongText = viewingCell.type === 'longtext';
+                        // Estimate wrapped lines based on character count and column width
                         const charPerLine = Math.floor(viewingPosition.width / 8); // ~8px per char at 13px font
                         const estimatedWrappedLines = Math.ceil((viewingCell.value?.length || 0) / charPerLine);
                         const explicitLineCount = (viewingCell.value?.split('\n').length || 1);
@@ -5149,9 +5144,7 @@ export function DataTable<T>({
                         const lineHeight = 20;
                         const verticalPadding = 14; // 7px top + 7px bottom padding
                         const cellHeight = 34;
-                        // For longtext, use a minimum height of 120px to show more content
-                        const minHeight = isLongText ? 120 : cellHeight;
-                        const contentHeight = Math.min(Math.max(minHeight, lineCount * lineHeight + verticalPadding), maxH);
+                        const contentHeight = Math.min(Math.max(cellHeight, lineCount * lineHeight + verticalPadding), maxH);
 
                         return (
                             <div
@@ -5161,7 +5154,6 @@ export function DataTable<T>({
                                     left: Math.max(8, Math.min(viewingPosition.left, window.innerWidth - viewingPosition.width - 8)),
                                     width: viewingPosition.width,
                                     maxHeight: maxH,
-                                    minHeight: minHeight,
                                     padding: '7px 8px',
                                     lineHeight: '20px',
                                     boxSizing: 'border-box',
