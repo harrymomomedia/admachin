@@ -794,7 +794,7 @@ export function PersonaAICopy() {
             </div>
 
             {/* Step 1: Product Info */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-lg">
                 <button
                     onClick={() => setProductExpanded(!productExpanded)}
                     className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -1007,7 +1007,7 @@ export function PersonaAICopy() {
 
 
             {/* Step 2: Personas - Always visible */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-lg">
                     <button
                         onClick={() => setPersonasExpanded(!personasExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -1107,7 +1107,7 @@ export function PersonaAICopy() {
                 </div>
 
             {/* Step 3: Angles - Always visible */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-lg">
                     <button
                         onClick={() => setAnglesExpanded(!anglesExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -1294,7 +1294,7 @@ export function PersonaAICopy() {
                 </div>
 
             {/* Step 4: Ad Copies - Always visible */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-lg">
                     <button
                         onClick={() => setAdCopiesExpanded(!adCopiesExpanded)}
                         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
