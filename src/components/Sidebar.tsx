@@ -16,7 +16,7 @@ const adsSubNav = [
     { name: "Ad Copy", href: "/", icon: Type },
     { name: "Creatives", href: "/creatives", icon: Image },
     { name: "Ad Planning", href: "/ad-planning", icon: BarChart3 },
-    { name: "Ad Combos", href: "/ads", icon: Megaphone },
+    { name: "Ad Combos", href: "/ad-combos", icon: Megaphone },
 ];
 
 const aiCopySubNav = [
@@ -142,7 +142,7 @@ function FlyoutMenu({ title, icon, items, isActive, onNavigate }: FlyoutMenuProp
 export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
     const location = useLocation();
     const [isAdsExpanded, setIsAdsExpanded] = useState(
-        location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ads'
+        location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ad-combos'
     );
     const [isAICopyExpanded, setIsAICopyExpanded] = useState(
         location.pathname === '/copy-wizard' || location.pathname === '/copy-library'
@@ -154,7 +154,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
         location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts'
     );
 
-    const isAdsActive = location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ads';
+    const isAdsActive = location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ad-combos';
     const isAICopyActive = location.pathname === '/copy-wizard' || location.pathname === '/copy-library';
     const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters';
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
@@ -220,7 +220,7 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         >
                             <div className="flex items-center gap-3">
                                 <Megaphone className="h-5 w-5" />
-                                Ads
+                                Ad Combos
                             </div>
                             {isAdsExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -254,10 +254,10 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
                         )}
                     </div>
                 ) : (
-                    // Collapsed Ads - Flyout Menu
+                    // Collapsed Ad Combos - Flyout Menu
                     <div>
                         <FlyoutMenu
-                            title="Ads"
+                            title="Ad Combos"
                             icon={<Megaphone className="h-5 w-5" />}
                             items={adsSubNav}
                             isActive={isAdsActive}

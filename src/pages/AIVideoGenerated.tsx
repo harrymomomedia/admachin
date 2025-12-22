@@ -521,6 +521,7 @@ export function AIVideoGenerated() {
                 const hasVideo = row.new_url || row.sora_url || row.final_video_url;
                 const isCompleted = row.task_status === 'completed';
                 const isCreating = creatingCharacter === row.id;
+                const isSoraWeb = row.model === 'sora-2-web-t2v';
 
                 if (!hasVideo || !isCompleted) {
                     return (
@@ -528,22 +529,26 @@ export function AIVideoGenerated() {
                     );
                 }
 
+                const isDisabled = isCreating || !isSoraWeb;
+
                 return (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleCreateCharacter(row);
+                            if (!isDisabled) {
+                                handleCreateCharacter(row);
+                            }
                         }}
-                        disabled={isCreating}
+                        disabled={isDisabled}
                         className={`
                             flex items-center gap-1 px-2 py-1 rounded text-xs font-medium
                             transition-colors
-                            ${isCreating
+                            ${isDisabled
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                             }
                         `}
-                        title="Create Sora character from this video"
+                        title={!isSoraWeb ? 'Character creation only available for Sora Web videos' : 'Create Sora character from this video'}
                     >
                         <UserPlus className="w-3 h-3" />
                         {isCreating ? 'Creating...' : 'Create'}

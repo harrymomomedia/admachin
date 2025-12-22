@@ -6,6 +6,15 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-22: Character Creation Button Restriction
+
+**Changed:**
+- "Create Character" button now disabled (grayed out) for non-Sora-Web videos
+- Button only active for videos with `model === 'sora-2-web-t2v'`
+- Added tooltip explaining restriction: "Character creation only available for Sora Web videos"
+
+---
+
 ### 2025-12-22: Video Preview & Supabase Upload
 
 **Added:**

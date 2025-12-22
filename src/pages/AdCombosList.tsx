@@ -474,7 +474,7 @@ export function AdCombosList() {
                 title="Ad Combos"
                 headerActions={
                     <button
-                        onClick={() => navigate('/ads/create')}
+                        onClick={() => navigate('/ad-combos/create')}
                         className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
                     >
                         <Layers className="w-3 h-3" />

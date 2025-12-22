@@ -97,14 +97,15 @@ function App() {
               {/* Redirect old ad-copies path to home */}
               <Route path="ad-copies" element={<Navigate to="/" replace />} />
               <Route path="ad-planning" element={<AdPlanning />} />
-              <Route path="ads" element={<AdCombosList />} />
-              <Route path="ads/create" element={<AdCombos />} />
+              <Route path="ad-combos" element={<AdCombosList />} />
+              <Route path="ad-combos/create" element={<AdCombos />} />
               <Route path="video-generator" element={<VideoGenerator />} />
               <Route path="ai-video-generated" element={<AIVideoGenerated />} />
               <Route path="sora-characters" element={<SoraCharacters />} />
               <Route path="copy-wizard" element={<PersonaAICopy />} />
               <Route path="copy-library" element={<CopyLibrary />} />
               {/* Redirect old routes */}
+              <Route path="ads" element={<Navigate to="/ad-combos" replace />} />
               <Route path="ai-copywriting" element={<Navigate to="/copy-wizard" replace />} />
               <Route path="saved-personas" element={<Navigate to="/copy-library" replace />} />
               <Route path="admin" element={<TeamSettings />} />

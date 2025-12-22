@@ -624,7 +624,7 @@ export function AdCombos() {
             }));
 
             await createAds(adsToCreate);
-            navigate('/ads');
+            navigate('/ad-combos');
         } catch (error) {
             console.error('Error creating ads:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -839,7 +839,7 @@ export function AdCombos() {
             <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <button
-                        onClick={() => navigate('/ads')}
+                        onClick={() => navigate('/ad-combos')}
                         className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4" />
@@ -1141,7 +1141,7 @@ export function AdCombos() {
             {/* Footer */}
             <div className="flex items-center justify-between px-6 py-4 bg-white border-t border-gray-200 flex-shrink-0">
                 <button
-                    onClick={() => navigate('/ads')}
+                    onClick={() => navigate('/ad-combos')}
                     className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
                 >
                     Cancel
