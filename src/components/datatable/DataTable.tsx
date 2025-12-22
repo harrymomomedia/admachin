@@ -1405,9 +1405,15 @@ function SortableRow<T>({
                                                                     const cellHeight = 34;
                                                                     const lineHeight = 20;
                                                                     const verticalPadding = 14; // 7px top + 7px bottom to center text
-                                                                    const lineCount = (editingValue?.split('\n').length || 1);
+                                                                    // Estimate wrapped lines based on character count
+                                                                    const charPerLine = Math.floor(dropdownPosition.width / 8);
+                                                                    const estimatedWrappedLines = Math.ceil((editingValue?.length || 0) / charPerLine);
+                                                                    const explicitLineCount = (editingValue?.split('\n').length || 1);
+                                                                    const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
+                                                                    // Minimum 120px for longtext columns
+                                                                    const minHeight = col.type === 'longtext' ? 120 : cellHeight;
                                                                     const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                    const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
+                                                                    const newHeight = Math.min(Math.max(minHeight, contentHeight), maxH);
                                                                     el.style.height = `${newHeight}px`;
                                                                     el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                     if (showAbove) {
@@ -1422,9 +1428,15 @@ function SortableRow<T>({
                                                                 const cellHeight = 34;
                                                                 const lineHeight = 20;
                                                                 const verticalPadding = 14;
-                                                                const lineCount = (e.target.value?.split('\n').length || 1);
+                                                                // Estimate wrapped lines based on character count
+                                                                const charPerLine = Math.floor(dropdownPosition.width / 8);
+                                                                const estimatedWrappedLines = Math.ceil((e.target.value?.length || 0) / charPerLine);
+                                                                const explicitLineCount = (e.target.value?.split('\n').length || 1);
+                                                                const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
+                                                                // Minimum 120px for longtext columns
+                                                                const minHeight = col.type === 'longtext' ? 120 : cellHeight;
                                                                 const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
+                                                                const newHeight = Math.min(Math.max(minHeight, contentHeight), maxH);
                                                                 el.style.height = `${newHeight}px`;
                                                                 el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
                                                                 if (showAbove) {
@@ -3279,7 +3291,7 @@ export function DataTable<T>({
     return (
         <div className={cn(
             "bg-white border border-gray-200 shadow-sm flex flex-col",
-            fullscreen ? "flex-1 h-full overflow-hidden min-w-0" : "rounded-xl"
+            fullscreen ? "flex-1 h-full overflow-y-hidden min-w-0" : "rounded-xl"
         )}>
             {/* Tab Bar - renders above toolbar if tabs are provided */}
             {tabs && tabs.length > 0 && (
@@ -4224,7 +4236,7 @@ export function DataTable<T>({
             </div>
 
             {/* Scrollable content area - only table/gallery scrolls horizontally */}
-            <div className="overflow-x-auto flex-1">
+            <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
                 {/* Table View */}
                 {viewMode === 'table' && (
                 <table
