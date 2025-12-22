@@ -53,7 +53,8 @@
 
   /* Data Grid Utilities - Airtable-style */
   .data-grid-table {
-    @apply w-full border-collapse text-[13px];
+    @apply border-collapse text-[13px];
+    /* Width is set via inline style (totalWidth) to allow table expansion when columns are resized */
   }
 
   .data-grid-th {
