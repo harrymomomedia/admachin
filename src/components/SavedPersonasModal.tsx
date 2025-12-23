@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
-import { X, Search, Loader2, Download, Calendar, User, Briefcase, Layers } from 'lucide-react';
-import { type SavedPersona, getSavedPersonas, type Persona } from '../lib/supabase-service';
+import { X, Search, Loader2, Download, Calendar, User } from 'lucide-react';
+import { getAIPersonas, type AIPersona, type AIPrompts, type Persona } from '../lib/supabase-service';
 import { cn } from '../utils/cn';
+
+// Parsed persona from ai_personas table
+interface ParsedAIPersona {
+    id: string;
+    content: Persona;
+    prompts: AIPrompts | null;
+    created_at: string;
+}
 
 interface SavedPersonasModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onLoadPersonas: (personas: Persona[]) => void;
+    onLoadPersonas: (personas: Persona[], prompts?: AIPrompts | null) => void;
 }
 
 export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPersonasModalProps) {
-    const [savedPersonas, setSavedPersonas] = useState<SavedPersona[]>([]);
+    const [savedPersonas, setSavedPersonas] = useState<ParsedAIPersona[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -25,8 +33,21 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
     const loadSavedPersonas = async () => {
         try {
             setLoading(true);
-            const data = await getSavedPersonas();
-            setSavedPersonas(data);
+            const data = await getAIPersonas();
+            // Parse the JSON content field
+            const parsed: ParsedAIPersona[] = data.map((item: AIPersona) => {
+                try {
+                    return {
+                        id: item.id,
+                        content: JSON.parse(item.content) as Persona,
+                        prompts: item.prompts,
+                        created_at: item.created_at,
+                    };
+                } catch {
+                    return null;
+                }
+            }).filter((p): p is ParsedAIPersona => p !== null);
+            setSavedPersonas(parsed);
         } catch (error) {
             console.error('Failed to load saved personas:', error);
         } finally {
@@ -41,24 +62,29 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
     };
 
     const handleLoad = () => {
-        const selected = savedPersonas
-            .filter(p => selectedIds.includes(p.id))
-            .map(p => ({
-                ...p.data, // The stored persona object
-                id: crypto.randomUUID(), // New ID to avoid conflicts
-                selected: false
-            }));
+        const selectedItems = savedPersonas.filter(p => selectedIds.includes(p.id));
 
-        onLoadPersonas(selected);
+        const personas = selectedItems.map(p => ({
+            ...p.content, // The stored persona object
+            id: crypto.randomUUID(), // New ID to avoid conflicts
+            selected: false
+        }));
+
+        // Find the first item that has prompts (if any)
+        const promptsItem = selectedItems.find(p => p.prompts);
+
+        onLoadPersonas(personas, promptsItem?.prompts);
         onClose();
     };
 
-    const filteredPersonas = savedPersonas.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.vertical.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.project?.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredPersonas = savedPersonas.filter(p => {
+        const search = searchTerm.toLowerCase();
+        const persona = p.content;
+        return (
+            (persona.name?.toLowerCase().includes(search) ?? false) ||
+            (persona.description?.toLowerCase().includes(search) ?? false)
+        );
+    });
 
     if (!isOpen) return null;
 
@@ -118,67 +144,45 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
                                         />
                                     </th>
                                     <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Persona</th>
-                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Vertical / Description</th>
-                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Project Context</th>
-                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created By</th>
+                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
-                                {filteredPersonas.map(persona => (
+                                {filteredPersonas.map(item => (
                                     <tr
-                                        key={persona.id}
-                                        onClick={() => toggleSelection(persona.id)}
+                                        key={item.id}
+                                        onClick={() => toggleSelection(item.id)}
                                         className={cn(
                                             "hover:bg-blue-50/50 cursor-pointer transition-colors",
-                                            selectedIds.includes(persona.id) ? "bg-blue-50" : "bg-white"
+                                            selectedIds.includes(item.id) ? "bg-blue-50" : "bg-white"
                                         )}
                                     >
                                         <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 className="rounded border-gray-300"
-                                                checked={selectedIds.includes(persona.id)}
-                                                onChange={() => toggleSelection(persona.id)}
+                                                checked={selectedIds.includes(item.id)}
+                                                onChange={() => toggleSelection(item.id)}
                                             />
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-gray-900">{persona.name}</span>
-                                                <span className="text-xs text-gray-500">{persona.role}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 max-w-xs">
-                                            <div className="flex items-start gap-2">
-                                                <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                                                <span className="text-xs text-gray-600 line-clamp-2" title={persona.vertical}>
-                                                    {persona.vertical}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                                                    <Layers className="w-3.5 h-3.5" />
-                                                    {persona.project?.name || 'Unknown Project'}
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                                                    <User className="w-3 h-3 text-white" />
                                                 </div>
-                                                {persona.subproject && (
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 ml-5">
-                                                        <span className="w-1 h-1 rounded-full bg-gray-400" />
-                                                        {persona.subproject.name}
-                                                    </div>
-                                                )}
+                                                <span className="text-sm font-medium text-gray-900">{item.content.name || 'Unnamed'}</span>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 max-w-md">
+                                            <span className="text-xs text-gray-600 line-clamp-2" title={item.content.description}>
+                                                {item.content.description || 'No description'}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex flex-col gap-0.5">
-                                                <div className="flex items-center gap-1.5 text-xs text-gray-900">
-                                                    <User className="w-3.5 h-3.5 text-gray-400" />
-                                                    {persona.profile?.fb_name || 'Unknown User'}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
-                                                    <Calendar className="w-3 h-3" />
-                                                    {new Date(persona.created_at).toLocaleDateString()}
-                                                </div>
+                                            <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                                <Calendar className="w-3 h-3" />
+                                                {new Date(item.created_at).toLocaleDateString()}
                                             </div>
                                         </td>
                                     </tr>

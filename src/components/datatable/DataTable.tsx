@@ -21,7 +21,16 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../../utils/cn';
 import { CreativeCard } from '../CardView';
-import { getCreativeUrl } from '../../lib/supabase-service';
+import {
+    getCreativeUrl,
+    getUserViewPreferences,
+    saveUserViewPreferences,
+    getSharedViewPreferences,
+    saveSharedViewPreferences,
+    deleteUserViewPreferences,
+    type ViewPreferencesConfig,
+} from '../../lib/supabase-service';
+import { useAuth } from '../../contexts/AuthContext';
 import { AdCopyPickerModal } from '../AdCopyPickerModal';
 
 // Import types from extracted modules
@@ -115,6 +124,15 @@ interface LocalDataTableProps<T> {
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;
 
+    // Layout mode:
+    // - 'fullPage': Fills available height, internal vertical scroll, footer visible (for main pages)
+    // - 'inline': Normal flow, optional maxHeight (for embedded tables in accordions)
+    // - 'contained': Fills parent container (modal, panel, sidebar), parent must have defined height
+    layout?: 'fullPage' | 'inline' | 'contained';
+
+    // Max height for inline layout (e.g., '400px', '50vh')
+    maxHeight?: string;
+
     // Quick filters - array of column keys to show as quick filter dropdowns at far left of toolbar
     quickFilters?: string[];
 
@@ -138,6 +156,7 @@ interface LocalDataTableProps<T> {
         filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
         group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        thumbnail_size_config?: Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>;
         row_order?: string[];
         column_widths?: Record<string, number>;
         column_order?: string[];
@@ -147,6 +166,7 @@ interface LocalDataTableProps<T> {
         filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
         group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        thumbnail_size_config?: Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>;
         row_order?: string[];
         column_widths?: Record<string, number>;
         column_order?: string[];
@@ -156,6 +176,7 @@ interface LocalDataTableProps<T> {
         filter_config: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
         group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        thumbnail_size_config: Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>;
         row_order?: string[];
         column_widths?: Record<string, number>;
         column_order?: string[];
@@ -165,6 +186,7 @@ interface LocalDataTableProps<T> {
         filter_config: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
         group_config: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
         wrap_config: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+        thumbnail_size_config: Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>;
         row_order?: string[];
         column_widths?: Record<string, number>;
         column_order?: string[];
@@ -178,6 +200,11 @@ interface LocalDataTableProps<T> {
     selectable?: boolean;
     selectedIds?: Set<string>;
     onSelectionChange?: (selectedIds: Set<string>) => void;
+
+    // Single-select mode (click row to select, only one at a time)
+    singleSelect?: boolean;
+    selectedRowId?: string | null;
+    onRowSelect?: (id: string | null) => void;
 
     // View mode (table or gallery/card view)
     viewMode?: 'table' | 'gallery';
@@ -1058,7 +1085,7 @@ interface SortableRowProps<T> {
     dropdownPosition: { top: number; left: number; width: number; cellHeight: number };
     onEditStart: (row: T, field: string, event: React.MouseEvent) => void;
     onEditChange: (value: string) => void;
-    onEditSave: (value?: string) => void;
+    onCellCommit: (value?: string | null) => void;
     onEditCancel: () => void;
     onViewStart: (row: T, field: string, event: React.MouseEvent) => void;
     onDelete?: (id: string) => void;
@@ -1078,6 +1105,10 @@ interface SortableRowProps<T> {
     selectable?: boolean;
     isSelected?: boolean;
     onToggleSelect?: () => void;
+    // Single-select (click row to select, only one at a time)
+    singleSelect?: boolean;
+    isSingleSelected?: boolean;
+    onSingleSelect?: () => void;
     // Ad copy column type
     adCopies?: Array<{
         id: string;
@@ -1106,7 +1137,7 @@ function SortableRow<T>({
     dropdownPosition,
     onEditStart,
     onEditChange,
-    onEditSave,
+    onCellCommit,
     onEditCancel,
     onViewStart,
     onDelete,
@@ -1123,6 +1154,9 @@ function SortableRow<T>({
     selectable,
     isSelected,
     onToggleSelect,
+    singleSelect,
+    isSingleSelected,
+    onSingleSelect,
     adCopies,
     onAdCopyClick,
     onMediaPreviewClick,
@@ -1179,7 +1213,12 @@ function SortableRow<T>({
                 style={{
                     opacity: isDragging ? 0.5 : 1,
                 }}
-                className="group hover:bg-gray-50 data-grid-row"
+                className={cn(
+                    "group data-grid-row",
+                    isSingleSelected
+                        ? "bg-blue-50 border-l-4 border-l-blue-500 hover:bg-blue-100"
+                        : "hover:bg-gray-50"
+                )}
                 draggable={sortable}
                 onDragStart={onRowDragStart}
                 onDragEnd={onRowDragEnd}
@@ -1208,7 +1247,7 @@ function SortableRow<T>({
                     setDropPosition('after');
                 }}
             >
-                {/* Selection Checkbox */}
+                {/* Selection Checkbox (multi-select) */}
                 {selectable && (
                     <td className="data-grid-td w-10 px-2">
                         <div className="flex items-center justify-center">
@@ -1220,6 +1259,23 @@ function SortableRow<T>({
                                     onToggleSelect?.();
                                 }}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                        </div>
+                    </td>
+                )}
+
+                {/* Selection Radio Button (single-select) */}
+                {singleSelect && (
+                    <td className="data-grid-td w-10 px-2">
+                        <div className="flex items-center justify-center">
+                            <input
+                                type="radio"
+                                checked={isSingleSelected || false}
+                                onChange={(e) => {
+                                    e.stopPropagation();
+                                    onSingleSelect?.();
+                                }}
+                                className="w-4 h-4 border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                             />
                         </div>
                     </td>
@@ -1328,10 +1384,10 @@ function SortableRow<T>({
                                                     options={(options || []).map(o => ({ ...o, value: String(o.value) }))}
                                                     value={editingValue}
                                                     onSelect={(val: string) => {
-                                                        onEditSave(val);
+                                                        onCellCommit(val);
                                                     }}
                                                     onClear={() => {
-                                                        onEditSave('');
+                                                        onCellCommit(null);
                                                     }}
                                                     position={dropdownPosition}
                                                     colorMap={col.colorMap}
@@ -1365,10 +1421,10 @@ function SortableRow<T>({
                                                     users={col.users || []}
                                                     value={editingValue}
                                                     onSelect={(val: string) => {
-                                                        onEditSave(val);
+                                                        onCellCommit(val);
                                                     }}
                                                     onClear={() => {
-                                                        onEditSave('');
+                                                        onCellCommit(null);
                                                     }}
                                                     position={dropdownPosition}
                                                 />
@@ -1386,7 +1442,7 @@ function SortableRow<T>({
                                                     className="fixed inset-0 z-[9998]"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        onEditSave();
+                                                        onCellCommit();
                                                     }}
                                                 />
                                                 {/* Popup Editor - Notion style with smart positioning */}
@@ -1473,7 +1529,7 @@ function SortableRow<T>({
                                                     className="fixed inset-0 z-[9998]"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        onEditSave();
+                                                        onCellCommit();
                                                     }}
                                                 />
                                                 {/* Input Editor - Notion style */}
@@ -1484,7 +1540,7 @@ function SortableRow<T>({
                                                     onChange={(e) => onEditChange(e.target.value)}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
-                                                            onEditSave();
+                                                            onCellCommit();
                                                         } else if (e.key === 'Escape') {
                                                             onEditCancel();
                                                         }
@@ -1762,7 +1818,7 @@ function SortableRow<T>({
                                             }
                                         }}
                                     >
-                                        {String(value || '-')}
+                                        {value && String(value).trim() ? String(value) : '-'}
                                     </p>
                                 )
                             )}
@@ -2014,6 +2070,8 @@ export function DataTable<T>({
     thumbnailSizeRules: externalThumbnailSizeRules,
     onThumbnailSizeRulesChange,
     fullscreen = false,
+    layout = 'inline',
+    maxHeight,
     quickFilters = [],
     groupRules: externalGroupRules,
     onGroupRulesChange,
@@ -2021,11 +2079,11 @@ export function DataTable<T>({
     onColumnOrderChange,
     savedColumnWidths,
     onColumnWidthsChange,
-    // View persistence props (viewId and userId kept in interface for future use)
-    viewId: _viewId, // eslint-disable-line @typescript-eslint/no-unused-vars
-    userId: _userId, // eslint-disable-line @typescript-eslint/no-unused-vars
-    initialPreferences,
-    sharedPreferences,
+    // View persistence props
+    viewId,
+    userId: userIdProp,
+    initialPreferences: externalInitialPreferences,
+    sharedPreferences: externalSharedPreferences,
     onPreferencesChange,
     onSaveForEveryone,
     onResetPreferences,
@@ -2035,6 +2093,10 @@ export function DataTable<T>({
     selectable = false,
     selectedIds,
     onSelectionChange,
+    // Single-select mode
+    singleSelect = false,
+    selectedRowId,
+    onRowSelect,
     // View mode
     viewMode: externalViewMode,
     onViewModeChange,
@@ -2047,6 +2109,56 @@ export function DataTable<T>({
     // Custom gallery card renderer
     renderGalleryCard
 }: DataTableProps<T>) {
+    // ============ Auto-persistence: Load preferences when viewId is provided ============
+    const { user: authUser } = useAuth();
+    const userId = userIdProp || authUser?.id;
+
+    // Internal preference state for auto-persistence
+    const [internalUserPrefs, setInternalUserPrefs] = useState<ViewPreferencesConfig | null>(null);
+    const [internalSharedPrefs, setInternalSharedPrefs] = useState<ViewPreferencesConfig | null>(null);
+    // If external preferences provided OR no viewId, consider loaded immediately (skip DB fetch)
+    const [prefsLoaded, setPrefsLoaded] = useState(!viewId || !!externalInitialPreferences);
+
+    // Load preferences when viewId changes - skip if external preferences provided
+    useEffect(() => {
+        // Skip internal loading if external preferences are provided
+        if (externalInitialPreferences) {
+            setPrefsLoaded(true);
+            return;
+        }
+
+        if (!viewId) {
+            setPrefsLoaded(true);
+            return;
+        }
+
+        const currentViewId = viewId; // Capture for closure
+        let cancelled = false;
+        async function loadPrefs() {
+            try {
+                const [userPrefs, sharedPrefs] = await Promise.all([
+                    userId ? getUserViewPreferences(userId, currentViewId) : null,
+                    getSharedViewPreferences(currentViewId),
+                ]);
+                if (cancelled) return;
+                if (userPrefs) setInternalUserPrefs(userPrefs);
+                if (sharedPrefs) setInternalSharedPrefs(sharedPrefs);
+            } catch (error) {
+                console.error('[DataTable] Failed to load preferences:', error);
+            } finally {
+                if (!cancelled) setPrefsLoaded(true);
+            }
+        }
+        loadPrefs();
+        return () => { cancelled = true; };
+    }, [viewId, userId, externalInitialPreferences]);
+
+    // Use external preferences if provided, otherwise use internal (auto-loaded)
+    const initialPreferences = externalInitialPreferences || internalUserPrefs;
+    const sharedPreferences = externalSharedPreferences || internalSharedPrefs;
+
+    // ============ End auto-persistence setup ============
+
     // Initialize wrap rules from preferences
     const getInitialWrapRules = (): Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }> => {
         if (initialPreferences?.wrap_config && initialPreferences.wrap_config.length > 0) {
@@ -2200,13 +2312,30 @@ export function DataTable<T>({
     };
 
 
+    // Type-based default widths for columns
+    const getTypeDefaultWidth = (type?: string): number => {
+        switch (type) {
+            case 'id': return 50;
+            case 'select': return 100;
+            case 'people': return 100;
+            case 'date': return 100;
+            case 'thumbnail': return 60;
+            case 'media': return 80;
+            case 'filesize': return 80;
+            case 'url': return 150;
+            case 'longtext': return 300;
+            case 'textarea': return 250;
+            default: return 120;
+        }
+    };
+
     // Column widths state - prefer initialPreferences over savedColumnWidths
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
         const widths: Record<string, number> = {};
         const preferenceWidths = initialPreferences?.column_widths || savedColumnWidths;
         columns.forEach((col) => {
-            // Use saved width if available, otherwise use column default or 120px
-            widths[col.key] = preferenceWidths?.[col.key] || col.width || 120;
+            // Use saved width if available, then column definition, then type-based default
+            widths[col.key] = preferenceWidths?.[col.key] || col.width || getTypeDefaultWidth(col.type);
         });
         // Add actions column width (default 80px = w-20)
         widths['_actions'] = preferenceWidths?.['_actions'] || 80;
@@ -2214,10 +2343,25 @@ export function DataTable<T>({
     });
 
     // Sync columnWidths when savedColumnWidths or initialPreferences.column_widths changes
+    // IMPORTANT: Only update if values actually changed to prevent infinite loops
     useEffect(() => {
         const preferenceWidths = initialPreferences?.column_widths || savedColumnWidths;
         if (preferenceWidths && Object.keys(preferenceWidths).length > 0) {
             setColumnWidths(prev => {
+                // Check if any values actually changed
+                let hasChanges = false;
+                for (const [key, width] of Object.entries(preferenceWidths)) {
+                    if (typeof width === 'number' && prev[key] !== width) {
+                        hasChanges = true;
+                        break;
+                    }
+                }
+
+                // Only create new object if there are actual changes
+                if (!hasChanges) {
+                    return prev; // Return same reference to prevent re-renders
+                }
+
                 const updated = { ...prev };
                 for (const [key, width] of Object.entries(preferenceWidths)) {
                     if (typeof width === 'number') {
@@ -2227,7 +2371,7 @@ export function DataTable<T>({
                 return updated;
             });
         }
-    }, [savedColumnWidths, initialPreferences?.column_widths]);
+    }, [savedColumnWidths, initialPreferences?.column_widths, viewId]);
 
     // Column order state
     const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() =>
@@ -2516,7 +2660,6 @@ export function DataTable<T>({
             if (userPrefsAppliedRef.current) return;
 
             userPrefsAppliedRef.current = true;
-            preferencesLoadedRef.current = true;
 
             // Apply user preferences
             if (initialPreferences.sort_config?.length) {
@@ -2531,7 +2674,22 @@ export function DataTable<T>({
             if (!externalWrapRules && initialPreferences.wrap_config?.length) {
                 setInternalWrapRules(initialPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
             }
-            // Apply column widths from user preferences (handled in separate useEffect above)
+            // Apply thumbnail size from user preferences
+            if (initialPreferences.thumbnail_size_config?.length) {
+                setInternalThumbnailSizeRules(initialPreferences.thumbnail_size_config as ThumbnailSizeRule[]);
+            }
+            // Apply column widths from user preferences
+            if (initialPreferences.column_widths && Object.keys(initialPreferences.column_widths).length > 0) {
+                setColumnWidths(prev => {
+                    const updated = { ...prev };
+                    for (const [key, width] of Object.entries(initialPreferences.column_widths!)) {
+                        if (typeof width === 'number') {
+                            updated[key] = width;
+                        }
+                    }
+                    return updated;
+                });
+            }
             // Apply column order from user preferences
             if (initialPreferences.column_order?.length) {
                 setInternalColumnOrder(initialPreferences.column_order);
@@ -2540,6 +2698,12 @@ export function DataTable<T>({
             if (initialPreferences.row_order?.length) {
                 setInternalRowOrder(initialPreferences.row_order);
             }
+
+            // Delay enabling auto-save until after React has processed all state updates
+            setTimeout(() => {
+                preferencesLoadedRef.current = true;
+                prefsAppliedRef.current = true;
+            }, 100);
             return;
         }
 
@@ -2548,7 +2712,6 @@ export function DataTable<T>({
         if (!sharedPreferences || sharedPrefsAppliedRef.current) return;
 
         sharedPrefsAppliedRef.current = true;
-        preferencesLoadedRef.current = true;
 
         // Apply shared preferences
         if (sharedPreferences.sort_config?.length) {
@@ -2562,6 +2725,10 @@ export function DataTable<T>({
         }
         if (!externalWrapRules && sharedPreferences.wrap_config?.length) {
             setInternalWrapRules(sharedPreferences.wrap_config as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        }
+        // Apply thumbnail size from shared preferences
+        if (sharedPreferences.thumbnail_size_config?.length) {
+            setInternalThumbnailSizeRules(sharedPreferences.thumbnail_size_config as ThumbnailSizeRule[]);
         }
         // Apply column widths from shared preferences
         if (sharedPreferences.column_widths && Object.keys(sharedPreferences.column_widths).length > 0) {
@@ -2583,6 +2750,12 @@ export function DataTable<T>({
         if (sharedPreferences.row_order?.length) {
             setInternalRowOrder(sharedPreferences.row_order);
         }
+
+        // Delay enabling auto-save until after React has processed all state updates
+        setTimeout(() => {
+            preferencesLoadedRef.current = true;
+            prefsAppliedRef.current = true;
+        }, 100);
     }, [initialPreferences, sharedPreferences, externalGroupRules, externalWrapRules]);
 
     // Fallback: Enable auto-save after 1 second if no preferences arrive
@@ -2593,6 +2766,7 @@ export function DataTable<T>({
         const timeout = setTimeout(() => {
             if (!preferencesLoadedRef.current) {
                 preferencesLoadedRef.current = true;
+                prefsAppliedRef.current = true; // Also mark as applied so auto-save can work
             }
         }, 1000);
 
@@ -2857,10 +3031,11 @@ export function DataTable<T>({
         filter_config: filterRules as Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>,
         group_config: groupRules,
         wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>,
+        thumbnail_size_config: thumbnailSizeRules as Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>,
         column_widths: columnWidths,
         column_order: columnOrder,
         row_order: internalRowOrder.length > 0 ? internalRowOrder : undefined
-    }), [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, internalRowOrder]);
+    }), [sortRules, filterRules, groupRules, wrapRules, thumbnailSizeRules, columnWidths, columnOrder, internalRowOrder]);
 
     // Check if current view matches team view
     const isMatchingTeamView = useMemo(() => {
@@ -2879,6 +3054,7 @@ export function DataTable<T>({
         const filterMatch = JSON.stringify(current.filter_config || []) === JSON.stringify(sharedPreferences.filter_config || []);
         const groupMatch = JSON.stringify(current.group_config || []) === JSON.stringify(sharedPreferences.group_config || []);
         const wrapMatch = JSON.stringify(current.wrap_config || []) === JSON.stringify(sharedPreferences.wrap_config || []);
+        const thumbnailMatch = JSON.stringify(current.thumbnail_size_config || []) === JSON.stringify(sharedPreferences.thumbnail_size_config || []);
 
         // Compare column widths excluding _actions (internal column not saved in team views)
         const currentWidths = { ...current.column_widths };
@@ -2889,31 +3065,14 @@ export function DataTable<T>({
 
         const columnOrderMatch = JSON.stringify(current.column_order || []) === JSON.stringify(sharedPreferences.column_order || []);
 
-        // Debug logging - remove after fixing
-        if (!sortMatch || !filterMatch || !groupMatch || !wrapMatch || !columnWidthsMatch || !columnOrderMatch) {
-            console.log('TeamView mismatch:', {
-                sortMatch, filterMatch, groupMatch, wrapMatch, columnWidthsMatch, columnOrderMatch,
-                current_sort: JSON.stringify(current.sort_config || []),
-                shared_sort: JSON.stringify(sharedPreferences.sort_config || []),
-                current_filter: JSON.stringify(current.filter_config || []),
-                shared_filter: JSON.stringify(sharedPreferences.filter_config || []),
-                current_group: JSON.stringify(current.group_config || []),
-                shared_group: JSON.stringify(sharedPreferences.group_config || []),
-                current_wrap: JSON.stringify(current.wrap_config || []),
-                shared_wrap: JSON.stringify(sharedPreferences.wrap_config || []),
-                current_widths: sortedStringify(currentWidths),
-                shared_widths: sortedStringify(sharedWidths),
-                current_order: JSON.stringify(current.column_order || []),
-                shared_order: JSON.stringify(sharedPreferences.column_order || []),
-            });
-        }
-
-        return sortMatch && filterMatch && groupMatch && wrapMatch && columnWidthsMatch && columnOrderMatch;
+        return sortMatch && filterMatch && groupMatch && wrapMatch && thumbnailMatch && columnWidthsMatch && columnOrderMatch;
     }, [getCurrentPreferences, sharedPreferences]);
 
     // Auto-save preferences when they change (debounced)
     const preferencesChangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isFirstRenderRef = useRef(true);
+    const skipNextAutoSaveRef = useRef(false); // Skip auto-save after saving Team View
+    const prefsAppliedRef = useRef(false); // Track when loaded prefs have been applied to state
 
     // Use a ref for the callback to avoid triggering effect when callback identity changes
     const onPreferencesChangeRef = useRef(onPreferencesChange);
@@ -2928,10 +3087,20 @@ export function DataTable<T>({
             return;
         }
 
-        // Don't auto-save until initial preferences have been loaded
-        // This prevents overwriting saved preferences with empty state during initial load
-        if (!preferencesLoadedRef.current) return;
-        if (!onPreferencesChangeRef.current) return;
+        // Skip auto-save if we just saved Team View (to prevent re-creating user prefs)
+        if (skipNextAutoSaveRef.current) {
+            skipNextAutoSaveRef.current = false;
+            return;
+        }
+
+        // Don't auto-save until initial preferences have been fully applied to state
+        // This prevents overwriting loaded preferences with default state during initial load
+        if (!preferencesLoadedRef.current || !prefsAppliedRef.current) return;
+
+        // Need either external callback OR viewId for auto-save
+        const hasExternalCallback = !!onPreferencesChangeRef.current;
+        const hasAutoPersistence = !!viewId && !!userId;
+        if (!hasExternalCallback && !hasAutoPersistence) return;
 
         // Clear any pending timeout
         if (preferencesChangeTimeoutRef.current) {
@@ -2939,8 +3108,19 @@ export function DataTable<T>({
         }
 
         // Debounce the save - wait 500ms after last change
-        preferencesChangeTimeoutRef.current = setTimeout(() => {
-            onPreferencesChangeRef.current?.(getCurrentPreferences());
+        preferencesChangeTimeoutRef.current = setTimeout(async () => {
+            const prefs = getCurrentPreferences();
+            // Call external callback if provided
+            onPreferencesChangeRef.current?.(prefs);
+            // Auto-save if viewId is provided (auto-persistence)
+            if (viewId && userId) {
+                try {
+                    await saveUserViewPreferences(userId, viewId, prefs);
+                    setInternalUserPrefs(prefs);
+                } catch (error) {
+                    console.error('[DataTable] Failed to auto-save preferences:', error);
+                }
+            }
         }, 500);
 
         return () => {
@@ -2948,7 +3128,7 @@ export function DataTable<T>({
                 clearTimeout(preferencesChangeTimeoutRef.current);
             }
         };
-    }, [sortRules, filterRules, groupRules, wrapRules, columnWidths, columnOrder, internalRowOrder, getCurrentPreferences]);
+    }, [sortRules, filterRules, groupRules, wrapRules, thumbnailSizeRules, columnWidths, columnOrder, internalRowOrder, getCurrentPreferences, viewId, userId]);
 
     // Handle load team view - loads the shared/team preferences
     const handleLoadTeamView = useCallback(() => {
@@ -2958,6 +3138,7 @@ export function DataTable<T>({
         setFilterRules((sharedPreferences.filter_config || []) as FilterRule[]);
         setGroupRules(sharedPreferences.group_config || []);
         setWrapRules((sharedPreferences.wrap_config || []) as Array<{ columnKey: string; lines: '1' | '2' | '3' | 'full' }>);
+        setThumbnailSizeRules((sharedPreferences.thumbnail_size_config || []) as ThumbnailSizeRule[]);
 
         // Load column widths from team view or use defaults
         if (sharedPreferences.column_widths) {
@@ -2968,15 +3149,55 @@ export function DataTable<T>({
         if (sharedPreferences.column_order) {
             setInternalColumnOrder(sharedPreferences.column_order);
         }
-    }, [sharedPreferences, setGroupRules, setWrapRules]);
+    }, [sharedPreferences, setGroupRules, setWrapRules, setThumbnailSizeRules]);
 
     // Handle save for everyone
-    const handleSaveForEveryone = useCallback(() => {
-        if (onSaveForEveryone) {
-            const preferences = getCurrentPreferences();
-            onSaveForEveryone(preferences);
+    const handleSaveForEveryone = useCallback(async () => {
+        // Cancel any pending auto-save to prevent race condition
+        if (preferencesChangeTimeoutRef.current) {
+            clearTimeout(preferencesChangeTimeoutRef.current);
+            preferencesChangeTimeoutRef.current = null;
         }
-    }, [getCurrentPreferences, onSaveForEveryone]);
+
+        // Skip the next auto-save triggered by state changes
+        skipNextAutoSaveRef.current = true;
+
+        const preferences = getCurrentPreferences();
+        // Call external callback if provided
+        onSaveForEveryone?.(preferences);
+        // Auto-save shared preferences if viewId is provided
+        if (viewId) {
+            try {
+                // Save to shared (team) preferences
+                await saveSharedViewPreferences(viewId, preferences);
+                setInternalSharedPrefs(preferences);
+
+                // Also save to user preferences so they match team view on reload
+                // This ensures the user sees the team view they just saved
+                if (userId) {
+                    await saveUserViewPreferences(userId, viewId, preferences);
+                    setInternalUserPrefs(preferences);
+                }
+            } catch (error) {
+                console.error('[DataTable] Failed to save shared preferences:', error);
+            }
+        }
+    }, [getCurrentPreferences, onSaveForEveryone, viewId, userId]);
+
+    // Handle reset preferences (back to team/shared view)
+    const handleResetPreferences = useCallback(async () => {
+        // Call external callback if provided
+        onResetPreferences?.();
+        // Auto-delete user preferences if viewId is provided
+        if (viewId && userId) {
+            try {
+                await deleteUserViewPreferences(userId, viewId);
+                setInternalUserPrefs(null);
+            } catch (error) {
+                console.error('[DataTable] Failed to reset preferences:', error);
+            }
+        }
+    }, [onResetPreferences, viewId, userId]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -3052,7 +3273,14 @@ export function DataTable<T>({
         if (!resizingRef.current) return;
         const { column, startX, startWidth } = resizingRef.current;
         const delta = e.clientX - startX;
-        const minWidth = columns.find(c => c.key === column)?.minWidth || 50;
+        const col = columns.find(c => c.key === column);
+        // Type-based default minWidths: select/people columns can be narrower
+        const typeMinWidth = col?.type === 'select' ? 60
+            : col?.type === 'people' ? 60
+            : col?.type === 'id' ? 40
+            : col?.type === 'date' ? 80
+            : 50;
+        const minWidth = col?.minWidth || typeMinWidth;
         const newWidth = Math.max(minWidth, startWidth + delta);
         setColumnWidths(prev => ({ ...prev, [column]: newWidth }));
     }, [columns]);
@@ -3092,21 +3320,60 @@ export function DataTable<T>({
         setEditingValue(String(value));
     }, [columns, getRowId]);
 
-    const handleEditSave = useCallback(async (newValue?: string) => {
+    const handleCellCommit = useCallback(async (newValue?: string | null) => {
         if (!editingCell || !onUpdate) {
             setEditingCell(null);
             return;
         }
 
-        const valueToSave = newValue !== undefined ? newValue : editingValue;
+        // Convert empty strings to null for UUID fields (project_id, subproject_id, user_id, etc.)
+        let valueToSave: string | null = newValue !== undefined ? newValue : editingValue;
+        if (valueToSave === '' || valueToSave === null) {
+            valueToSave = null;
+        }
 
         try {
+            // First, save the edited field
             await onUpdate(editingCell.id, editingCell.field, valueToSave);
+
+            // Check if this column has dependsOn config - update parent if needed
+            // e.g., when subproject is selected, auto-set the project
+            const col = columns.find(c => c.key === editingCell.field);
+            if (col?.dependsOn && valueToSave) {
+                const parentValue = col.dependsOn.getParentValue(valueToSave);
+                if (parentValue !== null) {
+                    // Get current row's parent value
+                    const row = data.find(r => getRowId(r) === editingCell.id);
+                    const currentParentValue = row ? (row as Record<string, unknown>)[col.dependsOn.parentKey] : null;
+                    // Only update if different
+                    if (parentValue !== currentParentValue) {
+                        await onUpdate(editingCell.id, col.dependsOn.parentKey, parentValue);
+                    }
+                }
+            }
+
+            // Check if this column is a parent that has children depending on it
+            // e.g., when project is changed, clear subproject if it doesn't belong to new project
+            const childCol = columns.find(c => c.dependsOn?.parentKey === editingCell.field);
+            if (childCol) {
+                const row = data.find(r => getRowId(r) === editingCell.id);
+                const currentChildValue = row ? (row as Record<string, unknown>)[childCol.key] : null;
+                if (currentChildValue && valueToSave) {
+                    // Check if child value still belongs to new parent
+                    const childParentValue = childCol.dependsOn?.getParentValue(currentChildValue as string);
+                    if (childParentValue !== valueToSave) {
+                        await onUpdate(editingCell.id, childCol.key, null);
+                    }
+                } else if (!valueToSave && currentChildValue) {
+                    // Parent cleared, clear child too
+                    await onUpdate(editingCell.id, childCol.key, null);
+                }
+            }
         } catch (error) {
             console.error('Failed to update:', error);
         }
         setEditingCell(null);
-    }, [editingCell, editingValue, onUpdate]);
+    }, [editingCell, editingValue, onUpdate, columns, data, getRowId]);
 
     const handleEditCancel = useCallback(() => {
         setEditingCell(null);
@@ -3286,19 +3553,21 @@ export function DataTable<T>({
 
     return (
         <div className={cn(
-            "bg-white border border-gray-200 shadow-sm flex flex-col",
-            fullscreen ? "flex-1 h-full overflow-y-hidden min-w-0" : "rounded-xl"
+            "bg-white border border-gray-200 shadow-sm flex flex-col min-w-0",
+            fullscreen ? "flex-1" : "rounded-xl",
+            (layout === 'fullPage' || layout === 'contained') && "flex-1 overflow-hidden",
+            layout === 'contained' && "h-full"
         )}>
             {/* Tab Bar - renders above toolbar if tabs are provided */}
             {tabs && tabs.length > 0 && (
-                <div className="border-b border-gray-200 bg-white flex-shrink-0">
-                    <div className="flex items-center gap-1 px-3 pt-2">
+                <div className="border-b border-gray-200 bg-white flex-shrink-0 overflow-x-auto scrollbar-thin">
+                    <div className="flex items-center gap-1 px-3 pt-2 min-w-max">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => onTabChange?.(tab.id)}
                                 className={cn(
-                                    "px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative",
+                                    "px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative whitespace-nowrap",
                                     activeTab === tab.id
                                         ? "text-blue-600 bg-gray-50 border-b-2 border-blue-600 -mb-px"
                                         : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
@@ -4122,7 +4391,7 @@ export function DataTable<T>({
                 </div>
 
                 {/* Team View Dropdown - single button with dropdown menu */}
-                {onSaveForEveryone && (
+                {(onSaveForEveryone || viewId) && (
                     <div ref={teamViewDropdownRef} className="relative flex-shrink-0">
                         {isMatchingTeamView ? (
                             /* Just show indicator when on Team View - no dropdown */
@@ -4149,12 +4418,12 @@ export function DataTable<T>({
                                 {showTeamViewDropdown && (
                                     <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[160px] max-w-[calc(100vw-24px)] z-50">
                                         {/* Use Team View */}
-                                        {onResetPreferences && (
+                                        {(onResetPreferences || viewId) && (
                                             <button
                                                 type="button"
                                                 onClick={() => {
                                                     // Delete user preferences AND apply team view
-                                                    onResetPreferences();
+                                                    handleResetPreferences();
                                                     handleLoadTeamView();
                                                     setShowTeamViewDropdown(false);
                                                 }}
@@ -4231,8 +4500,14 @@ export function DataTable<T>({
                 )}
             </div>
 
-            {/* Scrollable content area - only table/gallery scrolls horizontally */}
-            <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
+            {/* Content area - horizontal scroll, vertical scroll for fullPage/contained modes */}
+            <div
+                className={cn(
+                    "overflow-x-auto min-w-0",
+                    (layout === 'fullPage' || layout === 'contained') && "flex-1 overflow-y-auto"
+                )}
+                style={layout === 'inline' && maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}
+            >
                 {/* Table View */}
                 {viewMode === 'table' && (
                 <table
@@ -4284,6 +4559,12 @@ export function DataTable<T>({
                                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                         />
                                     </div>
+                                </th>
+                            )}
+                            {/* Single-select radio column header (no select-all for single-select) */}
+                            {singleSelect && (
+                                <th className="data-grid-th w-10 px-2 bg-white">
+                                    {/* Empty header - single select doesn't have select-all */}
                                 </th>
                             )}
                             {columnsWithActions.map((item) => {
@@ -4500,11 +4781,12 @@ export function DataTable<T>({
 
                     {/* Table Body - using native HTML5 drag-and-drop for rows */}
                     <tbody>
-                        {isLoading ? (
+                        {(isLoading || !prefsLoaded) ? (
                             Array.from({ length: 8 }).map((_, i) => (
                                 <tr key={i}>
                                     {sortable && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-4 mx-2"></div></td>}
                                     {selectable && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-3.5 mx-2"></div></td>}
+                                    {singleSelect && <td className="data-grid-td"><div className="h-3.5 skeleton-shimmer rounded w-3.5 mx-2"></div></td>}
                                     {orderedColumns.map((col, colIdx) => (
                                         <td key={col.key} className="data-grid-td">
                                             <div
@@ -4572,11 +4854,11 @@ export function DataTable<T>({
                                                                 dropdownPosition={dropdownPosition}
                                                                 onEditStart={handleEditStart}
                                                                 onEditChange={setEditingValue}
-                                                                onEditSave={handleEditSave}
+                                                                onCellCommit={handleCellCommit}
                                                                 onEditCancel={handleEditCancel}
                                                                 onViewStart={handleViewStart}
                                                                 onDelete={onDelete}
-                                                                onCopy={handleCopy}
+                                                                onCopy={onCopy ? handleCopy : undefined}
                                                                 onDuplicate={onDuplicate}
                                                                 copiedId={copiedId}
                                                                 {...createRowDragHandlers(getRowId(row))}
@@ -4594,6 +4876,14 @@ export function DataTable<T>({
                                                                         newSet.add(id);
                                                                     }
                                                                     onSelectionChange(newSet);
+                                                                }}
+                                                                singleSelect={singleSelect}
+                                                                isSingleSelected={selectedRowId === getRowId(row)}
+                                                                onSingleSelect={() => {
+                                                                    if (!onRowSelect) return;
+                                                                    const id = getRowId(row);
+                                                                    // Toggle: if already selected, deselect; otherwise select
+                                                                    onRowSelect(selectedRowId === id ? null : id);
                                                                 }}
                                                                 adCopies={adCopies}
                                                                 onAdCopyClick={(rowId, columnKey, adCopyType, currentValue) => {
@@ -4641,11 +4931,11 @@ export function DataTable<T>({
                                     dropdownPosition={dropdownPosition}
                                     onEditStart={handleEditStart}
                                     onEditChange={setEditingValue}
-                                    onEditSave={handleEditSave}
+                                    onCellCommit={handleCellCommit}
                                     onEditCancel={handleEditCancel}
                                     onViewStart={handleViewStart}
                                     onDelete={onDelete}
-                                    onCopy={handleCopy}
+                                    onCopy={onCopy ? handleCopy : undefined}
                                     onDuplicate={onDuplicate}
                                     copiedId={copiedId}
                                     {...createRowDragHandlers(getRowId(row))}
@@ -4663,6 +4953,14 @@ export function DataTable<T>({
                                             newSet.add(id);
                                         }
                                         onSelectionChange(newSet);
+                                    }}
+                                    singleSelect={singleSelect}
+                                    isSingleSelected={selectedRowId === getRowId(row)}
+                                    onSingleSelect={() => {
+                                        if (!onRowSelect) return;
+                                        const id = getRowId(row);
+                                        // Toggle: if already selected, deselect; otherwise select
+                                        onRowSelect(selectedRowId === id ? null : id);
                                     }}
                                     adCopies={adCopies}
                                     onAdCopyClick={(rowId, columnKey, adCopyType, currentValue) => {
@@ -4695,6 +4993,7 @@ export function DataTable<T>({
                             >
                                 {sortable && <td className="w-10" />}
                                 {selectable && <td className="w-10" />}
+                                {singleSelect && <td className="w-10" />}
                                 <td
                                     colSpan={columns.length}
                                     className="px-4 py-2 text-xs text-gray-400 group-hover:text-blue-600"
@@ -4746,7 +5045,20 @@ export function DataTable<T>({
                         )}
 
                         {/* Card Grid */}
-                        {sortedData.length === 0 ? (
+                        {(isLoading || !prefsLoaded) ? (
+                            <div
+                                className="grid gap-4 justify-start"
+                                style={{ gridTemplateColumns: 'repeat(auto-fill, 220px)' }}
+                            >
+                                {Array.from({ length: 8 }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="w-[220px] h-[280px] bg-gray-100 rounded-lg skeleton-shimmer"
+                                        style={{ animationDelay: `${i * 0.05}s` }}
+                                    />
+                                ))}
+                            </div>
+                        ) : sortedData.length === 0 ? (
                             <div className="text-center py-12 text-gray-500 text-sm">
                                 {emptyMessage}
                             </div>

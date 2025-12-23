@@ -10,20 +10,11 @@ export type Creative = Database['public']['Tables']['creatives']['Row'];
 export type AdCopy = Database['public']['Tables']['ad_copies']['Row'];
 export type Subproject = Database['public']['Tables']['subprojects']['Row'];
 
-// Persona interface for AI Copywriting workflow
+// Persona interface for AI Copywriting workflow - simplified to single paragraph
 export interface Persona {
     id: string;
-    name: string;
-    age: number;
-    role: string;
-    tagline: string;
-    background: string;
-    current_situation: string;
-    pain_points: string[];
-    goals: string[];
-    motivations: string[];
-    objections: string[];
-    messaging_angles: string[];
+    name: string;           // Short name/label (e.g., "Recent Survivor", "Long-term Victim")
+    description: string;    // Single paragraph, max 100 words describing the persona
     selected?: boolean;
 }
 
@@ -541,60 +532,6 @@ export async function deleteAdCopy(id: string): Promise<void> {
 }
 
 // ============================================
-// SAVED PERSONAS
-// ============================================
-
-export interface SavedPersona {
-    id: string;
-    user_id: string;
-    project_id: string;
-    subproject_id?: string | null;
-    vertical: string; // Stores product_description
-    name: string;
-    role: string;
-    data: Persona; // Full persona object
-    created_at: string;
-    // Joined fields
-    profile?: { fb_name: string };
-    project?: { name: string };
-    subproject?: { name: string };
-}
-
-export async function createSavedPersona(persona: Omit<SavedPersona, 'id' | 'created_at' | 'profiles' | 'projects' | 'subprojects'>) {
-    const { data, error } = await supabaseUntyped
-        .from('saved_personas')
-        .insert(persona)
-        .select()
-        .single();
-
-    if (error) {
-        console.error('[Supabase] Error creating saved persona:', error);
-        throw error;
-    }
-
-    return data;
-}
-
-export async function getSavedPersonas() {
-    const { data, error } = await supabaseUntyped
-        .from('saved_personas')
-        .select(`
-            *,
-            project:projects(name),
-            subproject:subprojects(name),
-            profile:profiles(fb_name)
-        `)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('[Supabase] Error fetching saved personas:', error);
-        throw error;
-    }
-
-    return data;
-}
-
-// ============================================
 // PROJECTS
 // ============================================
 
@@ -1025,115 +962,6 @@ export async function deleteSubproject(id: string): Promise<void> {
 }
 
 // ============================================
-// AI COPYWRITING PRESETS (Team-Level)
-// ============================================
-
-export interface AICopywritingPreset {
-    id: string;
-    name: string;
-    product_description: string | null;
-    persona_input: string | null;
-    swipe_files: string | null;
-    custom_prompt: string | null;
-    project_id: string | null;
-    subproject_id: string | null;
-    ai_model: string;
-    created_by: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
-/**
- * Get all AI Copywriting presets (team-level) via secure API
- */
-export async function getAICopywritingPresets(): Promise<AICopywritingPreset[]> {
-    try {
-        const response = await fetch('/api/presets');
-        if (!response.ok) {
-            throw new Error('Failed to fetch presets');
-        }
-        return await response.json();
-    } catch (error) {
-        console.error('[API] Error fetching AI copywriting presets:', error);
-        // Return empty array on error (API might not be available)
-        return [];
-    }
-}
-
-/**
- * Create a new AI Copywriting preset via secure API
- */
-export async function createAICopywritingPreset(preset: {
-    name: string;
-    product_description?: string;
-    persona_input?: string;
-    swipe_files?: string;
-    custom_prompt?: string;
-    project_id?: string | null;
-    subproject_id?: string | null;
-    ai_model?: string;
-    created_by?: string | null;
-}): Promise<AICopywritingPreset> {
-    const response = await fetch('/api/presets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            name: preset.name,
-            product_description: preset.product_description || null,
-            persona_input: preset.persona_input || null,
-            swipe_files: preset.swipe_files || null,
-            custom_prompt: preset.custom_prompt || null,
-            project_id: preset.project_id || null,
-            subproject_id: preset.subproject_id || null,
-            ai_model: preset.ai_model || 'claude-sonnet',
-            created_by: preset.created_by || null,
-        }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        console.error('[API] Error creating AI copywriting preset:', error);
-        throw new Error(error.error || 'Failed to create preset');
-    }
-
-    return await response.json();
-}
-
-/**
- * Update an AI Copywriting preset via secure API
- */
-export async function updateAICopywritingPreset(id: string, updates: Partial<AICopywritingPreset>): Promise<AICopywritingPreset> {
-    const response = await fetch('/api/presets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, ...updates }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        console.error('[API] Error updating AI copywriting preset:', error);
-        throw new Error(error.error || 'Failed to update preset');
-    }
-
-    return await response.json();
-}
-
-/**
- * Delete an AI Copywriting preset via secure API
- */
-export async function deleteAICopywritingPreset(id: string): Promise<void> {
-    const response = await fetch(`/api/presets?id=${id}`, {
-        method: 'DELETE',
-    });
-
-    if (!response.ok && response.status !== 204) {
-        const error = await response.json();
-        console.error('[API] Error deleting AI copywriting preset:', error);
-        throw new Error(error.error || 'Failed to delete preset');
-    }
-}
-
-// ============================================
 // USER VIEW PREFERENCES (Row Order, Sort, Group)
 // ============================================
 
@@ -1142,6 +970,7 @@ export interface ViewPreferencesConfig {
     filter_config?: Array<{ id: string; field: string; operator: string; value: string; conjunction: 'and' | 'or' }>;
     group_config?: Array<{ id: string; key: string; direction: 'asc' | 'desc' }>;
     wrap_config?: Array<{ columnKey: string; lines: '1' | '3' | 'full' }>;
+    thumbnail_size_config?: Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>;
     row_order?: string[];
     column_widths?: Record<string, number>;
     column_order?: string[];
@@ -2024,18 +1853,38 @@ export async function saveSoraCharacterLogs(
 // AI COPY - CAMPAIGN PARAMETERS
 // ============================================
 
+// Refinement round for iterative feedback
+export interface RefinementRound {
+    timestamp: string;
+    output: Array<{ name: string; description: string }>;
+    feedback: string;
+}
+
+// Refinement history stored in campaign_parameters
+export interface RefinementHistory {
+    personas: RefinementRound[];
+    angles: RefinementRound[];
+    ads: RefinementRound[];
+}
+
 export interface CampaignParameter {
     id: string;
+    row_number?: number;
     name: string;
     description: string | null;
     persona_input: string | null;
     swipe_files: string | null;
     custom_prompt: string | null;
+    key_qualifying_criteria: string | null;
+    offer_flow: string | null;
+    proof_points: string | null;
+    primary_objections: string | null;
     project_id: string | null;
     subproject_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
+    refinement_history: RefinementHistory | null;
 }
 
 export async function getCampaignParameters(): Promise<CampaignParameter[]> {
@@ -2110,15 +1959,129 @@ export async function deleteCampaignParameter(id: string): Promise<void> {
     }
 }
 
+// Update refinement history for a specific section (personas, angles, or ads)
+export async function updateRefinementHistory(
+    campaignParameterId: string,
+    section: 'personas' | 'angles' | 'ads',
+    history: RefinementRound[]
+): Promise<void> {
+    // First get current history
+    const current = await getCampaignParameter(campaignParameterId);
+    if (!current) {
+        throw new Error('Campaign parameter not found');
+    }
+
+    const currentHistory = current.refinement_history || { personas: [], angles: [], ads: [] };
+    const updatedHistory = { ...currentHistory, [section]: history };
+
+    const { error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .update({
+            refinement_history: updatedHistory,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', campaignParameterId);
+
+    if (error) {
+        console.error('[Supabase] Error updating refinement history:', error);
+        throw error;
+    }
+}
+
+// Clear refinement history for a specific section
+export async function clearRefinementHistory(
+    campaignParameterId: string,
+    section: 'personas' | 'angles' | 'ads'
+): Promise<void> {
+    await updateRefinementHistory(campaignParameterId, section, []);
+}
+
+// ============================================
+// AI COPY - PERSONA FRAMEWORKS
+// ============================================
+
+export interface PersonaFramework {
+    id: string;
+    row_number?: number;
+    title: string;
+    content: string | null;
+    project_id: string | null;
+    subproject_id: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getPersonaFrameworks(): Promise<PersonaFramework[]> {
+    const { data, error } = await supabaseUntyped
+        .from('persona_frameworks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Supabase] Error fetching persona frameworks:', error);
+        throw error;
+    }
+
+    return data || [];
+}
+
+export async function createPersonaFramework(
+    framework: Omit<PersonaFramework, 'id' | 'created_at' | 'updated_at'>
+): Promise<PersonaFramework> {
+    const { data, error } = await supabaseUntyped
+        .from('persona_frameworks')
+        .insert(framework)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[Supabase] Error creating persona framework:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+export async function updatePersonaFramework(
+    id: string,
+    updates: Partial<Omit<PersonaFramework, 'id' | 'created_at' | 'updated_at'>>
+): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('persona_frameworks')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error updating persona framework:', error);
+        throw error;
+    }
+}
+
+export async function deletePersonaFramework(id: string): Promise<void> {
+    const { error } = await supabaseUntyped
+        .from('persona_frameworks')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[Supabase] Error deleting persona framework:', error);
+        throw error;
+    }
+}
+
 // ============================================
 // AI COPY - CREATIVE CONCEPTS
 // ============================================
 
 export interface CreativeConcept {
     id: string;
+    row_number?: number;
     name: string;
     description: string | null;
     example: string | null;
+    project_id: string | null;
+    subproject_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -2185,10 +2148,20 @@ export async function deleteCreativeConcept(id: string): Promise<void> {
 // AI COPY - PERSONAS
 // ============================================
 
+export interface AIPrompts {
+    system: string;
+    user: string;
+    model: string;
+}
+
 export interface AIPersona {
     id: string;
+    row_number?: number;
     campaign_parameter_id: string | null;
     content: string;
+    prompts: AIPrompts | null;
+    project_id: string | null;
+    subproject_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -2277,10 +2250,14 @@ export async function deleteAIPersona(id: string): Promise<void> {
 
 export interface AIAngle {
     id: string;
+    row_number?: number;
     campaign_parameter_id: string | null;
     persona_id: string | null;
     creative_concept_id: string | null;
     content: string;
+    prompts: AIPrompts | null;
+    project_id: string | null;
+    subproject_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -2372,12 +2349,16 @@ export async function deleteAIAngle(id: string): Promise<void> {
 
 export interface AIGeneratedAd {
     id: string;
+    row_number?: number;
     campaign_parameter_id: string | null;
     persona_id: string | null;
     angle_id: string | null;
     creative_concept_id: string | null;
     content: string;
     ad_type: string;
+    prompts: AIPrompts | null;
+    project_id: string | null;
+    subproject_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;

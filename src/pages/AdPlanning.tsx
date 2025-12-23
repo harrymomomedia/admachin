@@ -8,20 +8,19 @@ import {
     getProjects,
     getUsers,
     getSubprojects,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    deleteUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
     saveRowOrder,
     type AdPlan,
     type Project,
     type User,
     type Subproject,
-    type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+} from '../lib/datatable-defaults';
 
 export function AdPlanning() {
     const [plans, setPlans] = useState<AdPlan[]>([]);
@@ -33,10 +32,6 @@ export function AdPlanning() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-    // View preferences state (sort, filter, group, wrap)
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -62,62 +57,19 @@ export function AdPlanning() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [plansData, projectsData, usersData, subprojectsData, user, sharedPrefs] = await Promise.all([
+            const [plansData, projectsData, usersData, subprojectsData, user] = await Promise.all([
                 getAdPlans(),
                 getProjects(),
                 getUsers(),
                 getSubprojects(),
                 getCurrentUser(),
-                getSharedViewPreferences('ad_planning')
             ]);
-
-            // Store shared preferences (including column_widths and column_order)
-            if (sharedPrefs) {
-                setSharedPreferences({
-                    sort_config: sharedPrefs.sort_config,
-                    filter_config: sharedPrefs.filter_config,
-                    group_config: sharedPrefs.group_config,
-                    wrap_config: sharedPrefs.wrap_config,
-                    row_order: sharedPrefs.row_order,
-                    column_widths: sharedPrefs.column_widths,
-                    column_order: sharedPrefs.column_order
-                });
-            }
 
             if (user?.id) {
                 setCurrentUserId(user.id);
-                // Load saved user preferences
-                const prefs = await getUserViewPreferences(user.id, 'ad_planning');
-
-                // Store user view preferences (including column_widths and column_order)
-                if (prefs) {
-                    setUserPreferences({
-                        sort_config: prefs.sort_config,
-                        filter_config: prefs.filter_config,
-                        group_config: prefs.group_config,
-                        wrap_config: prefs.wrap_config,
-                        row_order: prefs.row_order,
-                        column_widths: prefs.column_widths,
-                        column_order: prefs.column_order
-                    });
-                }
-
-                // Load row order (user's or shared)
-                const rowOrder = prefs?.row_order || sharedPrefs?.row_order;
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    const ordered = [...plansData].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                    setPlans(ordered);
-                } else {
-                    setPlans(plansData);
-                }
-            } else {
-                setPlans(plansData);
             }
+
+            setPlans(plansData);
             setProjects(projectsData);
             setUsers(usersData);
             setSubprojects(subprojectsData);
@@ -127,47 +79,6 @@ export function AdPlanning() {
             setIsLoading(false);
         }
     };
-
-    // Handle view preferences change (auto-save per user)
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad_planning', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    // Handle save for everyone
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = plans.map(p => p.id);
-            await saveSharedViewPreferences('ad_planning', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    // Handle reset to shared preferences
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-
-        try {
-            await deleteUserViewPreferences(currentUserId, 'ad_planning');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
-
 
 
     // Update Handler
@@ -288,31 +199,9 @@ export function AdPlanning() {
         }
     };
 
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMap for projects
-    const projectColorMap = projects.reduce((map, project, index) => {
-        map[project.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
-
-    // Generate colorMap for subprojects
-    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
-        map[subproject.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
+    // Generate colorMaps using shared utility
+    const projectColorMap = generateColorMap(projects);
+    const subprojectColorMap = generateColorMap(subprojects);
 
     // Column Definitions
     const columns: ColumnDef<AdPlan>[] = [
@@ -324,47 +213,8 @@ export function AdPlanning() {
             editable: false,
             type: 'id',
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 120,
-            minWidth: 80,
-            editable: true,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            fallbackKey: 'project', // Legacy field for old data
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: (row) => {
-                // Show all subprojects if no project selected, otherwise filter by project
-                if (!row.project_id) {
-                    return subprojects.map(s => ({ label: s.name, value: s.id }));
-                }
-                return subprojects
-                    .filter(s => s.project_id === row.project_id)
-                    .map(s => ({
-                        label: s.name,
-                        value: s.id
-                    }));
-            },
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            fallbackKey: 'subproject', // Legacy field for old data
-            colorMap: subprojectColorMap,
-            dependsOn: {
-                parentKey: 'project_id',
-                getParentValue: (subprojectId) => {
-                    const sub = subprojects.find(s => s.id === subprojectId);
-                    return sub?.project_id ?? null;
-                },
-            },
-        },
+        createProjectColumn<AdPlan>({ projects, subprojects, projectColorMap }),
+        createSubprojectColumn<AdPlan>({ projects, subprojects, subprojectColorMap }),
         {
             key: 'plan_type',
             header: 'Plan Type',
@@ -489,15 +339,9 @@ export function AdPlanning() {
                 resizable={true}
                 showRowActions={false}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'plan_type']}
-                // View persistence
                 viewId="ad_planning"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
             />
 
             {/* Create Modal */}

@@ -13,11 +13,8 @@ export function DataTablePageLayout({
     children
 }: DataTablePageLayoutProps) {
     return (
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 max-w-full h-full">
-            {/* Content (DataTable) - flex-1 ensures it fills remaining space */}
-            <div className="flex-1 flex flex-col min-h-0">
-                {children}
-            </div>
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+            {children}
         </div>
     );
 }

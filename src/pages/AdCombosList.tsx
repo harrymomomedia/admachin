@@ -12,11 +12,6 @@ import {
     getUsers,
     getCreatives,
     getAdCopies,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    deleteUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
     saveRowOrder,
     type Ad,
     type Project,
@@ -24,11 +19,16 @@ import {
     type User,
     type Creative,
     type AdCopy,
-    type ViewPreferencesConfig
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
 import { AdPreviewCard } from '../components/AdPreviewCard';
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+    TRAFFIC_PLATFORM_COLORS,
+} from '../lib/datatable-defaults';
 
 export function AdCombosList() {
     const navigate = useNavigate();
@@ -41,48 +41,6 @@ export function AdCombosList() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    // View preferences state
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
-
-    // Handle view preferences change (auto-save per user)
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ads', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    // Handle save for everyone
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = ads.map(a => a.id);
-            await saveSharedViewPreferences('ads', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    // Handle reset to shared preferences
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'ads');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
-
     // Load Data
     useEffect(() => {
         loadData();
@@ -91,7 +49,7 @@ export function AdCombosList() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [adsData, projectsData, subprojectsData, usersData, creativesData, adCopiesData, user, sharedPrefs] = await Promise.all([
+            const [adsData, projectsData, subprojectsData, usersData, creativesData, adCopiesData, user] = await Promise.all([
                 getAds(),
                 getProjects(),
                 getSubprojects(),
@@ -99,54 +57,13 @@ export function AdCombosList() {
                 getCreatives(),
                 getAdCopies(),
                 getCurrentUser(),
-                getSharedViewPreferences('ads')
             ]);
-
-            // Store shared preferences
-            if (sharedPrefs) {
-                setSharedPreferences({
-                    sort_config: sharedPrefs.sort_config,
-                    filter_config: sharedPrefs.filter_config,
-                    group_config: sharedPrefs.group_config,
-                    wrap_config: sharedPrefs.wrap_config,
-                    row_order: sharedPrefs.row_order,
-                    column_widths: sharedPrefs.column_widths,
-                    column_order: sharedPrefs.column_order
-                });
-            }
 
             if (user?.id) {
                 setCurrentUserId(user.id);
-                const prefs = await getUserViewPreferences(user.id, 'ads');
-
-                if (prefs) {
-                    setUserPreferences({
-                        sort_config: prefs.sort_config,
-                        filter_config: prefs.filter_config,
-                        group_config: prefs.group_config,
-                        wrap_config: prefs.wrap_config,
-                        row_order: prefs.row_order,
-                        column_widths: prefs.column_widths,
-                        column_order: prefs.column_order
-                    });
-                }
-
-                // Load row order
-                const rowOrder = prefs?.row_order || sharedPrefs?.row_order;
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    const ordered = [...adsData].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                    setAds(ordered);
-                } else {
-                    setAds(adsData);
-                }
-            } else {
-                setAds(adsData);
             }
+
+            setAds(adsData);
             setProjects(projectsData);
             setSubprojects(subprojectsData);
             setUsers(usersData);
@@ -263,31 +180,9 @@ export function AdCombosList() {
         }
     };
 
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMap for projects
-    const projectColorMap = projects.reduce((map, project, index) => {
-        map[project.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
-
-    // Generate colorMap for subprojects
-    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
-        map[subproject.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
+    // Generate colorMaps using shared utility
+    const projectColorMap = generateColorMap(projects);
+    const subprojectColorMap = generateColorMap(subprojects);
 
     // Lookup maps for gallery view
     const creativeMap = new Map(creatives.map(c => [c.id, c]));
@@ -365,11 +260,7 @@ export function AdCombosList() {
                 { label: 'IG', value: 'IG' },
                 { label: 'All', value: 'All' },
             ],
-            colorMap: {
-                'FB': 'bg-teal-500 text-white',
-                'IG': 'bg-rose-500 text-white',
-                'All': 'bg-indigo-500 text-white',
-            },
+            colorMap: TRAFFIC_PLATFORM_COLORS,
         },
         {
             key: 'ad_type',
@@ -390,41 +281,8 @@ export function AdCombosList() {
                 'Carousel': 'bg-amber-500 text-white',
             },
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: (row) => {
-                if (!row.project_id) {
-                    return subprojects.map(s => ({ label: s.name, value: s.id }));
-                }
-                return subprojects
-                    .filter(s => s.project_id === row.project_id)
-                    .map(s => ({ label: s.name, value: s.id }));
-            },
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            colorMap: subprojectColorMap,
-            dependsOn: {
-                parentKey: 'project_id',
-                getParentValue: (subprojectId) => {
-                    const sub = subprojects.find(s => s.id === subprojectId);
-                    return sub?.project_id ?? null;
-                },
-            },
-        },
+        createProjectColumn<Ad>({ projects, subprojects, projectColorMap }),
+        createSubprojectColumn<Ad>({ projects, subprojects, subprojectColorMap }),
         {
             key: 'user_id',
             header: 'Created By',
@@ -489,14 +347,9 @@ export function AdCombosList() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'ad_type']}
                 viewId="ads"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
                 adCopies={adCopies}
                 renderGalleryCard={renderGalleryCard}
             />

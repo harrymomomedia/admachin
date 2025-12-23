@@ -78,13 +78,20 @@ router.put('/', async (req: Request, res: Response) => {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) {
+            console.error('Preset PUT: Missing Supabase configuration');
             return res.status(500).json({ error: 'Missing Supabase configuration' });
         }
 
         const { id, ...updates } = req.body;
+        console.log('Preset PUT: Updating preset', id, 'with', Object.keys(updates));
+
         if (!id) {
             return res.status(400).json({ error: 'Missing preset id' });
         }
+
+        // Remove fields that shouldn't be updated
+        delete updates.created_at;
+        delete updates.created_by;
 
         const { data, error } = await supabase
             .from('ai_copywriting_presets')
@@ -93,13 +100,18 @@ router.put('/', async (req: Request, res: Response) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('Preset PUT Supabase error:', error);
+            throw error;
+        }
+
+        console.log('Preset PUT: Successfully updated', data?.name);
         return res.json(data);
-    } catch (error) {
-        console.error('Preset API error:', error);
-        return res.status(500).json({
-            error: error instanceof Error ? error.message : 'Internal server error'
-        });
+    } catch (error: any) {
+        console.error('Preset PUT error:', error);
+        // Handle Supabase errors which have a message property but aren't Error instances
+        const errorMessage = error?.message || (error instanceof Error ? error.message : 'Internal server error');
+        return res.status(500).json({ error: errorMessage });
     }
 });
 

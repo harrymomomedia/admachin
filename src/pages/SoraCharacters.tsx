@@ -7,14 +7,9 @@ import {
     createSoraCharacter,
     updateSoraCharacter,
     deleteSoraCharacter,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
-    deleteUserViewPreferences,
     saveRowOrder,
 } from "../lib/supabase-service";
-import type { ViewPreferencesConfig, SoraCharacterWithDetails } from "../lib/supabase-service";
+import type { SoraCharacterWithDetails } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
 import { ExternalLink, User as UserIcon } from "lucide-react";
 
@@ -27,10 +22,6 @@ export function SoraCharacters() {
 
     const [characters, setCharacters] = useState<SoraCharacterRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-
-    // View preferences
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
 
     // Status color map
     const statusColorMap: Record<string, string> = {
@@ -45,37 +36,7 @@ export function SoraCharacters() {
         async function loadData() {
             setIsLoading(true);
             try {
-                const [charactersData, userPrefs, sharedPrefs] = await Promise.all([
-                    getSoraCharacters(),
-                    currentUserId ? getUserViewPreferences(currentUserId, 'sora-characters') : null,
-                    getSharedViewPreferences('sora-characters'),
-                ]);
-
-                // Store shared preferences
-                if (sharedPrefs) {
-                    setSharedPreferences({
-                        sort_config: sharedPrefs.sort_config,
-                        filter_config: sharedPrefs.filter_config,
-                        group_config: sharedPrefs.group_config,
-                        wrap_config: sharedPrefs.wrap_config,
-                        row_order: sharedPrefs.row_order,
-                        column_widths: sharedPrefs.column_widths,
-                        column_order: sharedPrefs.column_order
-                    });
-                }
-
-                // Store user view preferences
-                if (userPrefs) {
-                    setUserPreferences({
-                        sort_config: userPrefs.sort_config,
-                        filter_config: userPrefs.filter_config,
-                        group_config: userPrefs.group_config,
-                        wrap_config: userPrefs.wrap_config,
-                        row_order: userPrefs.row_order,
-                        column_widths: userPrefs.column_widths,
-                        column_order: userPrefs.column_order
-                    });
-                }
+                const charactersData = await getSoraCharacters();
 
                 // Compute profile URLs from sora_character_id
                 const charactersWithUrls = charactersData.map(char => ({
@@ -85,19 +46,7 @@ export function SoraCharacters() {
                         : null,
                 })) as SoraCharacterRow[];
 
-                // Apply row order (user's or shared)
-                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
-                let finalCharacters = charactersWithUrls;
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    finalCharacters = [...finalCharacters].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                }
-
-                setCharacters(finalCharacters);
+                setCharacters(charactersWithUrls);
             } catch (error) {
                 console.error('[SoraCharacters] Failed to load:', error);
             } finally {
@@ -107,41 +56,6 @@ export function SoraCharacters() {
         loadData();
     }, [currentUserId]);
 
-    // View persistence handlers
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'sora-characters', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = characters.map(c => c.id);
-            await saveSharedViewPreferences('sora-characters', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'sora-characters');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
 
     // Create new row
     const handleCreateRow = useCallback(async () => {
@@ -332,16 +246,10 @@ export function SoraCharacters() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['status']}
                 showRowActions={true}
-                // View persistence
                 viewId="sora-characters"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
             />
         </DataTablePageLayout>
     );

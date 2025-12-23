@@ -1,0 +1,139 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e8]:
+        - img [ref=e9]
+        - generic [ref=e14]: AdMachin
+      - link "by MOMOMedia" [ref=e15] [cursor=pointer]:
+        - /url: https://momomedia.io
+        - generic [ref=e16]: by
+        - img "MOMOMedia" [ref=e17]
+    - generic [ref=e18]:
+      - button "Ad Combos" [ref=e20] [cursor=pointer]:
+        - generic [ref=e21]:
+          - img [ref=e22]
+          - text: Ad Combos
+        - img [ref=e25]
+      - generic [ref=e27]:
+        - button "AI Copy" [ref=e28] [cursor=pointer]:
+          - generic [ref=e29]:
+            - img [ref=e30]
+            - text: AI Copy
+          - img [ref=e32]
+        - generic [ref=e34]:
+          - link "Copy Wizard" [ref=e35] [cursor=pointer]:
+            - /url: /copy-wizard
+            - img [ref=e36]
+            - text: Copy Wizard
+          - link "Copy Library" [ref=e39] [cursor=pointer]:
+            - /url: /copy-library
+            - img [ref=e40]
+            - text: Copy Library
+      - button "AI Video" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]:
+          - img [ref=e45]
+          - text: AI Video
+        - img [ref=e48]
+      - link "Launch Ad" [ref=e50] [cursor=pointer]:
+        - /url: /launch
+        - img [ref=e51]
+        - text: Launch Ad
+      - button "Integration" [ref=e57] [cursor=pointer]:
+        - generic [ref=e58]:
+          - img [ref=e59]
+          - text: Integration
+        - img [ref=e61]
+      - link "FB Ad Library" [ref=e63] [cursor=pointer]:
+        - /url: /fb-ad-library
+        - img [ref=e64]
+        - text: FB Ad Library
+    - generic [ref=e66]:
+      - button "TU Test admin" [ref=e69] [cursor=pointer]:
+        - generic [ref=e70]: TU
+        - generic [ref=e72]:
+          - text: Test
+          - generic [ref=e73]: admin
+        - img [ref=e74]
+      - button "Collapse sidebar" [ref=e76] [cursor=pointer]:
+        - img [ref=e77]
+  - main [ref=e80]:
+    - navigation "Breadcrumb" [ref=e82]:
+      - link "Home" [ref=e84] [cursor=pointer]:
+        - /url: /
+        - img [ref=e85]
+        - generic [ref=e88]: Home
+      - generic [ref=e89]:
+        - img [ref=e90]
+        - generic [ref=e92]: copy-wizard
+    - generic [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]:
+          - generic [ref=e97]:
+            - heading "AI Copywriting" [level=1] [ref=e98]:
+              - img [ref=e99]
+              - generic [ref=e102]: AI Copywriting
+            - paragraph [ref=e103]: Generate ad copy using personas and angles
+          - generic [ref=e104]:
+            - button "Auto-Fill" [ref=e105] [cursor=pointer]:
+              - img [ref=e106]
+              - text: Auto-Fill
+            - generic [ref=e109]:
+              - generic [ref=e110]: "Model:"
+              - combobox [ref=e111] [cursor=pointer]:
+                - option "Sonnet 4.5" [selected]
+                - option "Opus 4.5"
+                - option "Haiku 4.5"
+                - option "GPT-4o"
+                - option "Gemini 1.5"
+        - generic [ref=e112]:
+          - generic [ref=e113]: Product
+          - generic [ref=e114]: →
+          - generic [ref=e115]: Personas
+          - generic [ref=e116]: →
+          - generic [ref=e117]: Angles
+          - generic [ref=e118]: →
+          - generic [ref=e119]: Ad Copies
+      - button "1 Campaign Parameters Describe your product/service, select project, and set preferences" [active] [ref=e121] [cursor=pointer]:
+        - generic [ref=e122]:
+          - generic [ref=e123]: "1"
+          - generic [ref=e124]:
+            - heading "Campaign Parameters" [level=3] [ref=e125]
+            - paragraph [ref=e126]: Describe your product/service, select project, and set preferences
+        - img [ref=e127]
+      - button "2 Select Personas 0 of 0 selected Library" [ref=e130] [cursor=pointer]:
+        - generic [ref=e131]:
+          - generic [ref=e132]: "2"
+          - generic [ref=e133]:
+            - heading "Select Personas" [level=3] [ref=e134]
+            - paragraph [ref=e135]: 0 of 0 selected
+        - generic [ref=e136]:
+          - button "Library" [ref=e137]:
+            - img [ref=e138]
+            - generic [ref=e140]: Library
+          - img [ref=e141]
+      - button "3 Select Angles 0 of 0 selected Library" [ref=e144] [cursor=pointer]:
+        - generic [ref=e145]:
+          - generic [ref=e146]: "3"
+          - generic [ref=e147]:
+            - heading "Select Angles" [level=3] [ref=e148]
+            - paragraph [ref=e149]: 0 of 0 selected
+        - generic [ref=e150]:
+          - button "Library" [ref=e151]:
+            - img [ref=e152]
+            - generic [ref=e154]: Library
+          - img [ref=e155]
+      - button "4 Select Ad Copies 0 of 0 selected for export Library" [ref=e158] [cursor=pointer]:
+        - generic [ref=e159]:
+          - generic [ref=e160]: "4"
+          - generic [ref=e161]:
+            - heading "Select Ad Copies" [level=3] [ref=e162]
+            - paragraph [ref=e163]: 0 of 0 selected for export
+        - generic [ref=e164]:
+          - button "Library" [ref=e165]:
+            - img [ref=e166]
+            - generic [ref=e168]: Library
+          - img [ref=e169]
+```

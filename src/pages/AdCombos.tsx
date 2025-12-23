@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Image, Type, FileText, AlignLeft, Filter, X, Search, ChevronDown } from 'lucide-react';
-import { DataTable, type ColumnDef } from '../components/datatable';
+import { ArrowLeft, Image, Type, FileText, AlignLeft, Filter, X, Search, ChevronDown, Plus } from 'lucide-react';
+import { DataTable, DataTableSelectionModal, type ColumnDef } from '../components/datatable';
 import { PreviewGrid } from '../components/ad-creator/PreviewGrid';
 import {
     getProjects,
@@ -11,20 +11,91 @@ import {
     getAdCopies,
     getUsers,
     createAds,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
     getCreativeUrl,
     type Project,
     type Subproject,
     type Creative,
     type AdCopy,
     type User,
-    type ViewPreferencesConfig,
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { generateCombinations, type AdCombination } from '../types/ad-creator';
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+} from '../lib/datatable-defaults';
+
+interface SelectionCardProps {
+    title: string;
+    icon: React.ReactNode;
+    selectedCount: number;
+    totalCount: number;
+    onClick: () => void;
+    selectedItems?: string[];
+    accentColor?: string;
+}
+
+function SelectionCard({
+    title,
+    icon,
+    selectedCount,
+    totalCount,
+    onClick,
+    selectedItems = [],
+    accentColor = 'blue',
+}: SelectionCardProps) {
+    const colorClasses: Record<string, { bg: string; text: string; border: string; badge: string }> = {
+        blue: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+        purple: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700' },
+        green: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200', badge: 'bg-green-100 text-green-700' },
+        amber: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+    };
+
+    const colors = colorClasses[accentColor] || colorClasses.blue;
+    const hasSelection = selectedCount > 0;
+
+    return (
+        <div
+            className={`flex-1 min-w-[200px] border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
+                hasSelection ? `${colors.border} ${colors.bg}` : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={onClick}
+        >
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <span className={hasSelection ? colors.text : 'text-gray-500'}>{icon}</span>
+                    <span className="font-medium text-gray-900">{title}</span>
+                </div>
+                <Plus className={`w-5 h-5 ${hasSelection ? colors.text : 'text-gray-400'}`} />
+            </div>
+
+            <div className="flex items-center gap-2">
+                {hasSelection ? (
+                    <span className={`px-2.5 py-1 text-sm font-semibold rounded-full ${colors.badge}`}>
+                        {selectedCount} selected
+                    </span>
+                ) : (
+                    <span className="text-sm text-gray-500">Click to select from {totalCount}</span>
+                )}
+            </div>
+
+            {/* Preview of selected items */}
+            {selectedItems.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="text-xs text-gray-500 space-y-1 max-h-[60px] overflow-hidden">
+                        {selectedItems.slice(0, 2).map((item, idx) => (
+                            <div key={idx} className="truncate">{item}</div>
+                        ))}
+                        {selectedItems.length > 2 && (
+                            <div className="text-gray-400">+{selectedItems.length - 2} more</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface SelectionSectionProps {
     title: string;
@@ -73,19 +144,6 @@ function SelectionSection({
     );
 }
 
-// Color palette for dynamic colorMaps (same as Ads.tsx)
-const colorPalette = [
-    'bg-pink-500 text-white',
-    'bg-indigo-500 text-white',
-    'bg-cyan-500 text-white',
-    'bg-amber-500 text-white',
-    'bg-rose-500 text-white',
-    'bg-violet-500 text-white',
-    'bg-teal-500 text-white',
-    'bg-orange-500 text-white',
-    'bg-lime-500 text-white',
-    'bg-fuchsia-500 text-white',
-];
 
 interface FilterPillProps {
     label: string;
@@ -266,189 +324,15 @@ export function AdCombos() {
     const [selectedDescriptions, setSelectedDescriptions] = useState<Set<string>>(new Set());
     const [selectedCombinations, setSelectedCombinations] = useState<Set<string>>(new Set());
 
+    // Modal state for DataTable selection modals
+    const [openModal, setOpenModal] = useState<'creatives' | 'headlines' | 'primary' | 'descriptions' | null>(null);
+
     // Preview state
     const [showPreview, setShowPreview] = useState(false);
 
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
 
-    // View preferences state for each DataTable
-    const [creativesPrefs, setCreativesPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [headlinesPrefs, setHeadlinesPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [primaryPrefs, setPrimaryPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [descriptionsPrefs, setDescriptionsPrefs] = useState<ViewPreferencesConfig | null>(null);
-
-    // Shared/Team column preferences
-    const [sharedCreativesPrefs, setSharedCreativesPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedHeadlinesPrefs, setSharedHeadlinesPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPrimaryPrefs, setSharedPrimaryPrefs] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedDescriptionsPrefs, setSharedDescriptionsPrefs] = useState<ViewPreferencesConfig | null>(null);
-
-    // Team columns dropdown state
-    const [showTeamColumnsDropdown, setShowTeamColumnsDropdown] = useState(false);
-    const teamColumnsDropdownRef = useRef<HTMLDivElement>(null);
-
-    // Handle preferences change for each DataTable
-    const handleCreativesPrefsChange = async (prefs: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad-creator-creatives', prefs);
-        } catch (error) {
-            console.error('Failed to save creatives preferences:', error);
-        }
-    };
-
-    const handleHeadlinesPrefsChange = async (prefs: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad-creator-headlines', prefs);
-        } catch (error) {
-            console.error('Failed to save headlines preferences:', error);
-        }
-    };
-
-    const handlePrimaryPrefsChange = async (prefs: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad-creator-primary', prefs);
-        } catch (error) {
-            console.error('Failed to save primary preferences:', error);
-        }
-    };
-
-    const handleDescriptionsPrefsChange = async (prefs: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad-creator-descriptions', prefs);
-        } catch (error) {
-            console.error('Failed to save descriptions preferences:', error);
-        }
-    };
-
-    // Handle save columns for team - saves column_widths and column_order for all tables
-    const handleSaveColumnsForTeam = async () => {
-        try {
-            await Promise.all([
-                creativesPrefs?.column_widths || creativesPrefs?.column_order
-                    ? saveSharedViewPreferences('ad-creator-creatives', {
-                        column_widths: creativesPrefs?.column_widths,
-                        column_order: creativesPrefs?.column_order,
-                    })
-                    : Promise.resolve(),
-                headlinesPrefs?.column_widths || headlinesPrefs?.column_order
-                    ? saveSharedViewPreferences('ad-creator-headlines', {
-                        column_widths: headlinesPrefs?.column_widths,
-                        column_order: headlinesPrefs?.column_order,
-                    })
-                    : Promise.resolve(),
-                primaryPrefs?.column_widths || primaryPrefs?.column_order
-                    ? saveSharedViewPreferences('ad-creator-primary', {
-                        column_widths: primaryPrefs?.column_widths,
-                        column_order: primaryPrefs?.column_order,
-                    })
-                    : Promise.resolve(),
-                descriptionsPrefs?.column_widths || descriptionsPrefs?.column_order
-                    ? saveSharedViewPreferences('ad-creator-descriptions', {
-                        column_widths: descriptionsPrefs?.column_widths,
-                        column_order: descriptionsPrefs?.column_order,
-                    })
-                    : Promise.resolve(),
-            ]);
-            // Update shared prefs state
-            setSharedCreativesPrefs(prev => ({
-                ...prev,
-                column_widths: creativesPrefs?.column_widths,
-                column_order: creativesPrefs?.column_order,
-            }));
-            setSharedHeadlinesPrefs(prev => ({
-                ...prev,
-                column_widths: headlinesPrefs?.column_widths,
-                column_order: headlinesPrefs?.column_order,
-            }));
-            setSharedPrimaryPrefs(prev => ({
-                ...prev,
-                column_widths: primaryPrefs?.column_widths,
-                column_order: primaryPrefs?.column_order,
-            }));
-            setSharedDescriptionsPrefs(prev => ({
-                ...prev,
-                column_widths: descriptionsPrefs?.column_widths,
-                column_order: descriptionsPrefs?.column_order,
-            }));
-        } catch (error) {
-            console.error('Failed to save team columns:', error);
-        }
-    };
-
-    // Handle use team columns - loads team column_widths and column_order
-    const handleUseTeamColumns = () => {
-        if (sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order) {
-            setCreativesPrefs(prev => ({
-                ...prev,
-                column_widths: sharedCreativesPrefs?.column_widths,
-                column_order: sharedCreativesPrefs?.column_order,
-            }));
-        }
-        if (sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order) {
-            setHeadlinesPrefs(prev => ({
-                ...prev,
-                column_widths: sharedHeadlinesPrefs?.column_widths,
-                column_order: sharedHeadlinesPrefs?.column_order,
-            }));
-        }
-        if (sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order) {
-            setPrimaryPrefs(prev => ({
-                ...prev,
-                column_widths: sharedPrimaryPrefs?.column_widths,
-                column_order: sharedPrimaryPrefs?.column_order,
-            }));
-        }
-        if (sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order) {
-            setDescriptionsPrefs(prev => ({
-                ...prev,
-                column_widths: sharedDescriptionsPrefs?.column_widths,
-                column_order: sharedDescriptionsPrefs?.column_order,
-            }));
-        }
-    };
-
-    // Check if current columns match team columns
-    const isMatchingTeamColumns = useMemo(() => {
-        const hasTeamColumns = sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order ||
-            sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order ||
-            sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order ||
-            sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order;
-
-        if (!hasTeamColumns) return false;
-
-        const creativesMatch =
-            JSON.stringify(creativesPrefs?.column_widths || {}) === JSON.stringify(sharedCreativesPrefs?.column_widths || {}) &&
-            JSON.stringify(creativesPrefs?.column_order || []) === JSON.stringify(sharedCreativesPrefs?.column_order || []);
-        const headlinesMatch =
-            JSON.stringify(headlinesPrefs?.column_widths || {}) === JSON.stringify(sharedHeadlinesPrefs?.column_widths || {}) &&
-            JSON.stringify(headlinesPrefs?.column_order || []) === JSON.stringify(sharedHeadlinesPrefs?.column_order || []);
-        const primaryMatch =
-            JSON.stringify(primaryPrefs?.column_widths || {}) === JSON.stringify(sharedPrimaryPrefs?.column_widths || {}) &&
-            JSON.stringify(primaryPrefs?.column_order || []) === JSON.stringify(sharedPrimaryPrefs?.column_order || []);
-        const descriptionsMatch =
-            JSON.stringify(descriptionsPrefs?.column_widths || {}) === JSON.stringify(sharedDescriptionsPrefs?.column_widths || {}) &&
-            JSON.stringify(descriptionsPrefs?.column_order || []) === JSON.stringify(sharedDescriptionsPrefs?.column_order || []);
-
-        return creativesMatch && headlinesMatch && primaryMatch && descriptionsMatch;
-    }, [creativesPrefs, headlinesPrefs, primaryPrefs, descriptionsPrefs, sharedCreativesPrefs, sharedHeadlinesPrefs, sharedPrimaryPrefs, sharedDescriptionsPrefs]);
-
-    // Click outside handler for team columns dropdown
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (teamColumnsDropdownRef.current && !teamColumnsDropdownRef.current.contains(event.target as Node)) {
-                setShowTeamColumnsDropdown(false);
-            }
-        }
-        if (showTeamColumnsDropdown) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
-        }
-    }, [showTeamColumnsDropdown]);
 
     // Load initial data
     useEffect(() => {
@@ -471,34 +355,8 @@ export function AdCombos() {
                 setAdCopies(adCopiesData);
                 setUsers(usersData);
 
-                // Load shared/team preferences for all tables
-                const [sharedCreativesP, sharedHeadlinesP, sharedPrimaryP, sharedDescriptionsP] = await Promise.all([
-                    getSharedViewPreferences('ad-creator-creatives'),
-                    getSharedViewPreferences('ad-creator-headlines'),
-                    getSharedViewPreferences('ad-creator-primary'),
-                    getSharedViewPreferences('ad-creator-descriptions'),
-                ]);
-
-                if (sharedCreativesP) setSharedCreativesPrefs(sharedCreativesP);
-                if (sharedHeadlinesP) setSharedHeadlinesPrefs(sharedHeadlinesP);
-                if (sharedPrimaryP) setSharedPrimaryPrefs(sharedPrimaryP);
-                if (sharedDescriptionsP) setSharedDescriptionsPrefs(sharedDescriptionsP);
-
                 if (user?.id) {
                     setCurrentUserId(user.id);
-
-                    // Load user view preferences for each DataTable
-                    const [creativesP, headlinesP, primaryP, descriptionsP] = await Promise.all([
-                        getUserViewPreferences(user.id, 'ad-creator-creatives'),
-                        getUserViewPreferences(user.id, 'ad-creator-headlines'),
-                        getUserViewPreferences(user.id, 'ad-creator-primary'),
-                        getUserViewPreferences(user.id, 'ad-creator-descriptions'),
-                    ]);
-
-                    if (creativesP) setCreativesPrefs(creativesP);
-                    if (headlinesP) setHeadlinesPrefs(headlinesP);
-                    if (primaryP) setPrimaryPrefs(primaryP);
-                    if (descriptionsP) setDescriptionsPrefs(descriptionsP);
                 }
             } catch (error) {
                 console.error('Failed to load data:', error);
@@ -634,28 +492,9 @@ export function AdCombos() {
         }
     };
 
-    // Subproject options lookup
-    const subprojectOptions = useMemo(() =>
-        allSubprojects.map(s => ({ label: s.name, value: s.id })),
-        [allSubprojects]
-    );
-
-    // Generate colorMaps for projects and subprojects (consistent with filter pills)
-    const projectColorMap = useMemo(() =>
-        projects.reduce((map, p, i) => {
-            map[p.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [projects]
-    );
-
-    const subprojectColorMap = useMemo(() =>
-        allSubprojects.reduce((map, s, i) => {
-            map[s.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [allSubprojects]
-    );
+    // Generate colorMaps using shared utility
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(allSubprojects), [allSubprojects]);
 
     // Column definitions for Creatives DataTable
     const creativeColumns: ColumnDef<Creative>[] = [
@@ -720,26 +559,8 @@ export function AdCombos() {
                 return '-';
             },
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: subprojectOptions,
-            colorMap: subprojectColorMap,
-        },
+        createProjectColumn<Creative>({ projects, subprojects: allSubprojects, projectColorMap, editable: false }),
+        createSubprojectColumn<Creative>({ projects, subprojects: allSubprojects, subprojectColorMap, editable: false }),
         {
             key: 'user_id',
             header: 'Created By',
@@ -777,26 +598,8 @@ export function AdCombos() {
             editable: false,
             type: 'text',
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 120,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 120,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: subprojectOptions,
-            colorMap: subprojectColorMap,
-        },
+        createProjectColumn<AdCopy>({ projects, subprojects: allSubprojects, projectColorMap, editable: false }),
+        createSubprojectColumn<AdCopy>({ projects, subprojects: allSubprojects, subprojectColorMap, editable: false }),
         {
             key: 'user_id',
             header: 'Created By',
@@ -883,189 +686,61 @@ export function AdCombos() {
                     onSelect={setCreatedById}
                 />
 
-                {/* Spacer */}
-                <div className="flex-1" />
-
-                {/* Team Columns Dropdown */}
-                <div ref={teamColumnsDropdownRef} className="relative">
-                    {isMatchingTeamColumns ? (
-                        /* Just show indicator when matching team columns */
-                        <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-green-100 text-green-700 whitespace-nowrap">
-                            ✓ Team Columns
-                        </span>
-                    ) : (
-                        /* Show dropdown button when not matching */
-                        <>
-                            <button
-                                type="button"
-                                onClick={() => setShowTeamColumnsDropdown(!showTeamColumnsDropdown)}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap bg-gray-100 text-gray-600 hover:bg-gray-200"
-                            >
-                                Your Columns
-                                <ChevronDown className="w-3 h-3" />
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {showTeamColumnsDropdown && (
-                                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[160px] z-50">
-                                    {/* Use Team Columns */}
-                                    {(sharedCreativesPrefs?.column_widths || sharedCreativesPrefs?.column_order ||
-                                      sharedHeadlinesPrefs?.column_widths || sharedHeadlinesPrefs?.column_order ||
-                                      sharedPrimaryPrefs?.column_widths || sharedPrimaryPrefs?.column_order ||
-                                      sharedDescriptionsPrefs?.column_widths || sharedDescriptionsPrefs?.column_order) && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                handleUseTeamColumns();
-                                                setShowTeamColumnsDropdown(false);
-                                            }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
-                                        >
-                                            Use Team Columns
-                                        </button>
-                                    )}
-
-                                    {/* Save Columns for Team */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            handleSaveColumnsForTeam();
-                                            setShowTeamColumnsDropdown(false);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
-                                    >
-                                        Save Columns for Team
-                                    </button>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
             </div>
 
             {/* Main Content - Scrollable */}
-            <div className="flex-1 overflow-auto px-6 py-6 space-y-4">
-                {/* Creatives Section */}
-                <SelectionSection
-                    title="Creatives"
-                    icon={<Image className="w-4 h-4" />}
-                    selectedCount={selectedCreatives.size}
-                    totalCount={filteredCreatives.length}
-                >
-                    <DataTable
-                        columns={creativeColumns}
-                        data={filteredCreatives}
-                        getRowId={(row) => row.id}
-                        isLoading={false}
-                        emptyMessage="No creatives found"
-                        selectable={true}
-                        selectedIds={selectedCreatives}
-                        onSelectionChange={setSelectedCreatives}
-                        viewMode={creativesViewMode}
-                        onViewModeChange={setCreativesViewMode}
-                        cardColumns={5}
-                        galleryConfig={{
-                            mediaUrlKey: 'storage_path',
-                            mediaTypeKey: 'type',
-                            nameKey: 'name',
-                            projectKey: 'project_id',
-                            subprojectKey: 'subproject_id',
-                            userKey: 'user_id',
-                            dateKey: 'created_at',
-                            fileSizeKey: 'file_size',
-                            rowNumberKey: 'row_number',
-                            showFileInfo: false,
-                        }}
-                        galleryLookups={{
-                            projects: projectNameMap,
-                            subprojects: subprojectNameMap,
-                            users: userNameMap,
-                            projectColors: projectColorMap,
-                            subprojectColors: subprojectColorMap,
-                        }}
-                        resizable={true}
-                        sortable={true}
-                        viewId="ad-creator-creatives"
-                        userId={currentUserId || undefined}
-                        initialPreferences={creativesPrefs || undefined}
-                        onPreferencesChange={handleCreativesPrefsChange}
+            <div className="flex-1 overflow-auto px-6 py-6 space-y-6">
+                {/* Selection Cards Row */}
+                <div className="flex gap-4 flex-wrap">
+                    <SelectionCard
+                        title="Creatives"
+                        icon={<Image className="w-5 h-5" />}
+                        selectedCount={selectedCreatives.size}
+                        totalCount={filteredCreatives.length}
+                        onClick={() => setOpenModal('creatives')}
+                        selectedItems={Array.from(selectedCreatives).map(id => {
+                            const creative = filteredCreatives.find(c => c.id === id);
+                            return creative?.name || id;
+                        })}
+                        accentColor="blue"
                     />
-                </SelectionSection>
-
-                {/* Headlines Section */}
-                <SelectionSection
-                    title="Headlines"
-                    icon={<Type className="w-4 h-4" />}
-                    selectedCount={selectedHeadlines.size}
-                    totalCount={headlines.length}
-                >
-                    <DataTable
-                        columns={adCopyColumns}
-                        data={headlines}
-                        getRowId={(row) => row.id}
-                        isLoading={false}
-                        emptyMessage="No headlines found"
-                        selectable={true}
-                        selectedIds={selectedHeadlines}
-                        onSelectionChange={setSelectedHeadlines}
-                        resizable={true}
-                        sortable={true}
-                        viewId="ad-creator-headlines"
-                        userId={currentUserId || undefined}
-                        initialPreferences={headlinesPrefs || undefined}
-                        onPreferencesChange={handleHeadlinesPrefsChange}
+                    <SelectionCard
+                        title="Headlines"
+                        icon={<Type className="w-5 h-5" />}
+                        selectedCount={selectedHeadlines.size}
+                        totalCount={headlines.length}
+                        onClick={() => setOpenModal('headlines')}
+                        selectedItems={Array.from(selectedHeadlines).map(id => {
+                            const headline = headlines.find(h => h.id === id);
+                            return headline?.text || id;
+                        })}
+                        accentColor="purple"
                     />
-                </SelectionSection>
-
-                {/* Primary Text Section */}
-                <SelectionSection
-                    title="Primary Text"
-                    icon={<FileText className="w-4 h-4" />}
-                    selectedCount={selectedPrimary.size}
-                    totalCount={primaryTexts.length}
-                >
-                    <DataTable
-                        columns={adCopyColumns}
-                        data={primaryTexts}
-                        getRowId={(row) => row.id}
-                        isLoading={false}
-                        emptyMessage="No primary text found"
-                        selectable={true}
-                        selectedIds={selectedPrimary}
-                        onSelectionChange={setSelectedPrimary}
-                        resizable={true}
-                        sortable={true}
-                        viewId="ad-creator-primary"
-                        userId={currentUserId || undefined}
-                        initialPreferences={primaryPrefs || undefined}
-                        onPreferencesChange={handlePrimaryPrefsChange}
+                    <SelectionCard
+                        title="Primary Text"
+                        icon={<FileText className="w-5 h-5" />}
+                        selectedCount={selectedPrimary.size}
+                        totalCount={primaryTexts.length}
+                        onClick={() => setOpenModal('primary')}
+                        selectedItems={Array.from(selectedPrimary).map(id => {
+                            const primary = primaryTexts.find(p => p.id === id);
+                            return primary?.text || id;
+                        })}
+                        accentColor="green"
                     />
-                </SelectionSection>
-
-                {/* Descriptions Section */}
-                <SelectionSection
-                    title="Descriptions"
-                    icon={<AlignLeft className="w-4 h-4" />}
-                    selectedCount={selectedDescriptions.size}
-                    totalCount={descriptions.length}
-                >
-                    <DataTable
-                        columns={adCopyColumns}
-                        data={descriptions}
-                        getRowId={(row) => row.id}
-                        isLoading={false}
-                        emptyMessage="No descriptions found"
-                        selectable={true}
-                        selectedIds={selectedDescriptions}
-                        onSelectionChange={setSelectedDescriptions}
-                        resizable={true}
-                        sortable={true}
-                        viewId="ad-creator-descriptions"
-                        userId={currentUserId || undefined}
-                        initialPreferences={descriptionsPrefs || undefined}
-                        onPreferencesChange={handleDescriptionsPrefsChange}
+                    <SelectionCard
+                        title="Descriptions"
+                        icon={<AlignLeft className="w-5 h-5" />}
+                        selectedCount={selectedDescriptions.size}
+                        totalCount={descriptions.length}
+                        onClick={() => setOpenModal('descriptions')}
+                        selectedItems={Array.from(selectedDescriptions).map(id => {
+                            const desc = descriptions.find(d => d.id === id);
+                            return desc?.text || id;
+                        })}
+                        accentColor="amber"
                     />
-                </SelectionSection>
+                </div>
 
                 {/* Summary Section */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -1161,6 +836,85 @@ export function AdCombos() {
                     </button>
                 </div>
             </div>
+
+            {/* Selection Modals */}
+            <DataTableSelectionModal
+                title="Select Creatives"
+                isOpen={openModal === 'creatives'}
+                onClose={() => setOpenModal(null)}
+                onConfirm={(ids) => setSelectedCreatives(ids)}
+                initialSelectedIds={selectedCreatives}
+                confirmText="Select Creatives"
+                columns={creativeColumns}
+                data={filteredCreatives}
+                getRowId={(row) => row.id}
+                emptyMessage="No creatives found"
+                viewMode={creativesViewMode}
+                onViewModeChange={setCreativesViewMode}
+                cardColumns={5}
+                galleryConfig={{
+                    mediaUrlKey: 'storage_path',
+                    mediaTypeKey: 'type',
+                    nameKey: 'name',
+                    projectKey: 'project_id',
+                    subprojectKey: 'subproject_id',
+                    userKey: 'user_id',
+                    dateKey: 'created_at',
+                    fileSizeKey: 'file_size',
+                    rowNumberKey: 'row_number',
+                    showFileInfo: false,
+                }}
+                galleryLookups={{
+                    projects: projectNameMap,
+                    subprojects: subprojectNameMap,
+                    users: userNameMap,
+                    projectColors: projectColorMap,
+                    subprojectColors: subprojectColorMap,
+                }}
+                viewId="ad-creator-creatives"
+            />
+
+            <DataTableSelectionModal
+                title="Select Headlines"
+                isOpen={openModal === 'headlines'}
+                onClose={() => setOpenModal(null)}
+                onConfirm={(ids) => setSelectedHeadlines(ids)}
+                initialSelectedIds={selectedHeadlines}
+                confirmText="Select Headlines"
+                columns={adCopyColumns}
+                data={headlines}
+                getRowId={(row) => row.id}
+                emptyMessage="No headlines found"
+                viewId="ad-creator-headlines"
+            />
+
+            <DataTableSelectionModal
+                title="Select Primary Text"
+                isOpen={openModal === 'primary'}
+                onClose={() => setOpenModal(null)}
+                onConfirm={(ids) => setSelectedPrimary(ids)}
+                initialSelectedIds={selectedPrimary}
+                confirmText="Select Primary Text"
+                columns={adCopyColumns}
+                data={primaryTexts}
+                getRowId={(row) => row.id}
+                emptyMessage="No primary text found"
+                viewId="ad-creator-primary"
+            />
+
+            <DataTableSelectionModal
+                title="Select Descriptions"
+                isOpen={openModal === 'descriptions'}
+                onClose={() => setOpenModal(null)}
+                onConfirm={(ids) => setSelectedDescriptions(ids)}
+                initialSelectedIds={selectedDescriptions}
+                confirmText="Select Descriptions"
+                columns={adCopyColumns}
+                data={descriptions}
+                getRowId={(row) => row.id}
+                emptyMessage="No descriptions found"
+                viewId="ad-creator-descriptions"
+            />
         </div>
     );
 }

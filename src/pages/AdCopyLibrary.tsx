@@ -9,20 +9,22 @@ import {
     getProjects,
     getSubprojects,
     getUsers,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    deleteUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
     saveRowOrder,
     type AdCopy,
     type Project,
     type Subproject,
     type User,
-    type ViewPreferencesConfig
 } from '../lib/supabase-service';
 import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+    AD_COPY_TYPE_COLORS,
+    TRAFFIC_PLATFORM_COLORS,
+    COLUMN_WIDTH_DEFAULTS,
+} from '../lib/datatable-defaults';
 
 export function AdCopyLibrary() {
     const [copies, setCopies] = useState<AdCopy[]>([]);
@@ -45,50 +47,8 @@ export function AdCopyLibrary() {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // View preferences state (sort, filter, group, wrap, column_widths, column_order)
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
-
     // Column config overrides (for field editor changes - options, colorMaps)
     const [columnConfigs, setColumnConfigs] = useState<Record<string, { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }>>({});
-
-    // Handle view preferences change (auto-save per user)
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ad_copies', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    // Handle save for everyone
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = copies.map(c => c.id);
-            await saveSharedViewPreferences('ad_copies', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    // Handle reset to shared preferences
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'ad_copies');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
 
     // Handle column config changes (from field editor)
     const handleColumnConfigChange = (columnKey: string, updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }) => {
@@ -109,63 +69,18 @@ export function AdCopyLibrary() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [copiesData, projectsData, subprojectsData, usersData, user, sharedPrefs] = await Promise.all([
+            const [copiesData, projectsData, subprojectsData, usersData, user] = await Promise.all([
                 getAdCopies(),
                 getProjects(),
                 getSubprojects(),
                 getUsers(),
                 getCurrentUser(),
-                getSharedViewPreferences('ad_copies')
             ]);
-
-            // Store shared preferences (including column_widths and column_order)
-            if (sharedPrefs) {
-                setSharedPreferences({
-                    sort_config: sharedPrefs.sort_config,
-                    filter_config: sharedPrefs.filter_config,
-                    group_config: sharedPrefs.group_config,
-                    wrap_config: sharedPrefs.wrap_config,
-                    row_order: sharedPrefs.row_order,
-                    column_widths: sharedPrefs.column_widths,
-                    column_order: sharedPrefs.column_order
-                });
-            }
 
             if (user?.id) {
                 setCurrentUserId(user.id);
-                // Load saved user preferences
-                const prefs = await getUserViewPreferences(user.id, 'ad_copies');
-
-                // Store user view preferences (including column_widths and column_order)
-                if (prefs) {
-                    setUserPreferences({
-                        sort_config: prefs.sort_config,
-                        filter_config: prefs.filter_config,
-                        group_config: prefs.group_config,
-                        wrap_config: prefs.wrap_config,
-                        row_order: prefs.row_order,
-                        column_widths: prefs.column_widths,
-                        column_order: prefs.column_order
-                    });
-                }
-
-                // Load row order (user's or shared)
-                const rowOrder = prefs?.row_order || sharedPrefs?.row_order;
-                if (rowOrder && rowOrder.length > 0) {
-                    // Sort copies based on saved order
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    const ordered = [...copiesData].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                    setCopies(ordered);
-                } else {
-                    setCopies(copiesData);
-                }
-            } else {
-                setCopies(copiesData);
             }
+            setCopies(copiesData);
             setProjects(projectsData);
             setSubprojects(subprojectsData);
             setUsers(usersData);
@@ -350,31 +265,9 @@ export function AdCopyLibrary() {
         }
     };
 
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMap for projects
-    const projectColorMap = projects.reduce((map, project, index) => {
-        map[project.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
-
-    // Generate colorMap for subprojects
-    const subprojectColorMap = subprojects.reduce((map, subproject, index) => {
-        map[subproject.id] = colorPalette[index % colorPalette.length];
-        return map;
-    }, {} as Record<string, string>);
+    // Generate colorMaps using shared utility
+    const projectColorMap = generateColorMap(projects);
+    const subprojectColorMap = generateColorMap(subprojects);
 
     // Column Definitions
     const columns: ColumnDef<AdCopy>[] = [
@@ -407,53 +300,15 @@ export function AdCopyLibrary() {
                 { label: 'Description', value: 'description' },
                 { label: 'Video Ad', value: 'video_ad_script' },
             ],
-            colorMap: columnConfigs['type']?.colorMap || {
-                'primary_text': 'bg-blue-500 text-white',
-                'headline': 'bg-purple-500 text-white',
-                'description': 'bg-gray-500 text-white',
-                'video_ad_script': 'bg-emerald-500 text-white',
-            },
+            colorMap: columnConfigs['type']?.colorMap || AD_COPY_TYPE_COLORS,
         },
         {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            optionsEditable: false, // Options managed by projects table
-            fallbackKey: 'project', // Legacy field for old data
+            ...createProjectColumn<AdCopy>({ projects, subprojects, projectColorMap }),
             colorMap: columnConfigs['project_id']?.colorMap || projectColorMap,
         },
         {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: (row) => {
-                // Show all subprojects if no project selected, otherwise filter by project
-                if (!row.project_id) {
-                    return subprojects.map(s => ({ label: s.name, value: s.id }));
-                }
-                return subprojects
-                    .filter(s => s.project_id === row.project_id)
-                    .map(s => ({
-                        label: s.name,
-                        value: s.id
-                    }));
-            },
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
+            ...createSubprojectColumn<AdCopy>({ projects, subprojects, subprojectColorMap }),
             colorMap: columnConfigs['subproject_id']?.colorMap || subprojectColorMap,
-            dependsOn: {
-                parentKey: 'project_id',
-                getParentValue: (subprojectId) => {
-                    const sub = subprojects.find(s => s.id === subprojectId);
-                    return sub?.project_id ?? null;
-                },
-            },
         },
         {
             key: 'platform',
@@ -468,11 +323,7 @@ export function AdCopyLibrary() {
                 { label: 'IG', value: 'IG' },
                 { label: 'All', value: 'All' },
             ],
-            colorMap: columnConfigs['platform']?.colorMap || {
-                'FB': 'bg-teal-500 text-white',
-                'IG': 'bg-rose-500 text-white',
-                'All': 'bg-indigo-500 text-white',
-            },
+            colorMap: columnConfigs['platform']?.colorMap || TRAFFIC_PLATFORM_COLORS,
         },
         {
             key: 'created_at',
@@ -514,15 +365,9 @@ export function AdCopyLibrary() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'type']}
-                // View persistence (includes sort, filter, group, wrap, column_widths, column_order)
                 viewId="ad_copies"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
                 // Column config editing (field editor)
                 onColumnConfigChange={handleColumnConfigChange}
             />

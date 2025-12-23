@@ -13,32 +13,18 @@ import {
     getProjects,
     getSubprojects,
     getUsers,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
-    deleteUserViewPreferences,
     saveRowOrder,
 } from "../lib/supabase-service";
-import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutput, VideoOutputLogEntry } from "../lib/supabase-service";
+import type { Project, Subproject, User, VideoOutput, VideoOutputLogEntry } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
 import { generateVideo } from "../lib/video-service";
 import { Play, Loader2, Terminal, X, Minimize2, Maximize2, RefreshCw } from "lucide-react";
 import { VIDEO_MODEL_OPTIONS, VIDEO_MODEL_COLOR_MAP } from "../constants/video";
-
-// Color palette for dynamic colorMaps (defined outside component to avoid recreation)
-const COLOR_PALETTE = [
-    'bg-pink-500 text-white',
-    'bg-indigo-500 text-white',
-    'bg-cyan-500 text-white',
-    'bg-amber-500 text-white',
-    'bg-rose-500 text-white',
-    'bg-violet-500 text-white',
-    'bg-teal-500 text-white',
-    'bg-orange-500 text-white',
-    'bg-lime-500 text-white',
-    'bg-fuchsia-500 text-white',
-];
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+} from "../lib/datatable-defaults";
 
 interface VideoGeneratorRow {
     id: string;
@@ -71,10 +57,6 @@ export function VideoGenerator() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [users, setUsers] = useState<User[]>([]);
-
-    // View preferences
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
 
     // Track which rows are currently submitting (prevents double-click)
     const [generatingRows, setGeneratingRows] = useState<Set<string>>(new Set());
@@ -304,22 +286,9 @@ export function VideoGenerator() {
         return undefined;
     }, [sessions, generators]);
 
-    // Generate colorMaps for projects and subprojects
-    const projectColorMap = useMemo(() =>
-        projects.reduce((map, p, i) => {
-            map[p.id] = COLOR_PALETTE[i % COLOR_PALETTE.length];
-            return map;
-        }, {} as Record<string, string>),
-        [projects]
-    );
-
-    const subprojectColorMap = useMemo(() =>
-        subprojects.reduce((map, s, i) => {
-            map[s.id] = COLOR_PALETTE[i % COLOR_PALETTE.length];
-            return map;
-        }, {} as Record<string, string>),
-        [subprojects]
-    );
+    // Generate colorMaps using shared utility
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
     // Status color map
     const statusColorMap: Record<string, string> = {
@@ -334,54 +303,14 @@ export function VideoGenerator() {
         async function loadData() {
             setIsLoading(true);
             try {
-                const [generatorsData, projectsData, subprojectsData, usersData, userPrefs, sharedPrefs] = await Promise.all([
+                const [generatorsData, projectsData, subprojectsData, usersData] = await Promise.all([
                     getVideoGenerators(),
                     getProjects(),
                     getSubprojects(),
                     getUsers(),
-                    currentUserId ? getUserViewPreferences(currentUserId, 'video-generator') : null,
-                    getSharedViewPreferences('video-generator'),
                 ]);
 
-                // Store shared preferences
-                if (sharedPrefs) {
-                    setSharedPreferences({
-                        sort_config: sharedPrefs.sort_config,
-                        filter_config: sharedPrefs.filter_config,
-                        group_config: sharedPrefs.group_config,
-                        wrap_config: sharedPrefs.wrap_config,
-                        row_order: sharedPrefs.row_order,
-                        column_widths: sharedPrefs.column_widths,
-                        column_order: sharedPrefs.column_order
-                    });
-                }
-
-                // Store user view preferences
-                if (userPrefs) {
-                    setUserPreferences({
-                        sort_config: userPrefs.sort_config,
-                        filter_config: userPrefs.filter_config,
-                        group_config: userPrefs.group_config,
-                        wrap_config: userPrefs.wrap_config,
-                        row_order: userPrefs.row_order,
-                        column_widths: userPrefs.column_widths,
-                        column_order: userPrefs.column_order
-                    });
-                }
-
-                // Apply row order (user's or shared)
-                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
-                let finalGenerators = generatorsData as VideoGeneratorRow[];
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    finalGenerators = [...finalGenerators].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                }
-
-                setGenerators(finalGenerators);
+                setGenerators(generatorsData as VideoGeneratorRow[]);
                 setProjects(projectsData);
                 setSubprojects(subprojectsData);
                 setUsers(usersData);
@@ -494,41 +423,6 @@ export function VideoGenerator() {
         return () => clearInterval(interval);
     }, [sessions, refreshSessionLogs]);
 
-    // View persistence handlers
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'video-generator', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = generators.map(g => g.id);
-            await saveSharedViewPreferences('video-generator', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'video-generator');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
 
     // Create new row
     const handleCreateRow = useCallback(async () => {
@@ -885,41 +779,8 @@ export function VideoGenerator() {
             editable: false,
             type: 'id',
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: (row) => {
-                if (!row.project_id) {
-                    return subprojects.map(s => ({ label: s.name, value: s.id }));
-                }
-                return subprojects
-                    .filter(s => s.project_id === row.project_id)
-                    .map(s => ({ label: s.name, value: s.id }));
-            },
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            colorMap: subprojectColorMap,
-            dependsOn: {
-                parentKey: 'project_id',
-                getParentValue: (subprojectId) => {
-                    const sub = subprojects.find(s => s.id === subprojectId);
-                    return sub?.project_id ?? null;
-                },
-            },
-        },
+        createProjectColumn<VideoGeneratorRow>({ projects, subprojects, projectColorMap }),
+        createSubprojectColumn<VideoGeneratorRow>({ projects, subprojects, subprojectColorMap }),
         {
             key: 'owner_id',
             header: 'Owner',
@@ -1191,16 +1052,10 @@ export function VideoGenerator() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'status']}
                 showRowActions={true}
-                // View persistence
                 viewId="video-generator"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
                 selectable={true}
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}

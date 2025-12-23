@@ -1,6 +1,10 @@
 // Main DataTable export
 export { DataTable, default } from './DataTable';
 
+// Selection Modal
+export { DataTableSelectionModal } from './DataTableSelectionModal';
+export type { DataTableSelectionModalProps } from './DataTableSelectionModal';
+
 // Types
 export type {
     ColumnDef,

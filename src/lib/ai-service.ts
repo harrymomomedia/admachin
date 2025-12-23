@@ -13,6 +13,7 @@ export interface PromptData {
 interface AutoFillProductParams {
     model: AIModel;
     briefDescription: string;
+    maxWordsPerSection?: number; // Default: 100
 }
 
 interface AutoFillResult {
@@ -24,6 +25,13 @@ interface AutoFillResult {
     suggestedSubprojectName?: string;
 }
 
+// History round for iterative refinement
+interface HistoryRound {
+    round: number;
+    personas: Array<{ name: string; description: string }>;
+    feedback: string;
+}
+
 interface GeneratePersonasParams {
     model: AIModel;
     productDescription: string;
@@ -31,6 +39,22 @@ interface GeneratePersonasParams {
     swipeFiles?: string;
     customPrompt?: string;
     personaCount?: number; // How many personas to generate
+    // Marketing context fields
+    keyQualifyingCriteria?: string;
+    offerFlow?: string;
+    proofPoints?: string;
+    primaryObjections?: string;
+    // Iterative refinement
+    history?: HistoryRound[];
+    currentFeedback?: string;
+}
+
+// Result type that includes prompts for debugging/viewing
+export interface GenerationResult<T> {
+    data: T;
+    systemPrompt: string;
+    userPrompt: string;
+    model: AIModel;
 }
 
 interface GenerateAnglesParams {
@@ -39,6 +63,11 @@ interface GenerateAnglesParams {
     productDescription: string;
     angleCount?: number; // How many angles to generate per persona
     customPrompt?: string;
+    // Marketing context fields
+    keyQualifyingCriteria?: string;
+    offerFlow?: string;
+    proofPoints?: string;
+    primaryObjections?: string;
 }
 
 interface GenerateAdCopiesParams {
@@ -54,6 +83,11 @@ interface GenerateAdCopiesParams {
     count: number;
     adCopyType?: 'FB Ad Text' | 'FB Ad Headline' | 'Video Transcript (Only Voice)' | 'Video Ad Script';
     customPrompt?: string;
+    // Marketing context fields
+    keyQualifyingCriteria?: string;
+    offerFlow?: string;
+    proofPoints?: string;
+    primaryObjections?: string;
 }
 
 // ============================================
@@ -61,41 +95,32 @@ interface GenerateAdCopiesParams {
 // ============================================
 
 export async function autoFillProductInfo(params: AutoFillProductParams): Promise<AutoFillResult> {
-    const { model, briefDescription } = params;
+    const { model, briefDescription, maxWordsPerSection = 100 } = params;
 
-    console.log('[AI Auto-Fill] Starting auto-fill with:', { model, briefDescriptionLength: briefDescription.length });
+    console.log('[AI Auto-Fill] Starting auto-fill with:', { model, briefDescriptionLength: briefDescription.length, maxWordsPerSection });
 
-    const systemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into detailed marketing inputs for an ad campaign.
+    const systemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into concise marketing inputs for an ad campaign.
+
+IMPORTANT: Each field must be approximately ${maxWordsPerSection} WORDS. Keep responses focused and concise.
 
 Generate:
-1. productDescription: A comprehensive 3-4 paragraph description covering:
-   - What the product/service is
-   - Who it's for
-   - Key benefits and value proposition
-   - Any relevant context or background
+1. productDescription (~${maxWordsPerSection} words): What the product/service is, who it's for, and key benefits.
 
-2. personaInput: Describe 3-5 potential customer personas/audiences who would be interested, including:
-   - Their demographics (age, occupation, situation)
-   - What problems they face
-   - Why they'd be interested in this product/service
+2. personaInput (~${maxWordsPerSection} words): Brief description of 2-3 target audience types and their key characteristics.
 
-3. swipeFiles: Suggest 5-7 compelling headline examples that could work for this product, varying in style:
-   - Question-based headlines
-   - Benefit-focused headlines
-   - Urgency/scarcity headlines
-   - Social proof headlines
+3. swipeFiles (~${maxWordsPerSection} words): 4-5 compelling headline examples in various styles.
 
-4. productCustomPrompt: Any special considerations for ad copywriting (tone, legal requirements, sensitivities, etc.)
+4. productCustomPrompt (~${maxWordsPerSection} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
 
-5. suggestedProjectName: A short, clear project name (2-4 words)
+5. suggestedProjectName: A short project name (2-4 words)
 
-6. suggestedSubprojectName: An optional subproject name if the campaign could have multiple phases/audiences
+6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
 
 Return ONLY a valid JSON object with these exact keys, no additional text.`;
 
     const userPrompt = `Brief Description: ${briefDescription}
 
-Generate comprehensive product information for an ad campaign in JSON format.`;
+Generate product information (~${maxWordsPerSection} words per field) in JSON format.`;
 
     try {
         let response: string;
@@ -142,32 +167,60 @@ Generate comprehensive product information for an ad campaign in JSON format.`;
 // PERSONA GENERATION
 // ============================================
 
-export async function generatePersonas(params: GeneratePersonasParams): Promise<Persona[]> {
-    const { model, productDescription, personaInput, swipeFiles, customPrompt, personaCount = 5 } = params;
+export async function generatePersonas(params: GeneratePersonasParams): Promise<GenerationResult<Persona[]>> {
+    const {
+        model, productDescription, personaInput, swipeFiles, customPrompt, personaCount = 5,
+        keyQualifyingCriteria, offerFlow, proofPoints, primaryObjections,
+        history, currentFeedback
+    } = params;
 
-    const systemPrompt = `You are an expert marketing strategist and audience analyst. Your task is to generate detailed customer personas based on the product/service description provided.
+    const isRefinement = history && history.length > 0;
 
-Generate exactly ${personaCount} diverse, realistic personas that would be interested in this product/service. For each persona, provide:
-- name: First name only
-- age: Realistic age
-- role: Their role/occupation/situation
-- tagline: A compelling one-line description of their situation
-- background: 2-3 sentences about their history and context
-- current_situation: Current circumstances and relationship to the product/service
-- pain_points: Array of 3-5 specific pain points they're experiencing
-- goals: Array of 3-5 concrete goals they want to achieve
-- objections: Array of 3-5 potential objections or concerns
-- motivations: Array of 3-5 key motivators (short phrases)
+    const systemPrompt = isRefinement
+        ? `You are an expert marketing strategist refining target audience personas based on user feedback.
 
-Return ONLY a valid JSON array of personas, no additional text.`;
+Review the previous generation rounds and feedback below, then generate ${personaCount} IMPROVED personas that address the feedback.
 
-    const userPrompt = `Product/Service: ${productDescription}
+Each persona should have:
+- name: A short descriptive label (2-4 words, e.g., "Recent Survivor", "Skeptical Family Member")
+- description: A single paragraph (max 100 words) describing who they are, their situation, pain points, and what motivates them to act
 
-${personaInput ? `Additional Persona Context: ${personaInput}\n` : ''}
-${swipeFiles ? `Reference Headlines/Content: ${swipeFiles}\n` : ''}
-${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
+Apply the feedback to improve the personas. Return ONLY a valid JSON array.`
+        : `You are an expert marketing strategist. Generate ${personaCount} target audience personas.
 
-Generate exactly ${personaCount} detailed customer personas in JSON format.`;
+Each persona should have:
+- name: A short descriptive label (2-4 words, e.g., "Recent Survivor", "Skeptical Family Member")
+- description: A single paragraph (max 100 words) describing who they are, their situation, pain points, and what motivates them to act
+
+Keep each description focused and actionable for ad copywriting. Return ONLY a valid JSON array.`;
+
+    // Build user prompt with history context if refining
+    let userPrompt = `Product/Service: ${productDescription}
+
+${personaInput ? `Target Audience Info: ${personaInput}\n` : ''}
+${keyQualifyingCriteria ? `Key Qualifying Criteria: ${keyQualifyingCriteria}\n` : ''}
+${offerFlow ? `Offer Flow: ${offerFlow}\n` : ''}
+${proofPoints ? `Proof Points: ${proofPoints}\n` : ''}
+${primaryObjections ? `Primary Objections to Address: ${primaryObjections}\n` : ''}
+${swipeFiles ? `Reference Content/Winner Ads: ${swipeFiles}\n` : ''}
+${customPrompt ? `Instructions: ${customPrompt}\n` : ''}`;
+
+    if (isRefinement && history) {
+        userPrompt += `\n--- PREVIOUS GENERATIONS & FEEDBACK ---\n`;
+        for (const round of history) {
+            userPrompt += `\nRound ${round.round} Output:\n`;
+            userPrompt += round.personas.map(p => `• ${p.name}: ${p.description}`).join('\n');
+            if (round.feedback) {
+                userPrompt += `\n\nFeedback after Round ${round.round}: "${round.feedback}"\n`;
+            }
+        }
+        if (currentFeedback) {
+            userPrompt += `\n--- CURRENT FEEDBACK TO ADDRESS ---\n"${currentFeedback}"\n`;
+        }
+        userPrompt += `\nGenerate ${personaCount} IMPROVED personas as JSON array with "name" and "description" fields, addressing all feedback above.`;
+    } else {
+        userPrompt += `Generate ${personaCount} personas as JSON array with "name" and "description" fields only.`;
+    }
 
     try {
         let response: string;
@@ -199,11 +252,13 @@ Generate exactly ${personaCount} detailed customer personas in JSON format.`;
         const personas = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag
-        return personas.map((p: any, idx: number) => ({
+        const data = personas.map((p: any, idx: number) => ({
             ...p,
             id: `${Date.now()}-${idx}`,
             selected: false
         }));
+
+        return { data, systemPrompt, userPrompt, model };
     } catch (error) {
         console.error('Error generating personas:', error);
         throw new Error(`Failed to generate personas with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -214,11 +269,22 @@ Generate exactly ${personaCount} detailed customer personas in JSON format.`;
 // ANGLE GENERATION
 // ============================================
 
-export async function generateAngles(params: GenerateAnglesParams) {
-    const { model, personas, productDescription, angleCount = 3, customPrompt } = params;
+export async function generateAngles(params: GenerateAnglesParams): Promise<GenerationResult<any[]>> {
+    const {
+        model, personas, productDescription, angleCount = 3, customPrompt,
+        keyQualifyingCriteria, offerFlow, proofPoints, primaryObjections
+    } = params;
 
     const hasPersonas = personas && personas.length > 0;
     const personaCount = hasPersonas ? personas.length : 0;
+
+    // Build marketing context section
+    const marketingContext = [
+        keyQualifyingCriteria ? `Key Qualifying Criteria: ${keyQualifyingCriteria}` : '',
+        offerFlow ? `Offer Flow: ${offerFlow}` : '',
+        proofPoints ? `Proof Points: ${proofPoints}` : '',
+        primaryObjections ? `Primary Objections to Address: ${primaryObjections}` : '',
+    ].filter(Boolean).join('\n');
 
     // Different prompts based on whether personas are provided
     let systemPrompt: string;
@@ -244,12 +310,12 @@ ${customPrompt ? `\n**IMPORTANT CUSTOM INSTRUCTIONS (YOU MUST FOLLOW THESE):**\n
 Return ONLY a valid JSON array, no additional text.`;
 
         const personasSummary = personas.map(p =>
-            `ID: ${p.id}, Name: ${p.name}, ${p.age}, ${p.role}\nSituation: ${p.current_situation}\nPain Points: ${p.pain_points.join(', ')}\nGoals: ${p.goals.join(', ')}`
+            `ID: ${p.id}, Name: ${p.name}\n${p.description}`
         ).join('\n\n');
 
         userPrompt = `Product/Service: ${productDescription}
 
-Target Personas:
+${marketingContext ? `${marketingContext}\n\n` : ''}Target Personas:
 ${personasSummary}
 
 ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
@@ -273,7 +339,7 @@ Return ONLY a valid JSON array, no additional text.`;
 
         userPrompt = `Product/Service: ${productDescription}
 
-${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
+${marketingContext ? `${marketingContext}\n\n` : ''}${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
 Generate exactly ${angleCount} marketing angles based on the product description. Return as JSON array with format:
 [{ "persona_id": "general", "persona_name": "General Audience", "angle": "...", "pain_point": "...", "why_now": "..." }]`;
@@ -308,16 +374,14 @@ Generate exactly ${angleCount} marketing angles based on the product description
         const angles = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag, map persona IDs
-        return angles.map((a: any, idx: number) => ({
+        const data = angles.map((a: any, idx: number) => ({
             ...a,
             id: `${Date.now()}-${idx}`,
             persona_id: personas.find(p => p.name === a.persona_name || p.id === a.persona_id)?.id || a.persona_id,
-            selected: false,
-            prompts: {
-                system: systemPrompt,
-                user: userPrompt
-            }
+            selected: false
         }));
+
+        return { data, systemPrompt, userPrompt, model };
     } catch (error) {
         console.error('Error generating angles:', error);
         throw new Error(`Failed to generate angles with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -328,10 +392,21 @@ Generate exactly ${angleCount} marketing angles based on the product description
 // AD COPY GENERATION
 // ============================================
 
-export async function generateAdCopies(params: GenerateAdCopiesParams) {
-    const { model, angles, productDescription, count, adCopyType = 'FB Ad Text', customPrompt } = params;
+export async function generateAdCopies(params: GenerateAdCopiesParams): Promise<GenerationResult<any[]>> {
+    const {
+        model, angles, productDescription, count, adCopyType = 'FB Ad Text', customPrompt,
+        keyQualifyingCriteria, offerFlow, proofPoints, primaryObjections
+    } = params;
 
     const hasAngles = angles && angles.length > 0;
+
+    // Build marketing context section
+    const marketingContext = [
+        keyQualifyingCriteria ? `Key Qualifying Criteria: ${keyQualifyingCriteria}` : '',
+        offerFlow ? `Offer Flow: ${offerFlow}` : '',
+        proofPoints ? `Proof Points: ${proofPoints}` : '',
+        primaryObjections ? `Primary Objections to Address: ${primaryObjections}` : '',
+    ].filter(Boolean).join('\n');
 
     // Customize instructions based on ad copy type
     const typeInstructions: Record<typeof adCopyType, string> = {
@@ -382,7 +457,7 @@ Return ONLY a valid JSON array, no additional text.`;
 
         userPrompt = `Product/Service: ${productDescription}
 
-Marketing Angles to write for:
+${marketingContext ? `${marketingContext}\n\n` : ''}Marketing Angles to write for:
 ${anglesSummary}
 
 ${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
@@ -401,7 +476,7 @@ Return ONLY a valid JSON array, no additional text.`;
 
         userPrompt = `Product/Service: ${productDescription}
 
-${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
+${marketingContext ? `${marketingContext}\n\n` : ''}${customPrompt ? `Custom Instructions: ${customPrompt}\n` : ''}
 
 Generate ${count} ad copy variations highlighting different aspects of the product. Return as JSON array with format:
 [{ "copy": "...", "angle_id": "direct", "angle_name": "Direct from Product" }]`;
@@ -436,17 +511,15 @@ Generate ${count} ad copy variations highlighting different aspects of the produ
         const adCopies = JSON.parse(cleanedResponse);
 
         // Add IDs and selected flag, map angle IDs
-        return adCopies.map((ac: any, idx: number) => ({
+        const data = adCopies.map((ac: any, idx: number) => ({
             id: `${Date.now()}-${idx}`,
             copy: ac.copy,
             angle_ids: [angles.find(a => a.angle === ac.angle_name)?.id || ac.angle_id],
             angle_names: [ac.angle_name],
-            selected: false,
-            prompts: {
-                system: systemPrompt,
-                user: userPrompt
-            }
+            selected: false
         }));
+
+        return { data, systemPrompt, userPrompt, model };
     } catch (error) {
         console.error('Error generating ad copies:', error);
         throw new Error(`Failed to generate ad copies with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);

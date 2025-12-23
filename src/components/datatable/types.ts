@@ -206,6 +206,15 @@ export interface DataTableProps<T> {
     // Fullscreen spreadsheet mode - fills viewport with grid lines
     fullscreen?: boolean;
 
+    // Layout mode:
+    // - 'fullPage': Fills entire viewport, for main pages
+    // - 'inline': Normal document flow with optional maxHeight, for embedded tables
+    // - 'contained': Fills parent container (modal, panel, sidebar), parent must have defined height
+    layout?: 'fullPage' | 'inline' | 'contained';
+
+    // Max height for inline layout (e.g., '400px', '50vh')
+    maxHeight?: string;
+
     // Quick filters - array of column keys to show as quick filter dropdowns at far left of toolbar
     quickFilters?: string[];
 
@@ -237,6 +246,12 @@ export interface DataTableProps<T> {
     selectable?: boolean;
     selectedIds?: Set<string>;
     onSelectionChange?: (selectedIds: Set<string>) => void;
+
+    // Single-select mode (click row to select, only one at a time)
+    // When enabled, clicking a row selects it (highlighted), clicking again deselects
+    singleSelect?: boolean;
+    selectedRowId?: string | null;
+    onRowSelect?: (id: string | null) => void;
 
     // View mode (table or gallery/card view)
     viewMode?: 'table' | 'gallery';

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search, Check } from 'lucide-react';
+import { ChevronDown, Search, Check, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 export interface SelectOption {
@@ -16,6 +16,10 @@ interface SingleSelectProps {
     colorMap?: Record<string, string>;
     className?: string;
     disabled?: boolean;
+    /** Allow clearing the selection with an X button */
+    clearable?: boolean;
+    /** Callback when selection is cleared */
+    onClear?: () => void;
 }
 
 export function SingleSelect({
@@ -25,7 +29,9 @@ export function SingleSelect({
     placeholder = 'Select...',
     colorMap = {},
     className,
-    disabled = false
+    disabled = false,
+    clearable = false,
+    onClear
 }: SingleSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -63,6 +69,17 @@ export function SingleSelect({
     const filteredOptions = options.filter(opt =>
         opt.label.toLowerCase().includes(search.toLowerCase())
     );
+
+    const handleClear = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onClear) {
+            onClear();
+        } else {
+            // Use empty string which will be converted to null by the parent
+            onChange('' as unknown as string);
+        }
+        setIsOpen(false);
+    };
 
     const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 200 });
 
@@ -102,10 +119,18 @@ export function SingleSelect({
             >
                 {selectedOption ? (
                     <span className={cn(
-                        "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap",
+                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap",
                         colorMap[String(selectedOption.value)] || "bg-gray-100 text-gray-700 border-gray-200"
                     )}>
                         {selectedOption.label}
+                        {clearable && !disabled && (
+                            <span
+                                onClick={handleClear}
+                                className="p-0.5 -mr-0.5 hover:bg-black/10 rounded cursor-pointer"
+                            >
+                                <X className="w-3 h-3" />
+                            </span>
+                        )}
                     </span>
                 ) : (
                     <span className="text-gray-400 whitespace-nowrap">{placeholder}</span>

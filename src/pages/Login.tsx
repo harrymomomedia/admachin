@@ -105,7 +105,6 @@ export function Login() {
                         </button>
                     </form>
 
-                    {/* Register Link */}
                     <div className="mt-6 text-center">
                         <p className="text-gray-500 text-sm">
                             Need an account? Contact your administrator

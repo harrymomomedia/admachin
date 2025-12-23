@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen, Megaphone, Video } from "lucide-react";
+import { Rocket, BarChart3, Image, ChevronDown, ChevronRight, User, Database, Type, X, Library, Sparkles, FolderOpen, PanelLeftClose, PanelLeft, Pen, Megaphone, Video, Target, Lightbulb, FileText, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { UserProfileDropdown } from "./UserProfileDropdown";
@@ -21,7 +21,12 @@ const adsSubNav = [
 
 const aiCopySubNav = [
     { name: "Copy Wizard", href: "/copy-wizard", icon: Sparkles },
-    { name: "Copy Library", href: "/copy-library", icon: FolderOpen },
+    { name: "Campaign Params", href: "/campaign-params", icon: FolderOpen },
+    { name: "Persona Frameworks", href: "/persona-frameworks", icon: Library },
+    { name: "Personas", href: "/personas", icon: Users },
+    { name: "Angles", href: "/angles", icon: Target },
+    { name: "Creative Concepts", href: "/creative-concepts", icon: Lightbulb },
+    { name: "Ads", href: "/ai-ads", icon: FileText },
 ];
 
 const videoSubNav = [
@@ -145,7 +150,10 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
         location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ad-combos'
     );
     const [isAICopyExpanded, setIsAICopyExpanded] = useState(
-        location.pathname === '/copy-wizard' || location.pathname === '/copy-library'
+        location.pathname === '/copy-wizard' || location.pathname === '/campaign-params' ||
+        location.pathname === '/persona-frameworks' || location.pathname === '/personas' ||
+        location.pathname === '/angles' || location.pathname === '/creative-concepts' ||
+        location.pathname === '/ai-ads'
     );
     const [isVideoExpanded, setIsVideoExpanded] = useState(
         location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters'
@@ -155,7 +163,10 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
     );
 
     const isAdsActive = location.pathname === '/' || location.pathname === '/creatives' || location.pathname === '/ad-planning' || location.pathname === '/ad-combos';
-    const isAICopyActive = location.pathname === '/copy-wizard' || location.pathname === '/copy-library';
+    const isAICopyActive = location.pathname === '/copy-wizard' || location.pathname === '/campaign-params' ||
+        location.pathname === '/persona-frameworks' || location.pathname === '/personas' ||
+        location.pathname === '/angles' || location.pathname === '/creative-concepts' ||
+        location.pathname === '/ai-ads';
     const isVideoActive = location.pathname === '/video-generator' || location.pathname === '/ai-video-generated' || location.pathname === '/sora-characters';
     const isFacebookActive = location.pathname.startsWith('/facebook') || location.pathname === '/ad-accounts';
 

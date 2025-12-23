@@ -12,9 +12,13 @@ import { AdCopyLibrary } from "./pages/AdCopyLibrary";
 import { AdPlanning } from "./pages/AdPlanning";
 import { AdCombosList } from "./pages/AdCombosList";
 import { AdCombos } from "./pages/AdCombos";
-import { PersonaAICopy } from "./pages/PersonaAICopy";
-import { SavedPersonasLibrary } from "./pages/SavedPersonasLibrary";
-import { CopyLibrary } from "./pages/CopyLibrary";
+import { CopyWizard } from "./pages/CopyWizard";
+import { CampaignParams } from "./pages/CampaignParams";
+import { PersonaFrameworks } from "./pages/PersonaFrameworks";
+import { AIPersonas } from "./pages/AIPersonas";
+import { AIAngles } from "./pages/AIAngles";
+import { CreativeConcepts } from "./pages/CreativeConcepts";
+import { AIAds } from "./pages/AIAds";
 import { Login } from "./pages/Login";
 import { UserSettings } from "./pages/UserSettings";
 import { VideoGenerator } from "./pages/VideoGenerator";
@@ -102,12 +106,18 @@ function App() {
               <Route path="video-generator" element={<VideoGenerator />} />
               <Route path="ai-video-generated" element={<AIVideoGenerated />} />
               <Route path="sora-characters" element={<SoraCharacters />} />
-              <Route path="copy-wizard" element={<PersonaAICopy />} />
-              <Route path="copy-library" element={<CopyLibrary />} />
+              <Route path="copy-wizard" element={<CopyWizard />} />
+              <Route path="campaign-params" element={<CampaignParams />} />
+              <Route path="persona-frameworks" element={<PersonaFrameworks />} />
+              <Route path="personas" element={<AIPersonas />} />
+              <Route path="angles" element={<AIAngles />} />
+              <Route path="creative-concepts" element={<CreativeConcepts />} />
+              <Route path="ai-ads" element={<AIAds />} />
               {/* Redirect old routes */}
               <Route path="ads" element={<Navigate to="/ad-combos" replace />} />
               <Route path="ai-copywriting" element={<Navigate to="/copy-wizard" replace />} />
-              <Route path="saved-personas" element={<Navigate to="/copy-library" replace />} />
+              <Route path="saved-personas" element={<Navigate to="/personas" replace />} />
+              <Route path="copy-library" element={<Navigate to="/campaign-params" replace />} />
               <Route path="admin" element={<TeamSettings />} />
               <Route path="settings" element={<UserSettings />} />
             </Route>

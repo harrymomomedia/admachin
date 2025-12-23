@@ -98,44 +98,196 @@ npm run deploy       # Save + deploy to Vercel
 
 ## Key Components
 
-### DataTable (IMPORTANT)
+### DataTable (CRITICAL - READ THIS FIRST)
 
-DataTable is the **single source of truth** for all table/list views in the app.
+DataTable is the **ONE central component** for ALL table/list/grid views. There is only ONE DataTable - no forks, no variations, no custom implementations.
 
-**Rule: Always extend DataTable, never build custom tables.**
+#### 🎯 Core Philosophy
 
-When adding table functionality:
-- Add new column types to DataTable (e.g., `url`, `priority`, `people`)
-- Add new features as DataTable props/options
-- Do NOT write custom table code in individual pages
+**Single Source of Truth**: All table functionality lives in DataTable. Pages don't add custom table code - they configure DataTable via props.
 
-Example: Need a "status" column? Add `type: 'status'` to DataTable's column types, not a custom renderer in the page.
+**How it works:**
+1. **Need a feature?** → Add it to DataTable centrally (benefits ALL pages)
+2. **Don't need a feature?** → Toggle it off via props
+3. **Need a new mode?** → Add it to DataTable, then toggle via props
 
-Supported column types:
-- `text` - Plain text with inline edit
-- `textarea` - Multi-line text
-- `select` - Dropdown selection
-- `date` - Date picker
-- `url` - Clickable link with favicon
-- `priority` - Priority indicator (P1-P4)
-- `people` - Avatar chips with multi-select
-- `id` - ID display
-- `thumbnail` - Image/video thumbnail preview
-- `filesize` - Formatted file size (bytes to KB/MB)
-- `custom` - Escape hatch (avoid if possible)
+**What this means:**
+- ✅ Changes to DataTable affect all tables consistently
+- ✅ New features become available to all pages automatically
+- ✅ Bug fixes apply everywhere at once
+- ✅ No divergent behavior between pages
 
-Built-in features:
-- Inline editing
-- Row selection & bulk actions
-- Multi-column sorting
-- Filtering
-- Pagination
-- Row reordering (drag & drop)
-- Gallery view mode for creatives
+#### ⛔ NEVER DO THIS
 
-**Toolbar Layout:**
+1. **NEVER create `<table>` elements outside DataTable**
+2. **NEVER write custom grid/list layouts for data**
+3. **NEVER add table logic in individual pages**
+4. **NEVER create a "simpler" table component**
+5. **NEVER fork DataTable for a specific use case**
 
-Fixed toolbar that doesn't scroll horizontally. Uses `flex-wrap` so when there's not enough space, right-aligned icons wrap to a second row. Only the table/gallery content scrolls horizontally.
+#### ✅ ALWAYS DO THIS
+
+1. **Use DataTable for ANY data listing** (tables, grids, cards, lists)
+2. **Configure via props** - toggle features on/off
+3. **Need something new?** → Propose adding it to DataTable centrally
+4. **Use `datatable-defaults.ts`** for shared column definitions
+
+#### Feature Toggle Examples
+
+DataTable supports toggling features on/off. Pages configure what they need:
+
+```tsx
+// Full-featured table (Ad Text page)
+<DataTable
+    columns={columns}
+    data={data}
+    sortable={true}
+    selectable={true}
+    editable={true}
+    pagination={true}
+    quickFilters={['project_id', 'subproject_id']}
+    showRowActions={true}
+    layout="fullPage"
+/>
+
+// Minimal inline table (embedded in accordion)
+<DataTable
+    columns={columns}
+    data={data}
+    sortable={false}
+    selectable={true}
+    pagination={false}
+    layout="inline"
+    maxHeight="300px"
+/>
+
+// Gallery/card view (Creatives page)
+<DataTable
+    columns={columns}
+    data={data}
+    viewMode="gallery"
+    galleryConfig={{...}}
+/>
+```
+
+#### Adding New Functionality
+
+When you need something DataTable doesn't support:
+
+1. **Ask:** "Should this be a central feature that benefits all tables?"
+2. **If YES:** Add it to DataTable with a prop to enable/disable
+3. **If NO:** Reconsider - it probably should be central
+
+**Example:** Need a "compact row" mode?
+- ❌ WRONG: Create custom compact table in the page
+- ✅ RIGHT: Add `rowSize="compact" | "normal"` prop to DataTable
+
+#### Current Modes & Props
+
+| Prop | Options | Description |
+|------|---------|-------------|
+| `layout` | `"fullPage"` / `"inline"` | Full page vs embedded |
+| `viewMode` | `"table"` / `"gallery"` | Table rows vs card grid |
+| `sortable` | `true` / `false` | Enable sorting |
+| `selectable` | `true` / `false` | Enable row selection |
+| `pagination` | `true` / `false` | Enable pagination |
+| `showRowActions` | `true` / `false` | Show row action buttons |
+| `resizable` | `true` / `false` | Column resizing |
+| `reorderable` | `true` / `false` | Drag-drop row reorder |
+
+#### Supported Column Types
+
+All column types are centrally defined. Use these, don't create custom renderers:
+
+- `text` / `longtext` - Text with inline edit
+- `select` - Dropdown with colors
+- `date` - Date display/picker
+- `url` - Clickable link
+- `priority` - P1-P5 indicator
+- `people` - User avatar picker
+- `id` - Row number
+- `thumbnail` / `media` - Image/video preview
+- `filesize` - Formatted size
+- `adcopy` - Ad copy picker
+
+**Need a new type?** Add it to DataTable's column type system - it then works everywhere.
+
+#### Centralized Column Definitions
+
+Project/subproject columns are defined ONCE in `datatable-defaults.ts`:
+
+```tsx
+// Pages use the central builders - NEVER define these inline
+const columns = [
+    dataTableConfig.createProjectCol(),      // Central definition
+    dataTableConfig.createSubprojectCol(),   // Central definition
+    dataTableConfig.createDateCol(),         // Central definition
+];
+```
+
+**Dependency logic** (subproject auto-sets project, etc.) is handled centrally in DataTable via `dependsOn` config. Pages don't implement this.
+
+#### ⚠️ Known Technical Debt
+
+These violate the single-source rule and need migration to DataTable:
+
+| Location | Issue |
+|----------|-------|
+| `team-settings/ProjectsTab.tsx` | Custom `<table>` |
+| `team-settings/SubprojectsTab.tsx` | Custom `<table>` |
+| `team-settings/UsersTab.tsx` | Custom `<table>` |
+| `pages/FBAdLibrary.tsx` | Custom card grid |
+| `pages/FBAdAccounts.tsx` | Custom list layout |
+
+**Do NOT add to this list.** Migrate these when touched.
+
+### DataTable Usage Pattern
+
+**Central Files:**
+- `src/components/datatable/DataTable.tsx` - The ONE table component
+- `src/lib/datatable-defaults.ts` - Shared column builders, constants
+- `src/hooks/useDataTableConfig.ts` - Hook for persistence & column helpers
+
+**Standard Usage:**
+
+```tsx
+import { useDataTableConfig } from '../hooks/useDataTableConfig';
+
+// Use the hook for everything
+const dataTableConfig = useDataTableConfig({
+    viewId: 'your-page-id',
+    userId: currentUserId,
+    projects,
+    subprojects,
+    users,
+});
+
+// Columns use central builders
+const columns = [
+    dataTableConfig.createProjectCol(),
+    dataTableConfig.createSubprojectCol(),
+    dataTableConfig.createDateCol(),
+    // Custom columns use central types
+    { key: 'name', header: 'Name', type: 'text', editable: true },
+];
+
+// DataTable with persistence
+<DataTable
+    {...dataTableConfig.defaultProps}
+    columns={columns}
+    data={data}
+    viewId="your-page-id"
+    userId={currentUserId}
+/>
+```
+
+**Available Central Builders:**
+- `createProjectCol()` / `createSubprojectCol()` - With dependency logic
+- `createUserCol()` / `createDateCol()` / `createIdCol()`
+
+**Available Constants (in `datatable-defaults.ts`):**
+- `COLOR_PALETTE` - Standard colors
+- `COLUMN_WIDTH_DEFAULTS` - Standard widths by type
 
 ### Contexts
 - `useAuth()` - User authentication state

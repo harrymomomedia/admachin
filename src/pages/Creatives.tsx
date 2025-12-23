@@ -12,15 +12,16 @@ import {
     getProjects,
     getSubprojects,
     getUsers,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
-    deleteUserViewPreferences,
     saveRowOrder,
 } from "../lib/supabase-service";
-import type { ViewPreferencesConfig, Project, Subproject, User } from "../lib/supabase-service";
+import type { Project, Subproject, User } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+    COLUMN_WIDTH_DEFAULTS,
+} from "../lib/datatable-defaults";
 
 interface Creative {
     id: string;
@@ -131,40 +132,9 @@ export function Creatives() {
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [users, setUsers] = useState<User[]>([]);
 
-    // View preferences
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
-
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMaps for projects and subprojects
-    const projectColorMap = useMemo(() =>
-        projects.reduce((map, p, i) => {
-            map[p.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [projects]
-    );
-
-    const subprojectColorMap = useMemo(() =>
-        subprojects.reduce((map, s, i) => {
-            map[s.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [subprojects]
-    );
+    // Generate colorMaps using shared utility
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
     // Lookup maps for gallery card
     const projectNameMap = useMemo(() =>
@@ -180,18 +150,16 @@ export function Creatives() {
         [users]
     );
 
-    // Load data and preferences
+    // Load data
     useEffect(() => {
         async function loadData() {
             setIsLoading(true);
             try {
-                const [items, projectsData, subprojectsData, usersData, userPrefs, sharedPrefs] = await Promise.all([
+                const [items, projectsData, subprojectsData, usersData] = await Promise.all([
                     loadMediaFromDb(),
                     getProjects(),
                     getSubprojects(),
                     getUsers(),
-                    currentUserId ? getUserViewPreferences(currentUserId, 'creatives') : null,
-                    getSharedViewPreferences('creatives'),
                 ]);
 
                 // Map user_id to creatives by matching uploaded_by name
@@ -203,49 +171,11 @@ export function Creatives() {
                     return { ...item, user_id: matchedUser?.id };
                 });
 
-                // Store shared preferences (including column_widths and column_order)
-                if (sharedPrefs) {
-                    setSharedPreferences({
-                        sort_config: sharedPrefs.sort_config,
-                        filter_config: sharedPrefs.filter_config,
-                        group_config: sharedPrefs.group_config,
-                        wrap_config: sharedPrefs.wrap_config,
-                        row_order: sharedPrefs.row_order,
-                        column_widths: sharedPrefs.column_widths,
-                        column_order: sharedPrefs.column_order
-                    });
-                }
-
-                // Store user view preferences (including column_widths and column_order)
-                if (userPrefs) {
-                    setUserPreferences({
-                        sort_config: userPrefs.sort_config,
-                        filter_config: userPrefs.filter_config,
-                        group_config: userPrefs.group_config,
-                        wrap_config: userPrefs.wrap_config,
-                        row_order: userPrefs.row_order,
-                        column_widths: userPrefs.column_widths,
-                        column_order: userPrefs.column_order
-                    });
-                }
-
-                // Apply row order (user's or shared)
-                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
-                let finalCreatives = creativesWithUserId;
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    finalCreatives = [...creativesWithUserId].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                }
-
-                setCreatives(finalCreatives);
+                setCreatives(creativesWithUserId);
                 setProjects(projectsData);
                 setSubprojects(subprojectsData);
                 setUsers(usersData);
-                saveMediaToCache(finalCreatives);
+                saveMediaToCache(creativesWithUserId);
             } catch (error) {
                 console.error('[Creatives] Failed to load:', error);
             } finally {
@@ -253,43 +183,7 @@ export function Creatives() {
             }
         }
         loadData();
-    }, [currentUserId]);
-
-    // View persistence handlers
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'creatives', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = creatives.map(c => c.id);
-            await saveSharedViewPreferences('creatives', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'creatives');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
+    }, []);
 
     // Reload creatives from database
     const reloadCreatives = useCallback(async () => {
@@ -426,42 +320,8 @@ export function Creatives() {
             editable: false,
             type: 'id',
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: true,
-            type: 'select',
-            options: (row) => {
-                // Show all subprojects if no project selected, otherwise filter by project
-                if (!row.project_id) {
-                    return subprojects.map(s => ({ label: s.name, value: s.id }));
-                }
-                return subprojects
-                    .filter(s => s.project_id === row.project_id)
-                    .map(s => ({ label: s.name, value: s.id }));
-            },
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            colorMap: subprojectColorMap,
-            dependsOn: {
-                parentKey: 'project_id',
-                getParentValue: (subprojectId) => {
-                    const sub = subprojects.find(s => s.id === subprojectId);
-                    return sub?.project_id ?? null;
-                },
-            },
-        },
+        createProjectColumn<Creative>({ projects, subprojects, projectColorMap }),
+        createSubprojectColumn<Creative>({ projects, subprojects, subprojectColorMap }),
         {
             key: 'type',
             header: 'Type',
@@ -531,19 +391,12 @@ export function Creatives() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'type']}
                 showRowActions={true}
-                // View persistence
                 viewId="creatives"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
                 // Gallery view support - using native DataTable gallery feature
                 cardColumns={4}
-                selectable={true}
                 galleryConfig={{
                     mediaUrlKey: 'url',
                     thumbnailKey: 'preview',

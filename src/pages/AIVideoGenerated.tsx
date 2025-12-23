@@ -9,19 +9,19 @@ import {
     getProjects,
     getSubprojects,
     getUsers,
-    getUserViewPreferences,
-    saveUserViewPreferences,
-    getSharedViewPreferences,
-    saveSharedViewPreferences,
-    deleteUserViewPreferences,
     saveRowOrder,
     createSoraCharacter,
 } from "../lib/supabase-service";
-import type { ViewPreferencesConfig, Project, Subproject, User, VideoOutputWithDetails, VideoGenerator } from "../lib/supabase-service";
+import type { Project, Subproject, User, VideoOutputWithDetails, VideoGenerator } from "../lib/supabase-service";
 import { useAuth } from "../contexts/AuthContext";
 import { RefreshCw, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { VIDEO_MODEL_OPTIONS, VIDEO_MODEL_COLOR_MAP } from "../constants/video";
+import {
+    generateColorMap,
+    createProjectColumn,
+    createSubprojectColumn,
+} from "../lib/datatable-defaults";
 
 interface VideoOutputRow {
     id: string;
@@ -71,46 +71,15 @@ export function AIVideoGenerated() {
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
     const [users, setUsers] = useState<User[]>([]);
 
-    // View preferences
-    const [userPreferences, setUserPreferences] = useState<ViewPreferencesConfig | null>(null);
-    const [sharedPreferences, setSharedPreferences] = useState<ViewPreferencesConfig | null>(null);
-
     // Sync state
     const [isSyncing, setIsSyncing] = useState(false);
 
     // Character creation state
     const [creatingCharacter, setCreatingCharacter] = useState<string | null>(null);
 
-    // Color palette for dynamic colorMaps
-    const colorPalette = [
-        'bg-pink-500 text-white',
-        'bg-indigo-500 text-white',
-        'bg-cyan-500 text-white',
-        'bg-amber-500 text-white',
-        'bg-rose-500 text-white',
-        'bg-violet-500 text-white',
-        'bg-teal-500 text-white',
-        'bg-orange-500 text-white',
-        'bg-lime-500 text-white',
-        'bg-fuchsia-500 text-white',
-    ];
-
-    // Generate colorMaps for projects and subprojects
-    const projectColorMap = useMemo(() =>
-        projects.reduce((map, p, i) => {
-            map[p.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [projects]
-    );
-
-    const subprojectColorMap = useMemo(() =>
-        subprojects.reduce((map, s, i) => {
-            map[s.id] = colorPalette[i % colorPalette.length];
-            return map;
-        }, {} as Record<string, string>),
-        [subprojects]
-    );
+    // Generate colorMaps using shared utility
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
     // Status color map
     const statusColorMap: Record<string, string> = {
@@ -126,13 +95,11 @@ export function AIVideoGenerated() {
         async function loadData() {
             setIsLoading(true);
             try {
-                const [outputsData, projectsData, subprojectsData, usersData, userPrefs, sharedPrefs] = await Promise.all([
+                const [outputsData, projectsData, subprojectsData, usersData] = await Promise.all([
                     getVideoOutputs(),
                     getProjects(),
                     getSubprojects(),
                     getUsers(),
-                    currentUserId ? getUserViewPreferences(currentUserId, 'ai-video-generated') : null,
-                    getSharedViewPreferences('ai-video-generated'),
                 ]);
 
                 // Map outputs with derived fields from video_generator
@@ -148,45 +115,7 @@ export function AIVideoGenerated() {
                     media_type: 'video' as const,
                 }));
 
-                // Store shared preferences
-                if (sharedPrefs) {
-                    setSharedPreferences({
-                        sort_config: sharedPrefs.sort_config,
-                        filter_config: sharedPrefs.filter_config,
-                        group_config: sharedPrefs.group_config,
-                        wrap_config: sharedPrefs.wrap_config,
-                        row_order: sharedPrefs.row_order,
-                        column_widths: sharedPrefs.column_widths,
-                        column_order: sharedPrefs.column_order
-                    });
-                }
-
-                // Store user view preferences
-                if (userPrefs) {
-                    setUserPreferences({
-                        sort_config: userPrefs.sort_config,
-                        filter_config: userPrefs.filter_config,
-                        group_config: userPrefs.group_config,
-                        wrap_config: userPrefs.wrap_config,
-                        row_order: userPrefs.row_order,
-                        column_widths: userPrefs.column_widths,
-                        column_order: userPrefs.column_order
-                    });
-                }
-
-                // Apply row order (user's or shared)
-                const rowOrder = userPrefs?.row_order || sharedPrefs?.row_order;
-                let finalOutputs = mappedOutputs;
-                if (rowOrder && rowOrder.length > 0) {
-                    const orderMap = new Map(rowOrder.map((id, index) => [id, index]));
-                    finalOutputs = [...finalOutputs].sort((a, b) => {
-                        const aIndex = orderMap.get(a.id) ?? Infinity;
-                        const bIndex = orderMap.get(b.id) ?? Infinity;
-                        return aIndex - bIndex;
-                    });
-                }
-
-                setOutputs(finalOutputs);
+                setOutputs(mappedOutputs);
                 setProjects(projectsData);
                 setSubprojects(subprojectsData);
                 setUsers(usersData);
@@ -199,41 +128,6 @@ export function AIVideoGenerated() {
         loadData();
     }, [currentUserId]);
 
-    // View persistence handlers
-    const handlePreferencesChange = async (preferences: ViewPreferencesConfig) => {
-        if (!currentUserId) return;
-        try {
-            await saveUserViewPreferences(currentUserId, 'ai-video-generated', preferences);
-        } catch (error) {
-            console.error('Failed to save view preferences:', error);
-        }
-    };
-
-    const handleSaveForEveryone = async (preferences: ViewPreferencesConfig) => {
-        try {
-            const rowOrder = outputs.map(o => o.id);
-            await saveSharedViewPreferences('ai-video-generated', {
-                ...preferences,
-                row_order: rowOrder
-            });
-            setSharedPreferences({
-                ...preferences,
-                row_order: rowOrder
-            });
-        } catch (error) {
-            console.error('Failed to save shared preferences:', error);
-        }
-    };
-
-    const handleResetPreferences = async () => {
-        if (!currentUserId) return;
-        try {
-            await deleteUserViewPreferences(currentUserId, 'ai-video-generated');
-            setUserPreferences(null);
-        } catch (error) {
-            console.error('Failed to reset preferences:', error);
-        }
-    };
 
     // Delete row
     const handleDelete = useCallback(async (id: string) => {
@@ -389,27 +283,8 @@ export function AIVideoGenerated() {
                 ) : '-';
             },
         },
-        {
-            key: 'project_id',
-            header: 'Project',
-            width: 140,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: projects.map(p => ({ label: p.name, value: p.id })),
-            colorMap: projectColorMap,
-        },
-        {
-            key: 'subproject_id',
-            header: 'Subproject',
-            width: 140,
-            minWidth: 100,
-            editable: false,
-            type: 'select',
-            options: subprojects.map(s => ({ label: s.name, value: s.id })),
-            filterOptions: subprojects.map(s => ({ label: s.name, value: s.id })),
-            colorMap: subprojectColorMap,
-        },
+        createProjectColumn<VideoOutputRow>({ projects, subprojects, projectColorMap, editable: false }),
+        createSubprojectColumn<VideoOutputRow>({ projects, subprojects, subprojectColorMap, editable: false }),
         {
             key: 'model',
             header: 'Model',
@@ -600,16 +475,10 @@ export function AIVideoGenerated() {
                 onReorder={handleReorder}
                 resizable={true}
                 fullscreen={true}
+                layout="fullPage"
                 quickFilters={['project_id', 'subproject_id', 'task_status']}
                 showRowActions={true}
-                // View persistence
                 viewId="ai-video-generated"
-                userId={currentUserId || undefined}
-                initialPreferences={userPreferences || undefined}
-                sharedPreferences={sharedPreferences || undefined}
-                onPreferencesChange={handlePreferencesChange}
-                onSaveForEveryone={handleSaveForEveryone}
-                onResetPreferences={handleResetPreferences}
                 selectable={true}
                 // Gallery view configuration
                 galleryConfig={{
