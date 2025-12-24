@@ -137,7 +137,24 @@ export function AdPlanning() {
         }
     };
 
-    // Create Handler
+    // Quick Create Handler (for + button at bottom of table)
+    const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<AdPlan> => {
+        const newPlan = await createAdPlan({
+            project_id: (defaults?.project_id as string) || '',
+            user_id: currentUserId || '',
+            plan_type: 'CClone',
+            creative_type: 'Video',
+            priority: 3,
+            hj_rating: 0,
+            spy_url: '',
+            description: 'New Plan',
+            status: 'not started',
+        });
+        setPlans(prev => [newPlan, ...prev]);
+        return newPlan;
+    };
+
+    // Create Handler (for modal form)
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -306,6 +323,7 @@ export function AdPlanning() {
                 newButtonLabel="New"
                 getRowId={(plan) => plan.id}
                 onUpdate={handleUpdate}
+                onCreateRow={handleCreateRow}
                 sortable={true}
                 onReorder={handleReorder}
                 resizable={true}

@@ -95,6 +95,7 @@ export function AdCombosList() {
     };
 
     // Update Handler
+    // NOTE: Project/subproject dependency logic is handled by DataTable's dependsOn config.
     const handleUpdate = async (id: string, field: string, value: unknown) => {
         const original = ads.find(a => a.id === id);
         if (!original) return;
@@ -109,27 +110,10 @@ export function AdCombosList() {
             updates.ad_type = value ? String(value) : null;
         } else if (field === 'project_id') {
             updates.project_id = value ? String(value) : null;
-            // Clear subproject if project changes
-            const currentSubprojectId = original.subproject_id;
-            if (currentSubprojectId && value) {
-                const subBelongsToNewProject = subprojects.some(
-                    s => s.id === currentSubprojectId && s.project_id === value
-                );
-                if (!subBelongsToNewProject) {
-                    updates.subproject_id = null;
-                }
-            } else if (!value) {
-                updates.subproject_id = null;
-            }
+            // NOTE: Clearing subproject is handled by DataTable's dependsOn
         } else if (field === 'subproject_id') {
             updates.subproject_id = value ? String(value) : null;
-            // Auto-set project if subproject's project differs from current
-            if (value) {
-                const sub = subprojects.find(s => s.id === value);
-                if (sub && sub.project_id !== original.project_id) {
-                    updates.project_id = sub.project_id;
-                }
-            }
+            // NOTE: Auto-setting project is handled by DataTable's dependsOn
         } else if (field === 'user_id') {
             updates.user_id = value ? String(value) : null;
         } else if (field === 'headline_id') {

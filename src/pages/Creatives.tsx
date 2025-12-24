@@ -225,33 +225,12 @@ export function Creatives() {
         }
     }, [creatives]);
 
+    // NOTE: Project/subproject dependency logic is handled by DataTable's dependsOn config.
     const handleUpdate = useCallback(async (id: string, field: string, value: unknown) => {
         const item = creatives.find(c => c.id === id);
         if (!item) return;
 
         const updates: Record<string, unknown> = { [field]: value };
-
-        // Handle subproject -> project dependency
-        if (field === 'subproject_id' && value) {
-            const sub = subprojects.find(s => s.id === value);
-            if (sub && sub.project_id !== item.project_id) {
-                updates.project_id = sub.project_id;
-            }
-        }
-        // Handle project change -> clear invalid subproject
-        else if (field === 'project_id') {
-            const currentSubprojectId = item.subproject_id;
-            if (currentSubprojectId && value) {
-                const subBelongsToNewProject = subprojects.some(
-                    s => s.id === currentSubprojectId && s.project_id === value
-                );
-                if (!subBelongsToNewProject) {
-                    updates.subproject_id = null;
-                }
-            } else if (!value) {
-                updates.subproject_id = null;
-            }
-        }
 
         // Update local state
         setCreatives((prev) =>
@@ -274,7 +253,7 @@ export function Creatives() {
                 }
             }
         }
-    }, [creatives, subprojects]);
+    }, [creatives]);
 
     // Reorder Handler (for drag & drop) - persists to database
     const handleReorder = async (newOrder: string[]) => {

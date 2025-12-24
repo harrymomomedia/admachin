@@ -119,6 +119,8 @@ export function AdCopyLibrary() {
     };
 
     // Update Handler
+    // NOTE: Project/subproject dependency logic is handled by DataTable's dependsOn config.
+    // This handler should only do simple field conversion, not dependency cascades.
     const handleUpdate = async (id: string, field: string, value: unknown) => {
         const original = copies.find(c => c.id === id);
         if (!original) return;
@@ -131,31 +133,13 @@ export function AdCopyLibrary() {
             updates.type = String(value);
         } else if (field === 'project_id') {
             updates.project_id = value ? String(value) : null;
+            // Update legacy text field
             const proj = projects.find(p => p.id === value);
             updates.project = proj?.name || null;
-            // When project changes, check if current subproject is still valid
-            const currentSubprojectId = original.subproject_id;
-            if (currentSubprojectId && value) {
-                const subBelongsToNewProject = subprojects.some(
-                    s => s.id === currentSubprojectId && s.project_id === value
-                );
-                if (!subBelongsToNewProject) {
-                    updates.subproject_id = null;
-                }
-            } else if (!value) {
-                updates.subproject_id = null;
-            }
+            // NOTE: Clearing subproject is handled by DataTable's dependsOn
         } else if (field === 'subproject_id') {
             updates.subproject_id = value ? String(value) : null;
-            // Auto-set project if subproject's project differs from current
-            if (value) {
-                const sub = subprojects.find(s => s.id === value);
-                if (sub && sub.project_id !== original.project_id) {
-                    updates.project_id = sub.project_id;
-                    const proj = projects.find(p => p.id === sub.project_id);
-                    updates.project = proj?.name || null;
-                }
-            }
+            // NOTE: Auto-setting project is handled by DataTable's dependsOn
         } else if (field === 'platform') {
             updates.platform = value ? String(value) : null;
         } else if (field === 'user_id') {
