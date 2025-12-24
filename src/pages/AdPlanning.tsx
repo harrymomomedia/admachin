@@ -82,11 +82,9 @@ export function AdPlanning() {
 
 
     // Update Handler
+    // NOTE: Project/subproject dependency logic is handled by DataTable's dependsOn config.
+    // This handler should only do simple field conversion, not dependency cascades.
     const handleUpdate = async (id: string, field: string, value: unknown) => {
-        const original = plans.find(p => p.id === id);
-        if (!original) return;
-
-        // Convert value based on field type
         // Convert value based on field type
         let convertedValue: unknown = value;
         const extraUpdates: Partial<AdPlan> = {};
@@ -95,41 +93,16 @@ export function AdPlanning() {
             convertedValue = value ? Number(value) : null;
         } else if (field === 'subproject_id') {
             convertedValue = value ? String(value) : null;
-            // Also update text field for compatibility
+            // Update legacy text field for compatibility
             const sub = subprojects.find(s => s.id === value);
-            if (sub) {
-                extraUpdates.subproject = sub.name;
-                // Auto-set project if subproject's project differs from current
-                if (sub.project_id !== original.project_id) {
-                    extraUpdates.project_id = sub.project_id;
-                }
-            } else if (value === '' || value === null) {
-                extraUpdates.subproject = null;
-            }
+            extraUpdates.subproject = sub?.name || null;
+            // NOTE: Auto-setting project_id is handled by DataTable's dependsOn
         } else if (field === 'project_id') {
-            // When project changes, check if current subproject is still valid
             convertedValue = value === '' ? null : value;
-            const currentSubprojectId = original.subproject_id;
-            if (currentSubprojectId && value) {
-                // Check if the current subproject belongs to the new project
-                const subBelongsToNewProject = subprojects.some(
-                    s => s.id === currentSubprojectId && s.project_id === value
-                );
-                if (!subBelongsToNewProject) {
-                    // Clear subproject if it doesn't belong to new project
-                    extraUpdates.subproject_id = null;
-                    extraUpdates.subproject = null;
-                }
-            } else if (!value) {
-                // If project is cleared, also clear subproject
-                extraUpdates.subproject_id = null;
-                extraUpdates.subproject = null;
-            }
+            // NOTE: Clearing subproject when project changes is handled by DataTable's dependsOn
         } else if (field === 'user_id' || field === 'creative_id') {
-            // Empty string should be null for foreign keys
             convertedValue = value === '' ? null : value;
         } else if (field === 'spy_url' && typeof value === 'string' && value.trim()) {
-            // Auto-prepend https:// if no protocol is present
             const trimmed = value.trim();
             if (!/^https?:\/\//i.test(trimmed)) {
                 convertedValue = `https://${trimmed}`;
@@ -138,14 +111,13 @@ export function AdPlanning() {
 
         const updates: Partial<AdPlan> = { [field]: convertedValue, ...extraUpdates };
 
-        // Optimistic update
-        setPlans(plans.map(p => p.id === id ? { ...p, ...updates } : p));
+        // Optimistic update - use callback form to avoid stale closure
+        setPlans(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
 
         try {
             await updateAdPlan(id, updates);
         } catch (error) {
             console.error('Failed to update plan:', error);
-            // Revert on error
             loadData();
         }
     };
