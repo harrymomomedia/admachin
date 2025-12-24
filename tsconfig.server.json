@@ -7,11 +7,11 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist-server",
-    "rootDir": "server",
+    "rootDir": ".",
     "declaration": false,
     "sourceMap": true,
     "resolveJsonModule": true
   },
-  "include": ["server/**/*.ts"],
+  "include": ["server/**/*.ts", "src/lib/ai-models.ts"],
   "exclude": ["node_modules"]
 }
