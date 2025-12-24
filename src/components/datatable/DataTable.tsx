@@ -292,17 +292,21 @@ function DropdownMenu({ options, value, onSelect, onClear, position, colorMap }:
             const viewportHeight = window.innerHeight;
             const spaceBelow = viewportHeight - position.top - 10;
 
+            let newTop = position.top;
             if (spaceBelow < dropdownHeight && position.top > dropdownHeight) {
                 // Not enough space below, position above
-                setAdjustedPosition({
-                    ...position,
-                    top: position.top - dropdownHeight - 8
-                });
-            } else {
-                setAdjustedPosition(position);
+                newTop = position.top - dropdownHeight - 8;
             }
+
+            // Only update if position actually changed
+            setAdjustedPosition(prev => {
+                if (prev.top === newTop && prev.left === position.left) {
+                    return prev; // No change, don't trigger re-render
+                }
+                return { ...position, top: newTop };
+            });
         }
-    }, [position]);
+    }, [position.top, position.left]); // Use primitive deps instead of object
 
     const filteredOptions = options.filter(opt =>
         opt.label.toLowerCase().includes(search.toLowerCase())
@@ -458,16 +462,20 @@ function PeopleDropdownMenu({ users, value, onSelect, onClear, position }: Peopl
             const viewportHeight = window.innerHeight;
             const spaceBelow = viewportHeight - position.top - 10;
 
+            let newTop = position.top;
             if (spaceBelow < dropdownHeight && position.top > dropdownHeight) {
-                setAdjustedPosition({
-                    ...position,
-                    top: position.top - dropdownHeight - 8
-                });
-            } else {
-                setAdjustedPosition(position);
+                newTop = position.top - dropdownHeight - 8;
             }
+
+            // Only update if position actually changed
+            setAdjustedPosition(prev => {
+                if (prev.top === newTop && prev.left === position.left) {
+                    return prev;
+                }
+                return { ...position, top: newTop };
+            });
         }
-    }, [position]);
+    }, [position.top, position.left]);
 
     const filteredUsers = users.filter(user => {
         const searchLower = search.toLowerCase();
