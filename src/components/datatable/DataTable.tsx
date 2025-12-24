@@ -37,7 +37,7 @@ import { AdCopyPickerModal } from '../AdCopyPickerModal';
 import type { ColumnDef, DataTableProps, PeopleOption, SortRule, ThumbnailSize, ThumbnailSizeRule } from './types';
 import { THUMBNAIL_SIZES } from './types';
 // Cell components - using local versions for now until full refactoring is complete
-import { UrlCell as UrlColumn, PriorityCell as PriorityColumn, PeopleCell as PeopleColumn } from './cells';
+import { UrlCell as UrlColumn, PriorityCell as PriorityColumn, RatingCell as RatingColumn, PeopleCell as PeopleColumn } from './cells';
 // SortableSortRule from extracted components
 import { SortableSortRule } from './components';
 // Note: Other components (DropdownMenu, PeopleDropdownMenu, ColumnContextMenu, QuickFilter, FieldEditor, GroupHeader)
@@ -1583,7 +1583,11 @@ function SortableRow<T>({
                                     // Check if value exists in options
                                     const optionLabel = options?.find(o => String(o.value) === String(value))?.label;
                                     // Use fallback value if value not found in options (for legacy data)
-                                    const fallbackValue = col.fallbackKey ? (row as Record<string, unknown>)[col.fallbackKey] : null;
+                                    const fallbackRaw = col.fallbackKey ? (row as Record<string, unknown>)[col.fallbackKey] : null;
+                                    // Handle fallback values that might be objects (e.g., from Supabase joins)
+                                    const fallbackValue = fallbackRaw && typeof fallbackRaw === 'object'
+                                        ? (fallbackRaw as Record<string, unknown>).name || null
+                                        : fallbackRaw;
                                     // Only show optionLabel or fallbackValue - don't show raw UUID if no match
                                     const displayValue = optionLabel || (fallbackValue ? String(fallbackValue) : null);
 
@@ -1642,6 +1646,13 @@ function SortableRow<T>({
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <PriorityColumn value={value} maxPriority={col.maxPriority} />
+                                    </div>
+                                ) : col.type === 'rating' ? (
+                                    <div
+                                        className="px-2 h-[34px] flex items-center cursor-pointer"
+                                        onClick={(e) => col.editable && onEditStart(row, col.key, e)}
+                                    >
+                                        <RatingColumn value={value} maxRating={col.maxRating} />
                                     </div>
                                 ) : col.type === 'people' ? (
                                     <div

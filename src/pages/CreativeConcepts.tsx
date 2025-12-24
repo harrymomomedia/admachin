@@ -8,6 +8,8 @@ import {
     createSubprojectColumn,
     createUserColumn,
     createRowHandler,
+    createUpdateHandler,
+    createDeleteHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -72,15 +74,16 @@ export function CreativeConcepts() {
         createUserColumn<CreativeConcept>(users, { key: 'created_by', editable: false }),
     ];
 
-    const handleUpdate = async (id: string, field: string, value: unknown) => {
-        await updateCreativeConcept(id, { [field]: value });
-        setData(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
-    };
+    const handleUpdate = useMemo(() => createUpdateHandler<CreativeConcept>({
+        updateFn: updateCreativeConcept,
+        setData,
+    }), []);
 
-    const handleDelete = async (id: string) => {
-        await deleteCreativeConcept(id);
-        setData(prev => prev.filter(item => item.id !== id));
-    };
+    const handleDelete = useMemo(() => createDeleteHandler<CreativeConcept>({
+        deleteFn: deleteCreativeConcept,
+        setData,
+        confirmMessage: false,
+    }), []);
 
     const handleCreateRow = useMemo(() => createRowHandler<CreativeConcept>({
         createFn: createCreativeConcept,

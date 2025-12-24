@@ -423,7 +423,8 @@ export const DEFAULT_QUICK_FILTERS = ['project_id', 'subproject_id'] as const;
  */
 export interface CreateRowHandlerConfig<T> {
     /** The create function from supabase-service */
-    createFn: (data: Record<string, unknown>) => Promise<T>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createFn: (data: any) => Promise<T>;
     /** State setter to update local data */
     setData: Dispatch<SetStateAction<T[]>>;
     /** Current user ID (for created_by/user_id/owner_id fields) */
@@ -485,6 +486,223 @@ export function createRowHandler<T>(
         setData(prev => [newRow, ...prev]);
 
         return newRow;
+    };
+}
+
+// ============ Row Delete Factory ============
+
+/**
+ * Configuration for creating a delete handler
+ */
+export interface DeleteHandlerConfig<T extends { id: string }> {
+    /** The delete function from supabase-service */
+    deleteFn: (id: string) => Promise<void>;
+    /** State setter to update local data */
+    setData: Dispatch<SetStateAction<T[]>>;
+    /** Confirmation message (set to false to skip confirmation) */
+    confirmMessage?: string | false;
+}
+
+/**
+ * Create a standardized handleDelete function for DataTable
+ *
+ * @example
+ * ```tsx
+ * const handleDelete = useMemo(() => createDeleteHandler({
+ *     deleteFn: deleteAdCopy,
+ *     setData,
+ * }), []);
+ *
+ * <DataTable onDelete={handleDelete} ... />
+ * ```
+ */
+export function createDeleteHandler<T extends { id: string }>(
+    config: DeleteHandlerConfig<T>
+): (id: string) => Promise<void> {
+    const {
+        deleteFn,
+        setData,
+        confirmMessage = 'Are you sure you want to delete this item?',
+    } = config;
+
+    return async (id: string): Promise<void> => {
+        // Confirmation dialog (skip if confirmMessage is false)
+        if (confirmMessage !== false && !confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            await deleteFn(id);
+            setData(prev => prev.filter(item => item.id !== id));
+        } catch (error) {
+            console.error('Failed to delete:', error);
+            throw error;
+        }
+    };
+}
+
+// ============ Row Reorder Factory ============
+
+/**
+ * Configuration for creating a reorder handler
+ */
+export interface ReorderHandlerConfig<T extends { id: string }> {
+    /** State setter to update local data */
+    setData: Dispatch<SetStateAction<T[]>>;
+    /** Current user ID for saving preferences */
+    currentUserId: string | null;
+    /** View ID for saving row order */
+    viewId: string;
+}
+
+/**
+ * Create a standardized handleReorder function for DataTable
+ *
+ * @example
+ * ```tsx
+ * const handleReorder = useMemo(() => createReorderHandler({
+ *     setData,
+ *     currentUserId,
+ *     viewId: 'ad_copies',
+ * }), [currentUserId]);
+ *
+ * <DataTable onReorder={handleReorder} ... />
+ * ```
+ */
+export function createReorderHandler<T extends { id: string }>(
+    config: ReorderHandlerConfig<T>
+): (newOrder: string[]) => Promise<void> {
+    const { setData, currentUserId, viewId } = config;
+
+    // Import saveRowOrder dynamically to avoid circular dependency
+    return async (newOrder: string[]): Promise<void> => {
+        // Reorder local state
+        setData(prev => {
+            const itemMap = new Map(prev.map(item => [item.id, item]));
+            return newOrder
+                .map(id => itemMap.get(id))
+                .filter((item): item is T => item !== undefined);
+        });
+
+        // Save order to database
+        if (currentUserId) {
+            try {
+                const { saveRowOrder } = await import('./supabase-service');
+                await saveRowOrder(currentUserId, viewId, newOrder);
+            } catch (error) {
+                console.error('Failed to save row order:', error);
+            }
+        }
+    };
+}
+
+// ============ Row Update Factory ============
+
+/**
+ * Configuration for creating an update handler
+ */
+export interface UpdateHandlerConfig<T extends { id: string }> {
+    /** The update function from supabase-service */
+    updateFn: (id: string, updates: Partial<T>) => Promise<T | void>;
+    /** State setter to update local data */
+    setData: Dispatch<SetStateAction<T[]>>;
+    /** Optional field transformers for special handling */
+    fieldTransformers?: Record<string, (value: unknown, row: T) => Partial<T>>;
+    /** Enable optimistic updates with rollback on error (default: true) */
+    optimistic?: boolean;
+}
+
+/**
+ * Create a standardized handleUpdate function for DataTable
+ *
+ * Supports two modes:
+ * 1. Simple: Direct update with optimistic state
+ * 2. Complex: Field transformers for special handling (e.g., project_id -> project name)
+ *
+ * @example
+ * ```tsx
+ * // Simple mode
+ * const handleUpdate = useMemo(() => createUpdateHandler({
+ *     updateFn: updateCreativeConcept,
+ *     setData,
+ * }), []);
+ *
+ * // Complex mode with field transformers
+ * const handleUpdate = useMemo(() => createUpdateHandler({
+ *     updateFn: updateAdCopy,
+ *     setData,
+ *     fieldTransformers: {
+ *         project_id: (value, row) => ({
+ *             project_id: value ? String(value) : null,
+ *             project: projects.find(p => p.id === value)?.name || null,
+ *         }),
+ *     },
+ * }), [projects]);
+ *
+ * <DataTable onUpdate={handleUpdate} ... />
+ * ```
+ */
+export function createUpdateHandler<T extends { id: string }>(
+    config: UpdateHandlerConfig<T>
+): (id: string, field: string, value: unknown) => Promise<void> {
+    const {
+        updateFn,
+        setData,
+        fieldTransformers = {},
+        optimistic = true,
+    } = config;
+
+    return async (id: string, field: string, value: unknown): Promise<void> => {
+        let updates: Partial<T>;
+        let original: T | undefined;
+
+        // Build updates and get original in one pass
+        setData(prev => {
+            const row = prev.find(item => item.id === id);
+            if (!row) return prev;
+
+            original = row;
+
+            // Build updates using transformer or simple field update
+            if (fieldTransformers[field]) {
+                updates = fieldTransformers[field](value, row);
+            } else {
+                updates = { [field]: value } as Partial<T>;
+            }
+
+            // Optimistic update
+            if (optimistic) {
+                return prev.map(item =>
+                    item.id === id ? { ...item, ...updates } : item
+                );
+            }
+            return prev;
+        });
+
+        // If no row found, exit
+        if (!original) return;
+
+        try {
+            await updateFn(id, updates!);
+
+            // If not optimistic, update state after success
+            if (!optimistic) {
+                setData(prev => prev.map(item =>
+                    item.id === id ? { ...item, ...updates } : item
+                ));
+            }
+        } catch (error) {
+            console.error('Failed to update:', error);
+
+            // Rollback on error (only if optimistic)
+            if (optimistic && original) {
+                setData(prev => prev.map(item =>
+                    item.id === id ? original! : item
+                ));
+            }
+
+            throw error;
+        }
     };
 }
 

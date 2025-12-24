@@ -12,7 +12,6 @@ import {
     getUsers,
     getCreatives,
     getAdCopies,
-    saveRowOrder,
     type Ad,
     type Project,
     type Subproject,
@@ -27,6 +26,7 @@ import {
     generateColorMap,
     createProjectColumn,
     createSubprojectColumn,
+    createReorderHandler,
     TRAFFIC_PLATFORM_COLORS,
 } from '../lib/datatable-defaults';
 
@@ -151,18 +151,11 @@ export function AdCombosList() {
     };
 
     // Reorder Handler
-    const handleReorder = async (newOrder: string[]) => {
-        const reordered = newOrder.map(id => ads.find(a => a.id === id)!).filter(Boolean);
-        setAds(reordered);
-
-        if (currentUserId) {
-            try {
-                await saveRowOrder(currentUserId, 'ads', newOrder);
-            } catch (error) {
-                console.error('Failed to save row order:', error);
-            }
-        }
-    };
+    const handleReorder = useMemo(() => createReorderHandler<Ad>({
+        setData: setAds,
+        currentUserId,
+        viewId: 'ads',
+    }), [currentUserId]);
 
     // Generate colorMaps using shared utility - memoized to prevent re-renders
     const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);

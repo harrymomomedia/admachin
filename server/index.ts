@@ -67,8 +67,7 @@ app.use('/api/team', teamRoutes);
 
 // Serve static frontend in production
 if (process.env.NODE_ENV === 'production') {
-    // dist-server/server/index.js -> ../.. -> root -> dist
-    const distPath = path.join(__dirname, '..', '..', 'dist');
+    const distPath = path.join(__dirname, '..', 'dist');
     app.use(express.static(distPath));
 
     // SPA fallback - serve index.html for all non-API routes

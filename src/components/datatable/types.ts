@@ -70,7 +70,7 @@ export interface ColumnDef<T> {
     minWidth?: number;
     editable?: boolean;
     viewable?: boolean; // For text/longtext types - allows clicking to view full text in a read-only popup (default: true when not editable)
-    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
+    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'rating' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -79,6 +79,7 @@ export interface ColumnDef<T> {
     getValue?: (row: T) => unknown;
     fallbackKey?: string; // For legacy data - show this field's value if current value not found in options
     maxPriority?: number; // For priority type - max value (default: 5)
+    maxRating?: number; // For rating type - max value (default: 10)
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
     users?: PeopleOption[]; // For people type - list of users to select from
     adCopyType?: 'headline' | 'primary_text' | 'description'; // For adcopy type - which type of ad copy

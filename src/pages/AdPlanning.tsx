@@ -8,7 +8,6 @@ import {
     getProjects,
     getUsers,
     getSubprojects,
-    saveRowOrder,
     type AdPlan,
     type Project,
     type User,
@@ -21,6 +20,7 @@ import {
     createProjectColumn,
     createSubprojectColumn,
     createRowHandler,
+    createReorderHandler,
 } from '../lib/datatable-defaults';
 
 export function AdPlanning() {
@@ -100,6 +100,7 @@ export function AdPlanning() {
             // NOTE: Auto-setting project_id is handled by DataTable's dependsOn
         } else if (field === 'project_id') {
             convertedValue = value === '' ? null : value;
+            // NOTE: ad_plans doesn't have a 'project' text column (only project_id + join)
             // NOTE: Clearing subproject when project changes is handled by DataTable's dependsOn
         } else if (field === 'user_id' || field === 'creative_id') {
             convertedValue = value === '' ? null : value;
@@ -124,19 +125,11 @@ export function AdPlanning() {
     };
 
     // Reorder Handler - persists to database
-    const handleReorder = async (newOrder: string[]) => {
-        const reordered = newOrder.map(id => plans.find(p => p.id === id)!).filter(Boolean);
-        setPlans(reordered);
-
-        // Save order to database
-        if (currentUserId) {
-            try {
-                await saveRowOrder(currentUserId, 'ad_planning', newOrder);
-            } catch (error) {
-                console.error('Failed to save row order:', error);
-            }
-        }
-    };
+    const handleReorder = useMemo(() => createReorderHandler<AdPlan>({
+        setData: setPlans,
+        currentUserId,
+        viewId: 'ad_planning',
+    }), [currentUserId]);
 
     // Quick Create Handler (for + button at bottom of table)
     const handleCreateRow = useMemo(() => createRowHandler<AdPlan>({
@@ -241,11 +234,12 @@ export function AdPlanning() {
         },
         {
             key: 'hj_rating',
-            header: 'Rat.',
-            width: 50,
-            minWidth: 40,
+            header: 'Rating',
+            width: 90,
+            minWidth: 70,
             editable: true,
-            type: 'text',
+            type: 'rating',
+            maxRating: 10,
         },
         {
             key: 'user_id',

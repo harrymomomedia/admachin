@@ -7,6 +7,9 @@ import {
     createProjectColumn,
     createSubprojectColumn,
     createUserColumn,
+    createRowHandler,
+    createUpdateHandler,
+    createDeleteHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -74,27 +77,23 @@ export function PersonaFrameworks() {
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
 
-    const handleUpdate = async (id: string, field: string, value: unknown) => {
-        await updatePersonaFramework(id, { [field]: value });
-        setData(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
-    };
+    const handleUpdate = useMemo(() => createUpdateHandler<PersonaFramework>({
+        updateFn: updatePersonaFramework,
+        setData,
+    }), []);
 
-    const handleDelete = async (id: string) => {
-        await deletePersonaFramework(id);
-        setData(prev => prev.filter(item => item.id !== id));
-    };
+    const handleDelete = useMemo(() => createDeleteHandler<PersonaFramework>({
+        deleteFn: deletePersonaFramework,
+        setData,
+        confirmMessage: false,
+    }), []);
 
-    const handleCreate = async (defaults?: Record<string, unknown>): Promise<PersonaFramework> => {
-        const newFramework = await createPersonaFramework({
-            title: 'New Framework',
-            content: null,
-            project_id: (defaults?.project_id as string) || null,
-            subproject_id: (defaults?.subproject_id as string) || null,
-            created_by: currentUserId,
-        });
-        setData(prev => [newFramework, ...prev]);
-        return newFramework;
-    };
+    const handleCreateRow = useMemo(() => createRowHandler<PersonaFramework>({
+        createFn: createPersonaFramework,
+        setData,
+        currentUserId,
+        userIdField: 'created_by',
+    }), [currentUserId]);
 
     return (
         <DataTablePageLayout>
@@ -107,7 +106,7 @@ export function PersonaFrameworks() {
                 getRowId={(row) => row.id}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
-                onCreateRow={handleCreate}
+                onCreateRow={handleCreateRow}
                 quickFilters={[...DEFAULT_QUICK_FILTERS]}
                 viewId="persona-frameworks"
                 {...DEFAULT_DATATABLE_PROPS}

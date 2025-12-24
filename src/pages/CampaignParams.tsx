@@ -6,6 +6,8 @@ import {
     generateColorMap,
     createCampaignParamColumns,
     createRowHandler,
+    createUpdateHandler,
+    createDeleteHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -199,15 +201,16 @@ export function CampaignParams() {
         },
     }), [projects, subprojects, users, projectColorMap, subprojectColorMap, autoFillLoading]);
 
-    const handleUpdate = async (id: string, field: string, value: unknown) => {
-        await updateCampaignParameter(id, { [field]: value });
-        setData(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
-    };
+    const handleUpdate = useMemo(() => createUpdateHandler<CampaignParameter>({
+        updateFn: updateCampaignParameter,
+        setData,
+    }), []);
 
-    const handleDelete = async (id: string) => {
-        await deleteCampaignParameter(id);
-        setData(prev => prev.filter(item => item.id !== id));
-    };
+    const handleDelete = useMemo(() => createDeleteHandler<CampaignParameter>({
+        deleteFn: deleteCampaignParameter,
+        setData,
+        confirmMessage: false,
+    }), []);
 
     const handleCreateRow = useMemo(() => createRowHandler<CampaignParameter>({
         createFn: createCampaignParameter,

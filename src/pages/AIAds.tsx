@@ -9,6 +9,8 @@ import {
     createSubprojectColumn,
     createUserColumn,
     createRowHandler,
+    createUpdateHandler,
+    createDeleteHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -105,15 +107,16 @@ export function AIAds() {
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];
 
-    const handleUpdate = async (id: string, field: string, value: unknown) => {
-        await updateAIGeneratedAd(id, { [field]: value });
-        setData(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
-    };
+    const handleUpdate = useMemo(() => createUpdateHandler<AIGeneratedAd>({
+        updateFn: updateAIGeneratedAd,
+        setData,
+    }), []);
 
-    const handleDelete = async (id: string) => {
-        await deleteAIGeneratedAd(id);
-        setData(prev => prev.filter(item => item.id !== id));
-    };
+    const handleDelete = useMemo(() => createDeleteHandler<AIGeneratedAd>({
+        deleteFn: deleteAIGeneratedAd,
+        setData,
+        confirmMessage: false,
+    }), []);
 
     const handleCreateRow = useMemo(() => createRowHandler<AIGeneratedAd>({
         createFn: createAIGeneratedAd,

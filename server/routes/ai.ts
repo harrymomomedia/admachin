@@ -6,7 +6,8 @@
 import { Router, Request, Response } from 'express';
 import { generateContent, getAvailableProviders, AIProvider, AIGenerateRequest } from '../services/ai.js';
 // Import centralized AI model configuration - single source of truth
-import { AI_MODELS, getApiModelId, type AIModel as CentralAIModel } from '../../src/lib/ai-models.js';
+// NOTE: This is a copy of src/lib/ai-models.ts for server-side use
+import { AI_MODELS, getApiModelId, type AIModel as CentralAIModel } from '../lib/ai-models.js';
 
 const router = Router();
 

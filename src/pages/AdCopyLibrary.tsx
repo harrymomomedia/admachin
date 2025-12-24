@@ -9,7 +9,6 @@ import {
     getProjects,
     getSubprojects,
     getUsers,
-    saveRowOrder,
     type AdCopy,
     type Project,
     type Subproject,
@@ -21,6 +20,7 @@ import {
     generateColorMap,
     createProjectColumn,
     createSubprojectColumn,
+    createReorderHandler,
     AD_COPY_TYPE_COLORS,
     TRAFFIC_PLATFORM_COLORS,
     COLUMN_WIDTH_DEFAULTS,
@@ -207,19 +207,11 @@ export function AdCopyLibrary() {
     };
 
     // Reorder Handler (for drag & drop) - persists to database
-    const handleReorder = async (newOrder: string[]) => {
-        const reordered = newOrder.map(id => copies.find(c => c.id === id)!).filter(Boolean);
-        setCopies(reordered);
-
-        // Save order to database
-        if (currentUserId) {
-            try {
-                await saveRowOrder(currentUserId, 'ad_copies', newOrder);
-            } catch (error) {
-                console.error('Failed to save row order:', error);
-            }
-        }
-    };
+    const handleReorder = useMemo(() => createReorderHandler<AdCopy>({
+        setData: setCopies,
+        currentUserId,
+        viewId: 'ad_copies',
+    }), [currentUserId]);
 
     // Create Handler
     const handleCreate = async (e: React.FormEvent) => {
