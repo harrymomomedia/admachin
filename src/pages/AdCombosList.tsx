@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layers } from 'lucide-react';
 import { DataTablePageLayout } from '../components/DataTablePageLayout';
@@ -164,15 +164,15 @@ export function AdCombosList() {
         }
     };
 
-    // Generate colorMaps using shared utility
-    const projectColorMap = generateColorMap(projects);
-    const subprojectColorMap = generateColorMap(subprojects);
+    // Generate colorMaps using shared utility - memoized to prevent re-renders
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
-    // Lookup maps for gallery view
-    const creativeMap = new Map(creatives.map(c => [c.id, c]));
-    const projectMap = new Map(projects.map(p => [p.id, p]));
-    const subprojectMap = new Map(subprojects.map(s => [s.id, s]));
-    const adCopyMap = new Map(adCopies.map(c => [c.id, c]));
+    // Lookup maps for gallery view - memoized
+    const creativeMap = useMemo(() => new Map(creatives.map(c => [c.id, c])), [creatives]);
+    const projectMap = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
+    const subprojectMap = useMemo(() => new Map(subprojects.map(s => [s.id, s])), [subprojects]);
+    const adCopyMap = useMemo(() => new Map(adCopies.map(c => [c.id, c])), [adCopies]);
 
     // Gallery card renderer
     const renderGalleryCard = ({ item, isSelected, onToggle, selectable }: {
@@ -206,14 +206,14 @@ export function AdCombosList() {
         );
     };
 
-    // Creative options
-    const creativeOptions = creatives.map(c => ({
+    // Creative options - memoized
+    const creativeOptions = useMemo(() => creatives.map(c => ({
         label: c.name || '(unnamed)',
         value: c.id
-    }));
+    })), [creatives]);
 
-    // Column Definitions
-    const columns: ColumnDef<Ad>[] = [
+    // Column Definitions - memoized to prevent re-renders on every state change
+    const columns: ColumnDef<Ad>[] = useMemo(() => [
         {
             key: 'row_number',
             header: 'ID',
@@ -303,7 +303,7 @@ export function AdCombosList() {
             type: 'adcopy',
             adCopyType: 'description',
         },
-    ];
+    ], [creativeOptions, projects, subprojects, users, projectColorMap, subprojectColorMap]);
 
     return (
         <DataTablePageLayout>

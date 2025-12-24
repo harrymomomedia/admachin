@@ -7,6 +7,7 @@ import {
     createProjectColumn,
     createSubprojectColumn,
     createUserColumn,
+    createRowHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -81,18 +82,12 @@ export function CreativeConcepts() {
         setData(prev => prev.filter(item => item.id !== id));
     };
 
-    const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<CreativeConcept> => {
-        const newRow = await createCreativeConcept({
-            name: 'New Concept',
-            description: null,
-            example: null,
-            project_id: (defaults?.project_id as string) || null,
-            subproject_id: (defaults?.subproject_id as string) || null,
-            created_by: currentUserId,
-        });
-        setData(prev => [newRow, ...prev]);
-        return newRow;
-    };
+    const handleCreateRow = useMemo(() => createRowHandler<CreativeConcept>({
+        createFn: createCreativeConcept,
+        setData,
+        currentUserId,
+        userIdField: 'created_by',
+    }), [currentUserId]);
 
     return (
         <DataTablePageLayout>

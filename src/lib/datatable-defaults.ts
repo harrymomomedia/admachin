@@ -9,6 +9,7 @@
  * - Common column configurations
  */
 
+import type { Dispatch, SetStateAction } from 'react';
 import type { Project, Subproject, User, CampaignParameter } from './supabase-service';
 import type { ColumnDef, ViewPreferences } from '../components/datatable/types';
 
@@ -414,6 +415,78 @@ export const INLINE_DATATABLE_PROPS = {
  * Common quick filter keys for most tables
  */
 export const DEFAULT_QUICK_FILTERS = ['project_id', 'subproject_id'] as const;
+
+// ============ Row Creation Factory ============
+
+/**
+ * Configuration for creating a row handler
+ */
+export interface CreateRowHandlerConfig<T> {
+    /** The create function from supabase-service */
+    createFn: (data: Record<string, unknown>) => Promise<T>;
+    /** State setter to update local data */
+    setData: Dispatch<SetStateAction<T[]>>;
+    /** Current user ID (for created_by/user_id/owner_id fields) */
+    currentUserId?: string | null;
+    /** Field name for user ID (defaults to 'created_by') */
+    userIdField?: 'created_by' | 'user_id' | 'owner_id';
+    /** Additional default values to include */
+    defaults?: Record<string, unknown>;
+}
+
+/**
+ * Create a standardized handleCreateRow function for DataTable
+ *
+ * This factory creates a consistent row creation handler that:
+ * - Accepts defaults from active filters (project_id, subproject_id)
+ * - Sets the current user as owner/creator
+ * - Adds the new row to the top of the list
+ * - Returns the new row for DataTable
+ *
+ * @example
+ * ```tsx
+ * const handleCreateRow = createRowHandler({
+ *     createFn: createAdPlan,
+ *     setData: setPlans,
+ *     currentUserId,
+ *     userIdField: 'user_id',
+ * });
+ *
+ * <DataTable onCreateRow={handleCreateRow} ... />
+ * ```
+ */
+export function createRowHandler<T>(
+    config: CreateRowHandlerConfig<T>
+): (defaults?: Record<string, unknown>) => Promise<T> {
+    const {
+        createFn,
+        setData,
+        currentUserId,
+        userIdField = 'created_by',
+        defaults: additionalDefaults = {},
+    } = config;
+
+    return async (filterDefaults?: Record<string, unknown>): Promise<T> => {
+        // Build the create payload
+        const payload: Record<string, unknown> = {
+            // From active filters
+            project_id: (filterDefaults?.project_id as string) || null,
+            subproject_id: (filterDefaults?.subproject_id as string) || null,
+            // Current user
+            [userIdField]: currentUserId || null,
+            // Additional defaults
+            ...additionalDefaults,
+        };
+
+        // Create the row
+        const newRow = await createFn(payload);
+
+        // Add to top of list
+        setData(prev => [newRow, ...prev]);
+
+        return newRow;
+    };
+}
 
 // ============ Type Exports ============
 

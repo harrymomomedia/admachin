@@ -5,6 +5,7 @@ import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
     generateColorMap,
     createCampaignParamColumns,
+    createRowHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -208,25 +209,12 @@ export function CampaignParams() {
         setData(prev => prev.filter(item => item.id !== id));
     };
 
-    const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<CampaignParameter> => {
-        const newRow = await createCampaignParameter({
-            name: '',
-            description: null,
-            persona_input: null,
-            swipe_files: null,
-            custom_prompt: null,
-            key_qualifying_criteria: null,
-            offer_flow: null,
-            proof_points: null,
-            primary_objections: null,
-            project_id: (defaults?.project_id as string) || null,
-            subproject_id: (defaults?.subproject_id as string) || null,
-            created_by: currentUserId,
-            refinement_history: null,
-        });
-        setData(prev => [newRow, ...prev]);
-        return newRow;
-    };
+    const handleCreateRow = useMemo(() => createRowHandler<CampaignParameter>({
+        createFn: createCampaignParameter,
+        setData,
+        currentUserId,
+        userIdField: 'created_by',
+    }), [currentUserId]);
 
     return (
         <DataTablePageLayout>

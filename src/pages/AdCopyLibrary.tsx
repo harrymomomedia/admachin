@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
@@ -249,12 +249,12 @@ export function AdCopyLibrary() {
         }
     };
 
-    // Generate colorMaps using shared utility
-    const projectColorMap = generateColorMap(projects);
-    const subprojectColorMap = generateColorMap(subprojects);
+    // Generate colorMaps using shared utility - memoized to prevent re-renders
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
-    // Column Definitions
-    const columns: ColumnDef<AdCopy>[] = [
+    // Column Definitions - memoized to prevent re-renders on every state change
+    const columns: ColumnDef<AdCopy>[] = useMemo(() => [
         {
             key: 'row_number',
             header: 'ID',
@@ -326,7 +326,7 @@ export function AdCopyLibrary() {
             type: 'people',
             users: users,
         },
-    ];
+    ], [projects, subprojects, users, projectColorMap, subprojectColorMap, columnConfigs]);
 
     return (
         <DataTablePageLayout>

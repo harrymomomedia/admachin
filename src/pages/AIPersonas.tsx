@@ -8,6 +8,7 @@ import {
     createProjectColumn,
     createSubprojectColumn,
     createUserColumn,
+    createRowHandler,
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
@@ -113,18 +114,12 @@ export function AIPersonas() {
         setData(prev => prev.filter(item => item.id !== id));
     };
 
-    const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<AIPersona> => {
-        const newRow = await createAIPersona({
-            content: 'New Persona',
-            project_id: (defaults?.project_id as string) || null,
-            subproject_id: (defaults?.subproject_id as string) || null,
-            campaign_parameter_id: null,
-            created_by: currentUserId,
-            prompts: null,
-        });
-        setData(prev => [newRow, ...prev]);
-        return newRow;
-    };
+    const handleCreateRow = useMemo(() => createRowHandler<AIPersona>({
+        createFn: createAIPersona,
+        setData,
+        currentUserId,
+        userIdField: 'created_by',
+    }), [currentUserId]);
 
     return (
         <DataTablePageLayout>

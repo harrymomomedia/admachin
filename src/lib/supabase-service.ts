@@ -821,8 +821,8 @@ export async function getAdPlans(): Promise<AdPlan[]> {
  * Create a new Ad Plan
  */
 export async function createAdPlan(plan: {
-    project_id: string;
-    user_id: string;
+    project_id?: string | null;
+    user_id?: string | null;
     subproject?: string;
     plan_type?: string;
     creative_type?: string;
@@ -837,8 +837,8 @@ export async function createAdPlan(plan: {
     const { data, error } = await supabaseUntyped
         .from('ad_plans')
         .insert({
-            project_id: plan.project_id,
-            user_id: plan.user_id,
+            project_id: plan.project_id || null,
+            user_id: plan.user_id || null,
             subproject: plan.subproject || null,
             plan_type: plan.plan_type || null,
             creative_type: plan.creative_type || null,

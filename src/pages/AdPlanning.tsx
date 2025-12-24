@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
@@ -20,6 +20,7 @@ import {
     generateColorMap,
     createProjectColumn,
     createSubprojectColumn,
+    createRowHandler,
 } from '../lib/datatable-defaults';
 
 export function AdPlanning() {
@@ -138,21 +139,12 @@ export function AdPlanning() {
     };
 
     // Quick Create Handler (for + button at bottom of table)
-    const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<AdPlan> => {
-        const newPlan = await createAdPlan({
-            project_id: (defaults?.project_id as string) || '',
-            user_id: currentUserId || '',
-            plan_type: 'CClone',
-            creative_type: 'Video',
-            priority: 3,
-            hj_rating: 0,
-            spy_url: '',
-            description: 'New Plan',
-            status: 'not started',
-        });
-        setPlans(prev => [newPlan, ...prev]);
-        return newPlan;
-    };
+    const handleCreateRow = useMemo(() => createRowHandler<AdPlan>({
+        createFn: createAdPlan,
+        setData: setPlans,
+        currentUserId,
+        userIdField: 'user_id',
+    }), [currentUserId]);
 
     // Create Handler (for modal form)
     const handleCreate = async (e: React.FormEvent) => {
@@ -188,12 +180,12 @@ export function AdPlanning() {
         }
     };
 
-    // Generate colorMaps using shared utility
-    const projectColorMap = generateColorMap(projects);
-    const subprojectColorMap = generateColorMap(subprojects);
+    // Generate colorMaps using shared utility - memoized to prevent re-renders
+    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
-    // Column Definitions
-    const columns: ColumnDef<AdPlan>[] = [
+    // Column Definitions - memoized to prevent re-renders on every state change
+    const columns: ColumnDef<AdPlan>[] = useMemo(() => [
         {
             key: 'row_number',
             header: 'ID',
@@ -308,7 +300,7 @@ export function AdPlanning() {
             editable: false,
             type: 'date',
         },
-    ];
+    ], [projects, subprojects, users, projectColorMap, subprojectColorMap]);
 
     return (
         <DataTablePageLayout>
