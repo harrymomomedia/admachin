@@ -17,6 +17,8 @@ export type {
     ViewPreferences,
     GalleryConfig,
     GalleryLookups,
+    CardConfig,
+    CardLookups,
     AdCopyItem,
     TabConfig,
 } from './types';

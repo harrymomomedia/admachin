@@ -5,25 +5,20 @@
 
 import { Router, Request, Response } from 'express';
 import { generateContent, getAvailableProviders, AIProvider, AIGenerateRequest } from '../services/ai.js';
+// Import centralized AI model configuration - single source of truth
+import { AI_MODELS, getApiModelId, type AIModel as CentralAIModel } from '../../src/lib/ai-models.js';
 
 const router = Router();
 
-// Types for legacy endpoint
+// Types for legacy endpoint - extend central types with legacy aliases
 type ClaudeModel = 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
-type AIModel = ClaudeModel | 'gpt' | 'gemini' | 'claude' | 'claude-sonnet' | 'claude-haiku' | 'claude-opus';
+type AIModel = CentralAIModel | 'claude' | 'claude-sonnet' | 'claude-haiku' | 'claude-opus';
 
 interface LegacyAIRequest {
     model: AIModel;
     systemPrompt: string;
     userPrompt: string;
 }
-
-// Map our model names to Anthropic API model IDs
-const CLAUDE_MODEL_MAP: Record<ClaudeModel, string> = {
-    'claude-sonnet-4.5': 'claude-sonnet-4-5-20250929',
-    'claude-opus-4.5': 'claude-opus-4-5-20251101',
-    'claude-haiku-4.5': 'claude-haiku-4-5-20251001'
-};
 
 // ============================================
 // Legacy endpoint: POST /api/ai-generate
@@ -35,6 +30,9 @@ async function callClaude(model: ClaudeModel, systemPrompt: string, userPrompt: 
         throw new Error('Anthropic API key not configured. Please add ANTHROPIC_API_KEY to your environment variables.');
     }
 
+    // Use centralized model ID lookup
+    const apiModelId = getApiModelId(model);
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -43,7 +41,7 @@ async function callClaude(model: ClaudeModel, systemPrompt: string, userPrompt: 
             'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-            model: CLAUDE_MODEL_MAP[model],
+            model: apiModelId,
             max_tokens: 8192,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }]

@@ -1860,11 +1860,29 @@ export interface RefinementRound {
     feedback: string;
 }
 
+// Auto-fill refinement round
+export interface AutoFillRefinementRound {
+    round: number;
+    timestamp: string;
+    output: {
+        productDescription: string;
+        personaInput: string;
+        keyQualifyingCriteria?: string;
+        offerFlow?: string;
+        proofPoints?: string;
+        primaryObjections?: string;
+        swipeFiles: string;
+        // customPrompt intentionally not tracked - always left empty
+    };
+    feedback: string;
+}
+
 // Refinement history stored in campaign_parameters
 export interface RefinementHistory {
     personas: RefinementRound[];
     angles: RefinementRound[];
     ads: RefinementRound[];
+    autofill?: AutoFillRefinementRound[];
 }
 
 export interface CampaignParameter {
@@ -1996,6 +2014,52 @@ export async function clearRefinementHistory(
     await updateRefinementHistory(campaignParameterId, section, []);
 }
 
+// Update auto-fill refinement history
+export async function updateAutoFillHistory(
+    campaignParameterId: string,
+    history: AutoFillRefinementRound[]
+): Promise<void> {
+    // First get current history
+    const current = await getCampaignParameter(campaignParameterId);
+    if (!current) {
+        throw new Error('Campaign parameter not found');
+    }
+
+    const currentHistory = current.refinement_history || { personas: [], angles: [], ads: [], autofill: [] };
+    const updatedHistory = { ...currentHistory, autofill: history };
+
+    const { error } = await supabaseUntyped
+        .from('campaign_parameters')
+        .update({
+            refinement_history: updatedHistory,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', campaignParameterId);
+
+    if (error) {
+        console.error('[Supabase] Error updating auto-fill history:', error);
+        throw error;
+    }
+}
+
+// Clear auto-fill refinement history
+export async function clearAutoFillHistory(
+    campaignParameterId: string
+): Promise<void> {
+    await updateAutoFillHistory(campaignParameterId, []);
+}
+
+// Get auto-fill history for a campaign parameter
+export async function getAutoFillHistory(
+    campaignParameterId: string
+): Promise<AutoFillRefinementRound[]> {
+    const current = await getCampaignParameter(campaignParameterId);
+    if (!current) {
+        return [];
+    }
+    return current.refinement_history?.autofill || [];
+}
+
 // ============================================
 // AI COPY - PERSONA FRAMEWORKS
 // ============================================
@@ -2068,6 +2132,24 @@ export async function deletePersonaFramework(id: string): Promise<void> {
         console.error('[Supabase] Error deleting persona framework:', error);
         throw error;
     }
+}
+
+export async function createPersonaFrameworksBatch(
+    frameworks: Array<Omit<PersonaFramework, 'id' | 'created_at' | 'updated_at'>>
+): Promise<PersonaFramework[]> {
+    if (frameworks.length === 0) return [];
+
+    const { data, error } = await supabaseUntyped
+        .from('persona_frameworks')
+        .insert(frameworks)
+        .select();
+
+    if (error) {
+        console.error('[Supabase] Error creating persona frameworks batch:', error);
+        throw error;
+    }
+
+    return data || [];
 }
 
 // ============================================

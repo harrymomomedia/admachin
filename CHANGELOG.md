@@ -6,6 +6,69 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-24: DataTable Card View Mode
+
+**Added:**
+- New "card" view mode for DataTable, optimized for reading long text content
+- `CardConfig` interface for configuring card view fields (bodyKey, titleKey, subtitleKey, metadataKeys, etc.)
+- `CardLookups` interface for ID-to-name resolution in cards
+- TextCard component with post-it note aesthetic and three color schemes (warm, neutral, cool)
+- Card view toggle button (FileText icon) appears when cardConfig is provided
+- Responsive grid layout with configurable min/max width (default 300-500px)
+- Selection support (checkboxes) and metadata footer with colored pills
+- Loading skeleton animation for card view
+
+**Changed:**
+- ViewMode type extended from `'table' | 'gallery'` to `'table' | 'gallery' | 'card'`
+- View mode toggle now conditionally shows buttons for available modes
+- DataTableSelectionModal updated to support card view mode
+
+---
+
+### 2025-12-24: Centralized AI Model Configuration
+
+**Added:**
+- New `src/lib/ai-models.ts` as single source of truth for all AI model configurations
+- `AIModel` type, `ModelConfig` interface, and `AI_MODELS` record with correct API model IDs
+- Helper functions: `getModelConfig()`, `getApiModelId()`, `getDisplayName()`, `isClaudeModel()`, `getModelMaxTokens()`
+
+**Fixed:**
+- Updated all Claude 4.5 model IDs to correct values from Anthropic documentation:
+  - Sonnet 4.5: `claude-sonnet-4-5-20250929`
+  - Haiku 4.5: `claude-haiku-4-5-20251001`
+  - Opus 4.5: `claude-opus-4-5-20251101`
+- Updated maxTokens to 64K (matching Claude 4.5 capabilities)
+- Server routes now import model configuration from centralized config instead of duplicating
+
+**Technical:**
+- `server/routes/ai.ts` now imports from `src/lib/ai-models.ts` for model ID lookups
+- `src/lib/ai-service.ts` now re-exports `AIModel` type from centralized config
+
+**Documentation:**
+- Added comprehensive "AI Model Configuration" section to CLAUDE.md with usage guidelines
+- Enhanced `ai-models.ts` with detailed comments: update instructions, model ID format patterns, pricing info, API connection notes, and common error solutions
+
+---
+
+### 2025-12-24: AI-Generated Persona Frameworks
+
+**Added:**
+- Generate Frameworks button at top of Persona Frameworks section in Copy Wizard
+- AI generation of persona frameworks from campaign parameters with count selector (1-20)
+- Iterative refinement for frameworks with like/dislike buttons and text feedback
+- Refinement history context panel showing previous rounds and feedback
+- Save individual or all generated frameworks to library
+- `generatePersonaFrameworks` function in ai-service.ts with iterative refinement support
+- `createPersonaFrameworksBatch` function in supabase-service.ts for batch saving
+- `PersonaFrameworkResult` type exported from ai-service.ts
+
+**Changed:**
+- Persona Frameworks section now shows "Generate persona frameworks from campaign parameters" by default
+- Frameworks are generated in-session first, then optionally saved to library
+- Separate display for generated frameworks (with refinement) and saved library frameworks
+
+---
+
 ### 2025-12-24: Persona Frameworks Feature
 
 **Added:**

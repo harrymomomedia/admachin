@@ -125,11 +125,15 @@ export function CampaignParams() {
                 maxWordsPerSection: autoFillWordCount
             });
 
-            // Update the row columns directly in the database
+            // Update all 7 row columns directly in the database
             await handleUpdate(autoFillRowId, 'description', result.productDescription);
             await handleUpdate(autoFillRowId, 'persona_input', result.personaInput);
+            await handleUpdate(autoFillRowId, 'key_qualifying_criteria', result.keyQualifyingCriteria);
+            await handleUpdate(autoFillRowId, 'offer_flow', result.offerFlow);
+            await handleUpdate(autoFillRowId, 'proof_points', result.proofPoints);
+            await handleUpdate(autoFillRowId, 'primary_objections', result.primaryObjections);
             await handleUpdate(autoFillRowId, 'swipe_files', result.swipeFiles);
-            await handleUpdate(autoFillRowId, 'custom_prompt', result.productCustomPrompt);
+            // Note: custom_prompt is intentionally NOT updated - left empty by auto-fill
 
             // Match and update project/subproject if found
             if (result.suggestedProjectName) {
@@ -206,7 +210,7 @@ export function CampaignParams() {
 
     const handleCreateRow = async (defaults?: Record<string, unknown>): Promise<CampaignParameter> => {
         const newRow = await createCampaignParameter({
-            name: 'New Campaign',
+            name: '',
             description: null,
             persona_input: null,
             swipe_files: null,

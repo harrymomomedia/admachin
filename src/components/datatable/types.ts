@@ -142,6 +142,40 @@ export interface GalleryLookups {
     subprojectColors?: Record<string, string>;
 }
 
+// ============ Card Configuration (Text-focused view) ============
+
+/**
+ * Card view configuration for text-focused reading mode
+ * Similar to GalleryConfig but optimized for text content instead of media
+ */
+export interface CardConfig {
+    /** Column key for the primary/main text (displayed as card body) - required */
+    bodyKey: string;
+    /** Column key for title/header text (optional, displayed above body) */
+    titleKey?: string;
+    /** Column key for subtitle (optional, displayed below title) */
+    subtitleKey?: string;
+    /** Additional metadata fields to show in footer (e.g., ['type', 'project_id']) */
+    metadataKeys?: string[];
+    /** Column key for row number/ID (optional) */
+    rowNumberKey?: string;
+    /** Card color scheme */
+    colorScheme?: 'neutral' | 'warm' | 'cool';
+    /** Min card width in pixels (default: 300) */
+    minWidth?: number;
+    /** Max card width in pixels (default: 500) */
+    maxWidth?: number;
+}
+
+/** Lookup maps for resolving IDs to names/colors in card view */
+export interface CardLookups {
+    projects?: Map<string, string>;
+    subprojects?: Map<string, string>;
+    users?: Map<string, string>;
+    projectColors?: Record<string, string>;
+    subprojectColors?: Record<string, string>;
+}
+
 // ============ Ad Copy Type ============
 
 export interface AdCopyItem {
@@ -253,9 +287,9 @@ export interface DataTableProps<T> {
     selectedRowId?: string | null;
     onRowSelect?: (id: string | null) => void;
 
-    // View mode (table or gallery/card view)
-    viewMode?: 'table' | 'gallery';
-    onViewModeChange?: (mode: 'table' | 'gallery') => void;
+    // View mode (table, gallery, or card view)
+    viewMode?: 'table' | 'gallery' | 'card';
+    onViewModeChange?: (mode: 'table' | 'gallery' | 'card') => void;
     cardColumns?: number;
 
     // Gallery configuration - maps data columns to gallery card fields
@@ -267,6 +301,19 @@ export interface DataTableProps<T> {
     adCopies?: AdCopyItem[];
     /** Custom gallery card renderer - overrides default CreativeCard rendering */
     renderGalleryCard?: (props: {
+        item: T;
+        isSelected: boolean;
+        onToggle: () => void;
+        selectable: boolean;
+    }) => ReactNode;
+
+    // Card configuration - maps data columns to text card fields
+    // If provided, DataTable will use built-in TextCard for card view
+    cardConfig?: CardConfig;
+    /** Lookup maps for resolving IDs to names in card view */
+    cardLookups?: CardLookups;
+    /** Custom card renderer - overrides default TextCard rendering */
+    renderCard?: (props: {
         item: T;
         isSelected: boolean;
         onToggle: () => void;

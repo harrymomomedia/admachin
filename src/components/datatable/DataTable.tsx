@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil } from 'lucide-react';
 import { SingleSelect, SearchInput } from '../fields';
 import {
     DndContext,
@@ -206,9 +206,9 @@ interface LocalDataTableProps<T> {
     selectedRowId?: string | null;
     onRowSelect?: (id: string | null) => void;
 
-    // View mode (table or gallery/card view)
-    viewMode?: 'table' | 'gallery';
-    onViewModeChange?: (mode: 'table' | 'gallery') => void;
+    // View mode (table, gallery, or card view)
+    viewMode?: 'table' | 'gallery' | 'card';
+    onViewModeChange?: (mode: 'table' | 'gallery' | 'card') => void;
     cardColumns?: number;
 
     // Gallery configuration - maps data columns to gallery card fields
@@ -2104,10 +2104,15 @@ export function DataTable<T>({
     // Gallery configuration for native media preview
     galleryConfig,
     galleryLookups,
+    // Card configuration for text-focused reading view
+    cardConfig,
+    cardLookups,
     // Ad copy data for adcopy column type
     adCopies,
     // Custom gallery card renderer
-    renderGalleryCard
+    renderGalleryCard,
+    // Custom card renderer for text cards
+    renderCard
 }: DataTableProps<T>) {
     // ============ Auto-persistence: Load preferences when viewId is provided ============
     const { user: authUser } = useAuth();
@@ -2263,9 +2268,9 @@ export function DataTable<T>({
     }, [groupRules, onGroupRulesChange]);
 
     // View mode state (managed internally if not provided externally)
-    const [internalViewMode, setInternalViewMode] = useState<'table' | 'gallery'>('table');
+    const [internalViewMode, setInternalViewMode] = useState<'table' | 'gallery' | 'card'>('table');
     const viewMode = externalViewMode || internalViewMode;
-    const setViewMode = (mode: 'table' | 'gallery') => {
+    const setViewMode = (mode: 'table' | 'gallery' | 'card') => {
         if (onViewModeChange) {
             onViewModeChange(mode);
         } else {
@@ -2604,11 +2609,33 @@ export function DataTable<T>({
 
     // Helper to handle filter dependencies (e.g., subproject -> project)
     // When a filter is set for a column with dependsOn, auto-add/update parent column filter
+    // When a parent filter is cleared, auto-clear child filters
     const setFilterRules = useCallback((updater: FilterRule[] | ((prev: FilterRule[]) => FilterRule[])) => {
         setFilterRulesRaw(prev => {
-            const newRules = typeof updater === 'function' ? updater(prev) : updater;
+            let newRules = typeof updater === 'function' ? updater(prev) : [...updater];
 
-            // Find any rules for columns with dependencies that have values
+            // First: Check if any parent columns have been cleared, and clear their children
+            // Find columns that have children depending on them
+            const parentColumns = columns.filter(c =>
+                columns.some(child => child.dependsOn?.parentKey === c.key)
+            );
+
+            for (const parentCol of parentColumns) {
+                const parentHadFilter = prev.some(r => r.field === parentCol.key && r.operator === 'is');
+                const parentHasFilter = newRules.some(r => r.field === parentCol.key && r.operator === 'is');
+
+                // Parent filter was cleared
+                if (parentHadFilter && !parentHasFilter) {
+                    // Find and remove all child filters
+                    const childCols = columns.filter(c => c.dependsOn?.parentKey === parentCol.key);
+                    for (const childCol of childCols) {
+                        newRules = newRules.filter(r => r.field !== childCol.key);
+                    }
+                }
+            }
+
+            // Second: Find any rules for columns with dependencies that have values
+            // and auto-add parent filters
             const additionalRules: FilterRule[] = [];
             for (const rule of newRules) {
                 if (rule.value && rule.operator === 'is') {
@@ -3646,19 +3673,36 @@ export function DataTable<T>({
                     {/* Right icons group - wraps together as a unit */}
                     <div className="flex items-center gap-2 flex-shrink-0">
 
-                {/* View Mode Toggle - only show if galleryConfig or renderGalleryCard is provided */}
-                {(galleryConfig || renderGalleryCard) && (
+                {/* View Mode Toggle - show if any view config is provided */}
+                {(galleryConfig || renderGalleryCard || cardConfig || renderCard) && (
                     <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-0.5 flex-shrink-0">
-                        <button
-                            onClick={() => setViewMode('gallery')}
-                            className={cn(
-                                "p-1.5 rounded transition-colors",
-                                viewMode === 'gallery' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
-                            )}
-                            title="Gallery view"
-                        >
-                            <LayoutGrid className="w-4 h-4" />
-                        </button>
+                        {/* Gallery button - only if gallery is configured */}
+                        {(galleryConfig || renderGalleryCard) && (
+                            <button
+                                onClick={() => setViewMode('gallery')}
+                                className={cn(
+                                    "p-1.5 rounded transition-colors",
+                                    viewMode === 'gallery' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                                )}
+                                title="Gallery view"
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                            </button>
+                        )}
+                        {/* Card button - only if card is configured */}
+                        {(cardConfig || renderCard) && (
+                            <button
+                                onClick={() => setViewMode('card')}
+                                className={cn(
+                                    "p-1.5 rounded transition-colors",
+                                    viewMode === 'card' ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                                )}
+                                title="Card view"
+                            >
+                                <FileText className="w-4 h-4" />
+                            </button>
+                        )}
+                        {/* Table button - always shown when toggle is visible */}
                         <button
                             onClick={() => setViewMode('table')}
                             className={cn(
@@ -5217,6 +5261,214 @@ export function DataTable<T>({
                                                     projectColor={projectId ? (galleryLookups?.projectColors?.[projectId] ?? undefined) : undefined}
                                                     subprojectColor={subprojectId ? (galleryLookups?.subprojectColors?.[subprojectId] ?? undefined) : undefined}
                                                 />
+                                            </div>
+                                        );
+                                    }
+
+                                    return null;
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Card View - text-focused reading mode */}
+                {viewMode === 'card' && (cardConfig || renderCard) && (
+                    <div className="p-4">
+                        {/* Select All Header */}
+                        {selectable && (
+                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                                <span className="text-sm text-gray-600">
+                                    {selectedIds ? selectedIds.size : 0} of {sortedData.length} selected
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        if (!onSelectionChange) return;
+                                        if (selectedIds && selectedIds.size === sortedData.length) {
+                                            onSelectionChange(new Set());
+                                        } else {
+                                            onSelectionChange(new Set(sortedData.map(getRowId)));
+                                        }
+                                    }}
+                                    className="text-sm text-blue-600 hover:text-blue-700"
+                                >
+                                    {selectedIds && selectedIds.size === sortedData.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Card Grid */}
+                        {(isLoading || !prefsLoaded) ? (
+                            <div
+                                className="grid gap-4"
+                                style={{
+                                    gridTemplateColumns: `repeat(auto-fill, minmax(${cardConfig?.minWidth || 300}px, 1fr))`
+                                }}
+                            >
+                                {Array.from({ length: 6 }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="h-48 bg-gray-100 rounded-xl skeleton-shimmer"
+                                        style={{ animationDelay: `${i * 0.05}s` }}
+                                    />
+                                ))}
+                            </div>
+                        ) : sortedData.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500 text-sm">
+                                {emptyMessage}
+                            </div>
+                        ) : (
+                            <div
+                                className="grid gap-4"
+                                style={{
+                                    gridTemplateColumns: `repeat(auto-fill, minmax(${cardConfig?.minWidth || 300}px, 1fr))`
+                                }}
+                            >
+                                {sortedData.map((item) => {
+                                    const id = getRowId(item);
+                                    const isSelected = selectedIds ? selectedIds.has(id) : false;
+                                    const handleToggle = () => {
+                                        if (!onSelectionChange || !selectedIds) return;
+                                        const newSet = new Set(selectedIds);
+                                        if (newSet.has(id)) {
+                                            newSet.delete(id);
+                                        } else {
+                                            newSet.add(id);
+                                        }
+                                        onSelectionChange(newSet);
+                                    };
+
+                                    // Custom card renderer takes priority
+                                    if (renderCard) {
+                                        return (
+                                            <div key={id} className="relative transition-all">
+                                                {renderCard({ item, isSelected, onToggle: handleToggle, selectable })}
+                                            </div>
+                                        );
+                                    }
+
+                                    // Built-in TextCard rendering using cardConfig
+                                    if (cardConfig) {
+                                        const itemAny = item as Record<string, unknown>;
+
+                                        // Extract values using cardConfig keys
+                                        const bodyText = cardConfig.bodyKey ? String(itemAny[cardConfig.bodyKey] || '') : '';
+                                        const titleText = cardConfig.titleKey ? String(itemAny[cardConfig.titleKey] || '') : '';
+                                        const subtitleText = cardConfig.subtitleKey ? String(itemAny[cardConfig.subtitleKey] || '') : '';
+                                        const rowNumber = cardConfig.rowNumberKey ? itemAny[cardConfig.rowNumberKey] as number : null;
+
+                                        // Get metadata values
+                                        const metadataItems = (cardConfig.metadataKeys || []).map(key => {
+                                            const col = columns.find(c => c.key === key);
+                                            const value = itemAny[key];
+
+                                            // Resolve ID to name if lookups available
+                                            let displayValue = String(value || '');
+                                            let colorClass: string | undefined;
+
+                                            if (key === 'project_id' && cardLookups?.projects) {
+                                                displayValue = cardLookups.projects.get(String(value)) || displayValue;
+                                                colorClass = cardLookups.projectColors?.[String(value)];
+                                            } else if (key === 'subproject_id' && cardLookups?.subprojects) {
+                                                displayValue = cardLookups.subprojects.get(String(value)) || displayValue;
+                                                colorClass = cardLookups.subprojectColors?.[String(value)];
+                                            } else if (key === 'user_id' && cardLookups?.users) {
+                                                displayValue = cardLookups.users.get(String(value)) || displayValue;
+                                            } else if (col?.colorMap) {
+                                                colorClass = col.colorMap[String(value)];
+                                            }
+
+                                            return {
+                                                key,
+                                                header: col?.header || key,
+                                                value: displayValue,
+                                                colorClass
+                                            };
+                                        }).filter(m => m.value);
+
+                                        // Color scheme styling
+                                        const colorSchemeClasses = {
+                                            neutral: 'bg-white border-gray-200 hover:border-gray-300',
+                                            warm: 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300',
+                                            cool: 'bg-gradient-to-br from-slate-50 to-blue-50 border-slate-200 hover:border-slate-300'
+                                        };
+                                        const colorScheme = cardConfig.colorScheme || 'warm';
+                                        const cardBgClass = colorSchemeClasses[colorScheme];
+                                        const borderDividerClass = colorScheme === 'warm' ? 'border-amber-200/50' : colorScheme === 'cool' ? 'border-slate-200/50' : 'border-gray-100';
+
+                                        return (
+                                            <div
+                                                key={id}
+                                                onClick={selectable ? handleToggle : undefined}
+                                                className={cn(
+                                                    "relative rounded-xl border-2 overflow-hidden transition-all",
+                                                    cardBgClass,
+                                                    "shadow-sm hover:shadow-md",
+                                                    isSelected
+                                                        ? 'border-blue-500 ring-2 ring-blue-500/20'
+                                                        : '',
+                                                    selectable ? 'cursor-pointer' : 'cursor-default'
+                                                )}
+                                            >
+                                                {/* Selection checkbox */}
+                                                {selectable && (
+                                                    <div className="absolute top-3 left-3 z-10">
+                                                        <div
+                                                            className={cn(
+                                                                "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+                                                                isSelected
+                                                                    ? 'bg-blue-500 border-blue-500 text-white'
+                                                                    : 'bg-white/80 border-gray-300'
+                                                            )}
+                                                        >
+                                                            {isSelected && <Check className="w-3 h-3" />}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Row number badge */}
+                                                {rowNumber !== null && (
+                                                    <div className="absolute top-3 right-3 z-10">
+                                                        <span className="text-xs text-gray-400 font-medium">#{rowNumber}</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Content */}
+                                                <div className={cn("p-4", selectable && "pt-10")}>
+                                                    {/* Title */}
+                                                    {titleText && (
+                                                        <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
+                                                            {titleText}
+                                                        </h3>
+                                                    )}
+
+                                                    {/* Subtitle */}
+                                                    {subtitleText && (
+                                                        <p className="text-xs text-gray-500 mb-2">{subtitleText}</p>
+                                                    )}
+
+                                                    {/* Body - main text content, expands to fit */}
+                                                    <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                                        {bodyText}
+                                                    </div>
+
+                                                    {/* Metadata footer */}
+                                                    {metadataItems.length > 0 && (
+                                                        <div className={cn("mt-4 pt-3 border-t flex flex-wrap gap-1.5", borderDividerClass)}>
+                                                            {metadataItems.map((meta) => (
+                                                                <span
+                                                                    key={meta.key}
+                                                                    className={cn(
+                                                                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                                                                        meta.colorClass || "bg-gray-100 text-gray-600"
+                                                                    )}
+                                                                >
+                                                                    {meta.value}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         );
                                     }

@@ -401,3 +401,85 @@ This applies to:
 - File uploads and transformations
 - Any long-running operations
 - Status polling (use server cron, not browser polling)
+
+## AI Model Configuration (CRITICAL)
+
+**Single Source of Truth:** `src/lib/ai-models.ts`
+
+All AI model configurations MUST be defined in this centralized file. NEVER hardcode model IDs elsewhere.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/ai-models.ts` | **Central config** - model IDs, display names, providers, limits |
+| `server/routes/ai.ts` | Server-side AI API routes - imports from ai-models.ts |
+| `src/lib/ai-service.ts` | Client-side AI functions - imports AIModel type from ai-models.ts |
+
+### Current Model IDs (Claude 4.5 Family)
+
+| App Model ID | API Model ID | Max Tokens |
+|--------------|--------------|------------|
+| `claude-sonnet-4.5` | `claude-sonnet-4-5-20250929` | 64,000 |
+| `claude-haiku-4.5` | `claude-haiku-4-5-20251001` | 64,000 |
+| `claude-opus-4.5` | `claude-opus-4-5-20251101` | 64,000 |
+| `gpt` | `gpt-4o` | 4,096 |
+| `gemini` | `gemini-1.5-pro` | 8,192 |
+
+### ⛔ Common Mistakes to Avoid
+
+1. **NEVER hardcode model IDs** - Always use `getApiModelId()` from ai-models.ts
+2. **NEVER guess model IDs** - Check Anthropic docs: https://platform.claude.com/docs/en/about-claude/models
+3. **NEVER use `-latest` aliases in production** - Use dated versions for stability
+4. **NEVER duplicate model config** - Import from ai-models.ts
+
+### ✅ Correct Usage
+
+```typescript
+// In server code
+import { getApiModelId } from '../../src/lib/ai-models.js';
+const apiModelId = getApiModelId('claude-sonnet-4.5'); // Returns 'claude-sonnet-4-5-20250929'
+
+// In client code
+import type { AIModel } from '../lib/ai-models';
+import { getModelConfig, getDisplayName } from '../lib/ai-models';
+```
+
+### Updating Model IDs
+
+When Anthropic releases new models:
+
+1. Check docs: https://platform.claude.com/docs/en/about-claude/models
+2. Or use API: `GET https://api.anthropic.com/v1/models` with `x-api-key` header
+3. Update ONLY `src/lib/ai-models.ts`
+4. Restart server - changes propagate automatically
+
+### Model ID Format Patterns
+
+Anthropic model IDs follow this pattern:
+- `claude-{tier}-{version}-{date}` e.g., `claude-sonnet-4-5-20250929`
+- Tier: `haiku` (fast), `sonnet` (balanced), `opus` (powerful)
+- Version: `4-5` means Claude 4.5 family
+- Date: `YYYYMMDD` snapshot date
+
+### API Error Handling
+
+Common errors and solutions:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `model: not found` | Wrong model ID | Check ai-models.ts has correct ID from docs |
+| `authentication_error` | Missing/invalid API key | Check ANTHROPIC_API_KEY in .env |
+| `rate_limit_error` | Too many requests | Implement retry with backoff |
+| `overloaded_error` | API at capacity | Retry after delay |
+
+### Testing Model Configuration
+
+After any model ID changes, test with:
+```bash
+curl -s -X POST http://localhost:3001/api/ai-generate \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-sonnet-4.5","systemPrompt":"Say hi","userPrompt":"Hello"}'
+```
+
+All three Claude models should return valid responses before deploying.

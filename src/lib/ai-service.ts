@@ -2,25 +2,75 @@
 // Supports Claude (Anthropic), GPT (OpenAI), and Gemini (Google)
 
 import type { Persona } from './supabase-service';
+// Import AIModel type from centralized config - single source of truth
+import type { AIModel } from './ai-models';
 
-export type AIModel = 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5' | 'gpt' | 'gemini';
+// Re-export AIModel for consumers of this module
+export type { AIModel };
 
 export interface PromptData {
     system: string;
     user: string;
 }
 
+// History round for Auto-Fill iterative refinement
+interface AutoFillHistoryRound {
+    round: number;
+    output: {
+        productDescription: string;
+        personaInput: string;
+        keyQualifyingCriteria?: string;
+        offerFlow?: string;
+        proofPoints?: string;
+        primaryObjections?: string;
+        swipeFiles: string;
+        // customPrompt intentionally not tracked - always left empty
+    };
+    feedback: string;
+}
+
+// Field key type for partial refinement - exported for use in CopyWizard
+export type AutoFillFieldKey =
+    | 'productDescription'
+    | 'personaInput'
+    | 'keyQualifyingCriteria'
+    | 'offerFlow'
+    | 'proofPoints'
+    | 'primaryObjections'
+    | 'swipeFiles';
+// Note: customPrompt is intentionally excluded - it's always left empty by auto-fill
+
 interface AutoFillProductParams {
     model: AIModel;
     briefDescription: string;
     maxWordsPerSection?: number; // Default: 100
+    customSystemPrompt?: string; // Optional custom system prompt
+    customUserPrompt?: string; // Optional custom user prompt
+    // Iterative refinement
+    history?: AutoFillHistoryRound[];
+    currentFeedback?: string;
+    // Current content to refine (full text)
+    currentContent?: {
+        productDescription: string;
+        personaInput: string;
+        keyQualifyingCriteria: string;
+        offerFlow: string;
+        proofPoints: string;
+        primaryObjections: string;
+        swipeFiles: string;
+    };
+    // Partial field refinement - only refine these fields (empty/undefined = refine all)
+    fieldsToRefine?: AutoFillFieldKey[];
 }
 
 interface AutoFillResult {
     productDescription: string;
     personaInput: string;
+    keyQualifyingCriteria: string;
+    offerFlow: string;
+    proofPoints: string;
+    primaryObjections: string;
     swipeFiles: string;
-    productCustomPrompt: string;
     suggestedProjectName?: string;
     suggestedSubprojectName?: string;
 }
@@ -95,32 +145,162 @@ interface GenerateAdCopiesParams {
 // ============================================
 
 export async function autoFillProductInfo(params: AutoFillProductParams): Promise<AutoFillResult> {
-    const { model, briefDescription, maxWordsPerSection = 100 } = params;
+    const { model, briefDescription, maxWordsPerSection = 100, customSystemPrompt, customUserPrompt, history, currentFeedback, currentContent, fieldsToRefine } = params;
 
-    console.log('[AI Auto-Fill] Starting auto-fill with:', { model, briefDescriptionLength: briefDescription.length, maxWordsPerSection });
+    // Refinement mode if we have current content AND feedback
+    const isRefinement = !!(currentContent && currentFeedback);
+    const hasHistory = history && history.length > 0;
+    // Partial refinement mode - only refine selected fields
+    const isPartialRefinement = isRefinement && fieldsToRefine && fieldsToRefine.length > 0;
 
-    const systemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into concise marketing inputs for an ad campaign.
+    // Field display names for prompts
+    const fieldDisplayNames: Record<AutoFillFieldKey, string> = {
+        productDescription: 'Product/Service Description',
+        personaInput: 'Target Audience',
+        keyQualifyingCriteria: 'Key Qualifying Criteria',
+        offerFlow: 'Offer Flow',
+        proofPoints: 'Proof Points',
+        primaryObjections: 'Primary Objections',
+        swipeFiles: 'Swipe Files/Headlines'
+    };
+
+    // Field descriptions for prompts
+    const fieldDescriptions: Record<AutoFillFieldKey, string> = {
+        productDescription: 'What the product/service is, who it\'s for, and key benefits.',
+        personaInput: 'Brief description of 2-3 target audience types and their key characteristics.',
+        keyQualifyingCriteria: 'Specific criteria that qualify ideal customers (demographics, behaviors, pain points, budget, timeline).',
+        offerFlow: 'The customer journey from awareness to purchase - what they see, click, and experience.',
+        proofPoints: 'Evidence that builds trust: testimonials, case studies, statistics, awards, credentials.',
+        primaryObjections: 'Common objections prospects have and brief responses to overcome them.',
+        swipeFiles: '4-5 compelling headline examples in various styles (curiosity, benefit, fear, social proof).'
+    };
+
+    console.log('[AI Auto-Fill] Starting auto-fill with:', {
+        model,
+        briefDescriptionLength: briefDescription.length,
+        maxWordsPerSection,
+        hasCustomPrompts: !!(customSystemPrompt || customUserPrompt),
+        isRefinement,
+        isPartialRefinement,
+        fieldsToRefine: fieldsToRefine || 'all',
+        hasHistory,
+        historyRounds: history?.length || 0
+    });
+
+    // Build system prompt - different for refinement
+    let defaultSystemPrompt: string;
+
+    // All fields to generate (in order)
+    const allFields: AutoFillFieldKey[] = [
+        'productDescription',
+        'personaInput',
+        'keyQualifyingCriteria',
+        'offerFlow',
+        'proofPoints',
+        'primaryObjections',
+        'swipeFiles'
+    ];
+
+    if (isPartialRefinement && fieldsToRefine) {
+        // Partial refinement - only ask for selected fields
+        const fieldInstructions = fieldsToRefine.map((field, idx) => {
+            return `${idx + 1}. ${field} (~${maxWordsPerSection} words): ${fieldDescriptions[field]}`;
+        }).join('\n\n');
+
+        defaultSystemPrompt = `You are an expert marketing strategist refining SPECIFIC marketing fields based on user feedback.
+
+IMPORTANT: You are ONLY refining these specific fields:
+${fieldsToRefine.map(f => `- ${fieldDisplayNames[f]}`).join('\n')}
+
+Do NOT include any other fields in your response. Focus ONLY on improving the selected fields based on the feedback.
+
+Each field must be approximately ${maxWordsPerSection} WORDS. Keep responses focused and concise.
+
+Generate improved versions of ONLY these fields:
+${fieldInstructions}
+
+Apply the feedback to improve these specific fields. Return ONLY a valid JSON object with ONLY the selected field keys, no additional text or fields.`;
+    } else if (isRefinement) {
+        const fieldInstructions = allFields.map((field, idx) => {
+            return `${idx + 1}. ${field} (~${maxWordsPerSection} words): ${fieldDescriptions[field]}`;
+        }).join('\n\n');
+
+        defaultSystemPrompt = `You are an expert marketing strategist refining marketing inputs based on user feedback.
+
+Review the CURRENT CONTENT and feedback below, then generate IMPROVED marketing inputs that address the feedback while preserving what works well.
+
+IMPORTANT: Each field must be approximately ${maxWordsPerSection} WORDS. Keep responses focused and concise.
+
+Generate improved versions of:
+${fieldInstructions}
+
+8. suggestedProjectName: A short project name (2-4 words)
+
+9. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+
+Apply the feedback to improve the content. Return ONLY a valid JSON object with these exact keys, no additional text.`;
+    } else {
+        const fieldInstructions = allFields.map((field, idx) => {
+            return `${idx + 1}. ${field} (~${maxWordsPerSection} words): ${fieldDescriptions[field]}`;
+        }).join('\n\n');
+
+        defaultSystemPrompt = `You are an expert marketing strategist. Given a brief product/service description, expand it into comprehensive marketing inputs for an ad campaign.
 
 IMPORTANT: Each field must be approximately ${maxWordsPerSection} WORDS. Keep responses focused and concise.
 
 Generate:
-1. productDescription (~${maxWordsPerSection} words): What the product/service is, who it's for, and key benefits.
+${fieldInstructions}
 
-2. personaInput (~${maxWordsPerSection} words): Brief description of 2-3 target audience types and their key characteristics.
+8. suggestedProjectName: A short project name (2-4 words)
 
-3. swipeFiles (~${maxWordsPerSection} words): 4-5 compelling headline examples in various styles.
-
-4. productCustomPrompt (~${maxWordsPerSection} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
-
-5. suggestedProjectName: A short project name (2-4 words)
-
-6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+9. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
 
 Return ONLY a valid JSON object with these exact keys, no additional text.`;
+    }
 
-    const userPrompt = `Brief Description: ${briefDescription}
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
 
-Generate product information (~${maxWordsPerSection} words per field) in JSON format.`;
+    // Build user prompt
+    let defaultUserPrompt = `Brief Description: ${briefDescription}\n`;
+
+    if (isRefinement && currentContent) {
+        if (isPartialRefinement && fieldsToRefine) {
+            // Partial refinement - only include selected fields in the prompt
+            defaultUserPrompt += `\n=== CURRENT CONTENT OF SELECTED FIELDS TO REFINE ===\n`;
+            for (const field of fieldsToRefine) {
+                const value = currentContent[field];
+                defaultUserPrompt += `\n[${fieldDisplayNames[field]}]\n${value}\n`;
+            }
+        } else {
+            // Full refinement - include all current content
+            defaultUserPrompt += `\n=== CURRENT CONTENT TO REFINE ===\n`;
+            for (const field of allFields) {
+                defaultUserPrompt += `\n[${fieldDisplayNames[field]}]\n${currentContent[field]}\n`;
+            }
+        }
+
+        // Include history context (truncated summaries of previous rounds)
+        if (hasHistory && history) {
+            defaultUserPrompt += `\n=== PREVIOUS REFINEMENT HISTORY ===\n`;
+            for (const round of history) {
+                defaultUserPrompt += `\nRound ${round.round}:\n`;
+                defaultUserPrompt += `Feedback given: "${round.feedback}"\n`;
+            }
+        }
+
+        // Current feedback to apply
+        defaultUserPrompt += `\n=== FEEDBACK TO ADDRESS NOW ===\n"${currentFeedback}"\n`;
+
+        if (isPartialRefinement) {
+            defaultUserPrompt += `\nGenerate IMPROVED versions of ONLY the selected fields as JSON, applying the feedback. Do NOT include other fields.`;
+        } else {
+            defaultUserPrompt += `\nGenerate IMPROVED marketing inputs as JSON, applying the feedback while keeping what works well.`;
+        }
+    } else {
+        defaultUserPrompt += `\nGenerate comprehensive marketing inputs (~${maxWordsPerSection} words per field) in JSON format.`;
+    }
+
+    const userPrompt = customUserPrompt || defaultUserPrompt;
 
     try {
         let response: string;
@@ -154,12 +334,173 @@ Generate product information (~${maxWordsPerSection} words per field) in JSON fo
             .replace(/\s*```$/i, '')
             .trim();
 
-        const result = JSON.parse(cleanedResponse);
-        console.log('[AI Auto-Fill] Parsed successfully. Keys:', Object.keys(result));
-        return result;
+        const parsedResult = JSON.parse(cleanedResponse);
+        console.log('[AI Auto-Fill] Parsed successfully. Keys:', Object.keys(parsedResult));
+
+        // For partial refinement, merge AI results with unchanged fields from currentContent
+        if (isPartialRefinement && currentContent && fieldsToRefine) {
+            const mergedResult: AutoFillResult = {
+                // Start with unchanged values from currentContent
+                productDescription: currentContent.productDescription,
+                personaInput: currentContent.personaInput,
+                keyQualifyingCriteria: currentContent.keyQualifyingCriteria,
+                offerFlow: currentContent.offerFlow,
+                proofPoints: currentContent.proofPoints,
+                primaryObjections: currentContent.primaryObjections,
+                swipeFiles: currentContent.swipeFiles,
+                // No project/subproject changes for partial refinement
+            };
+
+            // Override with refined values
+            for (const field of fieldsToRefine) {
+                if (parsedResult[field]) {
+                    mergedResult[field] = parsedResult[field];
+                }
+            }
+
+            console.log('[AI Auto-Fill] Partial refinement - merged result with unchanged fields');
+            return mergedResult;
+        }
+
+        return parsedResult;
     } catch (error) {
         console.error('[AI Auto-Fill] Error:', error);
         throw new Error(`Failed to auto-fill with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+// ============================================
+// SINGLE FIELD REFINEMENT
+// ============================================
+
+export type CampaignFieldKey =
+    | 'description'
+    | 'persona_input'
+    | 'key_qualifying_criteria'
+    | 'offer_flow'
+    | 'proof_points'
+    | 'primary_objections'
+    | 'swipe_files'
+    | 'custom_prompt';
+
+const FIELD_LABELS: Record<CampaignFieldKey, string> = {
+    description: 'Product/Service Description',
+    persona_input: 'Target Audience',
+    key_qualifying_criteria: 'Key Qualifying Criteria',
+    offer_flow: 'Offer Flow',
+    proof_points: 'Proof Points',
+    primary_objections: 'Primary Objections',
+    swipe_files: 'Swipe Files/Headlines',
+    custom_prompt: 'Custom Prompt'
+};
+
+const FIELD_INSTRUCTIONS: Record<CampaignFieldKey, string> = {
+    description: 'A clear description of the product/service, who it\'s for, and key benefits.',
+    persona_input: 'Brief description of 2-3 target audience types and their key characteristics.',
+    key_qualifying_criteria: 'Specific criteria that qualify or disqualify potential customers.',
+    offer_flow: 'The customer journey and offer structure.',
+    proof_points: 'Evidence, testimonials, statistics that support claims.',
+    primary_objections: 'Common objections and how to address them.',
+    swipe_files: '4-5 compelling headline examples in various styles.',
+    custom_prompt: 'Special considerations for ad copywriting (tone, legal requirements, sensitivities).'
+};
+
+interface RefineSingleFieldParams {
+    model: AIModel;
+    fieldKey: CampaignFieldKey;
+    currentValue: string;
+    feedback: string;
+    // Context from other fields
+    context?: {
+        campaignName?: string;
+        description?: string;
+        personaInput?: string;
+        keyQualifyingCriteria?: string;
+        offerFlow?: string;
+        proofPoints?: string;
+        primaryObjections?: string;
+        swipeFiles?: string;
+        customPrompt?: string;
+    };
+    maxWords?: number;
+}
+
+interface RefineSingleFieldResult {
+    refinedValue: string;
+    fieldKey: CampaignFieldKey;
+}
+
+export async function refineSingleField(params: RefineSingleFieldParams): Promise<RefineSingleFieldResult> {
+    const { model, fieldKey, currentValue, feedback, context, maxWords = 100 } = params;
+
+    const fieldLabel = FIELD_LABELS[fieldKey];
+    const fieldInstruction = FIELD_INSTRUCTIONS[fieldKey];
+
+    const systemPrompt = `You are an expert marketing strategist. Your task is to refine a SINGLE field based on user feedback.
+
+You are refining the "${fieldLabel}" field.
+Field purpose: ${fieldInstruction}
+
+IMPORTANT:
+- Keep the output to approximately ${maxWords} words
+- ONLY return the refined content for this field
+- Do NOT include any labels, prefixes, or JSON formatting
+- Return ONLY the plain text content for this field`;
+
+    let userPrompt = `CURRENT "${fieldLabel}" CONTENT:
+${currentValue || '(empty)'}
+
+USER FEEDBACK TO APPLY:
+"${feedback}"
+`;
+
+    // Add context from other fields if available
+    if (context) {
+        userPrompt += `\nCONTEXT FROM OTHER CAMPAIGN FIELDS:`;
+        if (context.campaignName) userPrompt += `\n- Campaign: ${context.campaignName}`;
+        if (context.description && fieldKey !== 'description') userPrompt += `\n- Product Description: ${context.description.substring(0, 200)}...`;
+        if (context.personaInput && fieldKey !== 'persona_input') userPrompt += `\n- Target Audience: ${context.personaInput.substring(0, 200)}...`;
+        if (context.keyQualifyingCriteria && fieldKey !== 'key_qualifying_criteria') userPrompt += `\n- Key Criteria: ${context.keyQualifyingCriteria.substring(0, 150)}...`;
+    }
+
+    userPrompt += `\n\nRefine the "${fieldLabel}" based on the feedback above. Return ONLY the refined text content (~${maxWords} words), no formatting or labels.`;
+
+    console.log('[AI Refine Field] Refining:', fieldKey, 'with feedback:', feedback.substring(0, 50) + '...');
+
+    try {
+        let response: string;
+
+        switch (model) {
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
+                response = await callClaude(model, systemPrompt, userPrompt);
+                break;
+            case 'gpt':
+                response = await callGPT(systemPrompt, userPrompt);
+                break;
+            case 'gemini':
+                response = await callGemini(systemPrompt, userPrompt);
+                break;
+            default:
+                throw new Error(`Unsupported AI model: ${model}`);
+        }
+
+        // Clean up the response - remove any accidental formatting
+        const cleanedResponse = response
+            .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+            .replace(/^(Product Description|Target Audience|.*?):\s*/i, '') // Remove any label prefix
+            .trim();
+
+        console.log('[AI Refine Field] Success. Response length:', cleanedResponse.length);
+
+        return {
+            refinedValue: cleanedResponse,
+            fieldKey
+        };
+    } catch (error) {
+        console.error('[AI Refine Field] Error:', error);
+        throw new Error(`Failed to refine ${fieldLabel}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -262,6 +603,159 @@ ${customPrompt ? `Instructions: ${customPrompt}\n` : ''}`;
     } catch (error) {
         console.error('Error generating personas:', error);
         throw new Error(`Failed to generate personas with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+// ============================================
+// PERSONA FRAMEWORK GENERATION
+// ============================================
+
+// History round for framework iterative refinement
+interface FrameworkHistoryRound {
+    round: number;
+    frameworks: Array<{ title: string; content: string }>;
+    feedback: string;
+}
+
+interface GeneratePersonaFrameworksParams {
+    model: AIModel;
+    productDescription: string;
+    personaInput?: string;
+    swipeFiles?: string;
+    customPrompt?: string;
+    frameworkCount?: number;
+    // Marketing context fields
+    keyQualifyingCriteria?: string;
+    offerFlow?: string;
+    proofPoints?: string;
+    primaryObjections?: string;
+    // Iterative refinement
+    history?: FrameworkHistoryRound[];
+    currentFeedback?: string;
+    // Custom prompts override
+    customSystemPrompt?: string;
+    customUserPrompt?: string;
+}
+
+export interface PersonaFrameworkResult {
+    id: string;
+    title: string;
+    content: string;
+    selected: boolean;
+}
+
+export async function generatePersonaFrameworks(params: GeneratePersonaFrameworksParams): Promise<GenerationResult<PersonaFrameworkResult[]>> {
+    const {
+        model, productDescription, personaInput, swipeFiles, customPrompt, frameworkCount = 5,
+        keyQualifyingCriteria, offerFlow, proofPoints, primaryObjections,
+        history, currentFeedback,
+        customSystemPrompt, customUserPrompt
+    } = params;
+
+    const isRefinement = history && history.length > 0;
+
+    // Default system prompt - strategic framework approach
+    const defaultSystemPrompt = isRefinement
+        ? `You are a senior advertising strategist refining persona frameworks based on user feedback.
+
+Review the previous generation rounds and feedback below, then generate ${frameworkCount} IMPROVED persona frameworks that address the feedback.
+
+Each framework should have:
+- title: A short descriptive label (2-5 words)
+- content: A strategic description (50-150 words) of this archetype and why it matters for ad creative
+
+Apply the feedback to improve the frameworks. Return ONLY a valid JSON array.`
+        : `You are a senior advertising strategist helping to develop a persona framework for an ad campaign.
+
+Your task is to analyze the campaign and propose ${frameworkCount} persona frameworks—not actual personas, but strategic lenses we should use to generate them.
+
+Think through:
+- What makes this campaign unique?
+- What's the core psychological journey for this audience?
+- What dimensions would create the most meaningful variation in ad creative?
+- What does the winner ad/swipe file tell us about what works, and what's left unexplored?
+
+Be direct and strategic. Each framework should have:
+- title: A short descriptive label (2-5 words, e.g., "The Skeptical Professional", "The Overwhelmed Caregiver")
+- content: A strategic description (50-150 words) explaining this archetype, their core characteristics, psychological drivers, and why this framework matters for ad creative
+
+Don't force a template. Think through the best way to slice this audience for creative development.
+
+Return ONLY a valid JSON array with objects containing "title" and "content" fields.`;
+
+    // Default user prompt
+    let defaultUserPrompt = `## Campaign Parameters
+- Product/Service: ${productDescription}
+${personaInput ? `- Target Audience: ${personaInput}` : ''}
+${keyQualifyingCriteria ? `- Key Qualifying Criteria: ${keyQualifyingCriteria}` : ''}
+${offerFlow ? `- Offer Flow: ${offerFlow}` : ''}
+${proofPoints ? `- Proof Points: ${proofPoints}` : ''}
+${primaryObjections ? `- Primary Objections: ${primaryObjections}` : ''}
+${swipeFiles ? `- Swipe File/Winner Ad: ${swipeFiles}` : ''}
+${customPrompt ? `\n## Additional Instructions\n${customPrompt}` : ''}`;
+
+    if (isRefinement && history) {
+        defaultUserPrompt += `\n\n--- PREVIOUS GENERATIONS & FEEDBACK ---\n`;
+        for (const round of history) {
+            defaultUserPrompt += `\nRound ${round.round} Output:\n`;
+            defaultUserPrompt += round.frameworks.map(f => `• ${f.title}: ${f.content}`).join('\n');
+            if (round.feedback) {
+                defaultUserPrompt += `\n\nFeedback after Round ${round.round}: "${round.feedback}"\n`;
+            }
+        }
+        if (currentFeedback) {
+            defaultUserPrompt += `\n--- CURRENT FEEDBACK TO ADDRESS ---\n"${currentFeedback}"\n`;
+        }
+        defaultUserPrompt += `\nGenerate ${frameworkCount} IMPROVED persona frameworks as JSON array with "title" and "content" fields, addressing all feedback above.`;
+    } else {
+        defaultUserPrompt += `\n\nGenerate ${frameworkCount} distinct persona frameworks as JSON array with "title" and "content" fields only.`;
+    }
+
+    // Use custom prompts if provided, otherwise use defaults
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const userPrompt = customUserPrompt || defaultUserPrompt;
+
+    try {
+        let response: string;
+
+        switch (model) {
+            case 'claude-sonnet-4.5':
+            case 'claude-opus-4.5':
+            case 'claude-haiku-4.5':
+                response = await callClaude(model, systemPrompt, userPrompt);
+                break;
+            case 'gpt':
+                response = await callGPT(systemPrompt, userPrompt);
+                break;
+            case 'gemini':
+                response = await callGemini(systemPrompt, userPrompt);
+                break;
+            default:
+                throw new Error(`Unsupported AI model: ${model}`);
+        }
+
+        // Clean up response - remove markdown code blocks if present
+        const cleanedResponse = response
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        // Parse and validate the response
+        const frameworks = JSON.parse(cleanedResponse);
+
+        // Add IDs and selected flag
+        const data: PersonaFrameworkResult[] = frameworks.map((f: any, idx: number) => ({
+            id: `framework-${Date.now()}-${idx}`,
+            title: f.title,
+            content: f.content,
+            selected: false
+        }));
+
+        return { data, systemPrompt, userPrompt, model };
+    } catch (error) {
+        console.error('Error generating persona frameworks:', error);
+        throw new Error(`Failed to generate persona frameworks with ${model}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -548,12 +1042,32 @@ async function callAIProxy(model: AIModel, systemPrompt: string, userPrompt: str
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'AI API request failed');
+        // Handle empty response body gracefully
+        let errorMessage = `AI API request failed with status ${response.status}`;
+        try {
+            const text = await response.text();
+            if (text) {
+                const error = JSON.parse(text);
+                errorMessage = error.error || errorMessage;
+            }
+        } catch {
+            // Response body was empty or not valid JSON
+        }
+        throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    return data.response;
+    // Handle empty successful response
+    const text = await response.text();
+    if (!text) {
+        throw new Error('AI API returned empty response');
+    }
+
+    try {
+        const data = JSON.parse(text);
+        return data.response;
+    } catch {
+        throw new Error(`AI API returned invalid JSON: ${text.substring(0, 100)}...`);
+    }
 }
 
 async function callClaude(model: 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5', systemPrompt: string, userPrompt: string): Promise<string> {

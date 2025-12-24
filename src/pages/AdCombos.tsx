@@ -315,7 +315,7 @@ export function AdCombos() {
     const [createdById, setCreatedById] = useState<string | null>(null);
 
     // View mode state - default to gallery for creatives
-    const [creativesViewMode, setCreativesViewMode] = useState<'table' | 'gallery'>('gallery');
+    const [creativesViewMode, setCreativesViewMode] = useState<'table' | 'gallery' | 'card'>('gallery');
 
     // Selection state
     const [selectedCreatives, setSelectedCreatives] = useState<Set<string>>(new Set());

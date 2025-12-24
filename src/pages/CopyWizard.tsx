@@ -18,6 +18,7 @@ import {
     MessageCircle,
     History,
     RotateCcw,
+    RefreshCw,
     ThumbsUp,
     ThumbsDown,
     Library,
@@ -37,6 +38,8 @@ import {
     deleteCampaignParameter,
     updateRefinementHistory,
     clearRefinementHistory,
+    updateAutoFillHistory,
+    clearAutoFillHistory as clearAutoFillHistoryDB,
     createAIPersonasBatch,
     createAIAnglesBatch,
     createAIGeneratedAdsBatch,
@@ -44,12 +47,14 @@ import {
     getAIAngles,
     getAIGeneratedAds,
     getPersonaFrameworks,
+    createPersonaFrameworksBatch,
     type Project,
     type Subproject,
     type Persona,
     type User,
     type CampaignParameter,
     type RefinementRound,
+    type AutoFillRefinementRound,
     type AIPersona,
     type AIAngle,
     type AIGeneratedAd,
@@ -61,7 +66,7 @@ import { PersonaSelector } from '../components/PersonaSelector';
 import { AIProgressToast, type ProgressStep } from '../components/AIProgressToast';
 import { SavedPersonasModal } from '../components/SavedPersonasModal';
 import * as AI from '../lib/ai-service';
-import type { AIModel, PromptData } from '../lib/ai-service';
+import type { AIModel, PromptData, PersonaFrameworkResult, CampaignFieldKey, AutoFillFieldKey } from '../lib/ai-service';
 
 interface Angle {
     id: string;
@@ -118,6 +123,47 @@ export function CopyWizard() {
     const [personaFrameworks, setPersonaFrameworks] = useState<PersonaFramework[]>([]);
     const [personaFrameworksExpanded, setPersonaFrameworksExpanded] = useState(false);
     const [selectedPersonaFrameworkId, setSelectedPersonaFrameworkId] = useState<string | null>(null);
+
+    // Generated Frameworks (in-session, before saving to library)
+    const [generatedFrameworks, setGeneratedFrameworks] = useState<PersonaFrameworkResult[]>([]);
+    const [frameworkCount, setFrameworkCount] = useState(5);
+    const [frameworksLoading, setFrameworksLoading] = useState(false);
+    const [frameworksPrompts, setFrameworksPrompts] = useState<{ system: string; user: string; model: string } | null>(null);
+    const [showFrameworkPromptEditor, setShowFrameworkPromptEditor] = useState(false);
+    const [customFrameworkSystemPrompt, setCustomFrameworkSystemPrompt] = useState('');
+    const [customFrameworkUserPrompt, setCustomFrameworkUserPrompt] = useState('');
+    // Track which fields to include in the framework user prompt
+    const [frameworkPromptFields, setFrameworkPromptFields] = useState<{
+        productDescription: boolean;
+        targetAudience: boolean;
+        keyQualifyingCriteria: boolean;
+        offerFlow: boolean;
+        proofPoints: boolean;
+        primaryObjections: boolean;
+        swipeFile: boolean;
+        customPrompt: boolean;
+    }>({
+        productDescription: true,
+        targetAudience: true,
+        keyQualifyingCriteria: true,
+        offerFlow: true,
+        proofPoints: true,
+        primaryObjections: true,
+        swipeFile: true,
+        customPrompt: true
+    });
+    // Framework iterative refinement state
+    interface FrameworkRefinementRound {
+        timestamp: string;
+        output: Array<{ title: string; content: string }>;
+        feedback: string;
+    }
+    const [frameworkHistory, setFrameworkHistory] = useState<FrameworkRefinementRound[]>([]);
+    const [frameworkFeedback, setFrameworkFeedback] = useState('');
+    const [showFrameworkContext, setShowFrameworkContext] = useState(false);
+    // Liked/disliked frameworks for context building
+    const [likedFrameworkIds, setLikedFrameworkIds] = useState<Set<string>>(new Set());
+    const [dislikedFrameworkIds, setDislikedFrameworkIds] = useState<Set<string>>(new Set());
 
     const [showSavedPersonasModal, setShowSavedPersonasModal] = useState(false);
     const [showAnglesLibrary, setShowAnglesLibrary] = useState(false);
@@ -282,6 +328,55 @@ export function CopyWizard() {
     const [autoFillWordCount, setAutoFillWordCount] = useState(100);
     const [autoFillLoading, setAutoFillLoading] = useState(false);
     const [autoFillRowId, setAutoFillRowId] = useState<string | null>(null);
+    const [showPromptEditor, setShowPromptEditor] = useState(false);
+    const [customSystemPrompt, setCustomSystemPrompt] = useState('');
+    const [customUserPrompt, setCustomUserPrompt] = useState('');
+    // Auto-fill iterative refinement (UI state only - history persisted in DB)
+    const [autoFillFeedback, setAutoFillFeedback] = useState('');
+    const [showAutoFillHistory, setShowAutoFillHistory] = useState(false);
+    const [showAutoFillPrompts, setShowAutoFillPrompts] = useState(false);
+
+    // Field selection for targeted refinement (empty = refine all)
+    const [selectedRefineFields, setSelectedRefineFields] = useState<Set<CampaignFieldKey>>(new Set());
+
+    const toggleRefineField = (fieldKey: CampaignFieldKey) => {
+        setSelectedRefineFields(prev => {
+            const next = new Set(prev);
+            if (next.has(fieldKey)) {
+                next.delete(fieldKey);
+            } else {
+                next.add(fieldKey);
+            }
+            return next;
+        });
+    };
+
+    const clearRefineFieldSelection = () => {
+        setSelectedRefineFields(new Set());
+    };
+
+    // Map CampaignFieldKey to AutoFillFieldKey for the AI service
+    // All 7 auto-fill fields (custom_prompt is not included - always left empty)
+    const campaignToAutoFillFieldKey: Partial<Record<CampaignFieldKey, AutoFillFieldKey>> = {
+        description: 'productDescription',
+        persona_input: 'personaInput',
+        key_qualifying_criteria: 'keyQualifyingCriteria',
+        offer_flow: 'offerFlow',
+        proof_points: 'proofPoints',
+        primary_objections: 'primaryObjections',
+        swipe_files: 'swipeFiles'
+        // custom_prompt is intentionally excluded - always left empty by auto-fill
+    };
+
+    const getAutoFillFieldsToRefine = (): AutoFillFieldKey[] => {
+        if (selectedRefineFields.size === 0) return []; // Empty = refine all
+        const mapped: AutoFillFieldKey[] = [];
+        for (const field of selectedRefineFields) {
+            const autoFillKey = campaignToAutoFillFieldKey[field];
+            if (autoFillKey) mapped.push(autoFillKey);
+        }
+        return mapped;
+    };
 
     // Model Selection - persist to localStorage
     const MODEL_STORAGE_KEY = 'copy-wizard-selected-model';
@@ -437,38 +532,127 @@ export function CopyWizard() {
     // Open auto-fill modal for a specific row
     const openAutoFillModal = (row: CampaignParameter) => {
         setAutoFillRowId(row.id);
-        setAutoFillBrief(row.name || ''); // Pre-fill with row name if available
+        setAutoFillBrief(''); // Start empty - user enters the product/service brief
         setShowAutoFillModal(true);
     };
 
     // Auto-fill product info for the selected row using modal inputs
-    const handleAutoFill = async () => {
-        if (!autoFillBrief.trim()) {
-            alert('Please enter a service/product description');
+    const handleAutoFill = async (withFeedback = false) => {
+        // For refinement, we can use the selected campaign's data as the basis
+        // For initial auto-fill, we need the modal brief
+        const currentParam = withFeedback ? selectedCampaign : campaignParams.find(c => c.id === autoFillRowId);
+        const targetRowId = withFeedback ? selectedCampaignParamId : autoFillRowId;
+
+        // Determine the brief to use
+        // For refinement: use existing campaign name/description
+        // For initial: use modal input
+        const briefToUse = withFeedback
+            ? (currentParam?.name || currentParam?.description || '').trim()
+            : autoFillBrief.trim();
+
+        if (!briefToUse) {
+            alert(withFeedback
+                ? 'No campaign content to refine. Please run Auto-Fill first.'
+                : 'Please enter a service/product description');
             return;
         }
 
-        if (!autoFillRowId) {
+        if (!targetRowId) {
             alert('No row selected');
             return;
         }
 
+        const hasExistingContent = currentParam?.description || currentParam?.persona_input;
+        const hasFeedback = autoFillFeedback.trim().length > 0;
+
+        // If regenerating with feedback, save current state to history first (persisted to DB)
+        if (withFeedback && hasExistingContent && hasFeedback && currentParam && targetRowId) {
+            const newRound: AutoFillRefinementRound = {
+                round: autoFillHistory.length + 1,
+                timestamp: new Date().toISOString(),
+                output: {
+                    productDescription: currentParam.description || '',
+                    personaInput: currentParam.persona_input || '',
+                    keyQualifyingCriteria: currentParam.key_qualifying_criteria || '',
+                    offerFlow: currentParam.offer_flow || '',
+                    proofPoints: currentParam.proof_points || '',
+                    primaryObjections: currentParam.primary_objections || '',
+                    swipeFiles: currentParam.swipe_files || ''
+                },
+                feedback: autoFillFeedback
+            };
+            const updatedHistory = [...autoFillHistory, newRound];
+            await updateAutoFillHistory(targetRowId, updatedHistory);
+            // Update local state to reflect the change
+            setCampaignParams(prev => prev.map(c =>
+                c.id === targetRowId
+                    ? { ...c, refinement_history: { ...c.refinement_history, personas: c.refinement_history?.personas || [], angles: c.refinement_history?.angles || [], ads: c.refinement_history?.ads || [], autofill: updatedHistory } }
+                    : c
+            ));
+        }
+
         setAutoFillLoading(true);
-        setProgressMessage(`Auto-filling...`);
+        const isRefinement = withFeedback && (autoFillHistory.length > 0 || hasFeedback);
+        const fieldsToRefine = getAutoFillFieldsToRefine();
+        const isPartialRefinement = isRefinement && fieldsToRefine.length > 0;
+
+        // Build progress message
+        let progressMsg = 'Auto-filling...';
+        if (isRefinement) {
+            if (isPartialRefinement) {
+                progressMsg = `Refining ${fieldsToRefine.length} selected field${fieldsToRefine.length > 1 ? 's' : ''} (Round ${autoFillHistory.length + 1})...`;
+            } else {
+                progressMsg = `Refining all fields (Round ${autoFillHistory.length + 1})...`;
+            }
+        }
+        setProgressMessage(progressMsg);
         setProgressStatus('loading');
 
         try {
+            // Build history context for refinement
+            const historyContext = withFeedback && autoFillHistory.length > 0
+                ? autoFillHistory.map((round, i) => ({
+                    round: i + 1,
+                    output: round.output,
+                    feedback: round.feedback || ''
+                }))
+                : undefined;
+
+            // Include current feedback if regenerating
+            const currentFeedbackText = withFeedback && hasFeedback ? autoFillFeedback : undefined;
+
+            // Include current content for refinement (all 7 fields)
+            const currentContentData = withFeedback && hasExistingContent && currentParam ? {
+                productDescription: currentParam.description || '',
+                personaInput: currentParam.persona_input || '',
+                keyQualifyingCriteria: currentParam.key_qualifying_criteria || '',
+                offerFlow: currentParam.offer_flow || '',
+                proofPoints: currentParam.proof_points || '',
+                primaryObjections: currentParam.primary_objections || '',
+                swipeFiles: currentParam.swipe_files || ''
+            } : undefined;
+
             const result = await AI.autoFillProductInfo({
                 model: selectedModel,
-                briefDescription: autoFillBrief,
-                maxWordsPerSection: autoFillWordCount
+                briefDescription: briefToUse,
+                maxWordsPerSection: autoFillWordCount,
+                customSystemPrompt: customSystemPrompt || undefined,
+                customUserPrompt: customUserPrompt || undefined,
+                history: historyContext,
+                currentFeedback: currentFeedbackText,
+                currentContent: currentContentData,
+                fieldsToRefine: fieldsToRefine.length > 0 ? fieldsToRefine : undefined
             });
 
-            // Update the row columns directly in the database
-            await handleCampaignParamUpdate(autoFillRowId, 'description', result.productDescription);
-            await handleCampaignParamUpdate(autoFillRowId, 'persona_input', result.personaInput);
-            await handleCampaignParamUpdate(autoFillRowId, 'swipe_files', result.swipeFiles);
-            await handleCampaignParamUpdate(autoFillRowId, 'custom_prompt', result.productCustomPrompt);
+            // Update all 7 row columns directly in the database
+            await handleCampaignParamUpdate(targetRowId, 'description', result.productDescription);
+            await handleCampaignParamUpdate(targetRowId, 'persona_input', result.personaInput);
+            await handleCampaignParamUpdate(targetRowId, 'key_qualifying_criteria', result.keyQualifyingCriteria);
+            await handleCampaignParamUpdate(targetRowId, 'offer_flow', result.offerFlow);
+            await handleCampaignParamUpdate(targetRowId, 'proof_points', result.proofPoints);
+            await handleCampaignParamUpdate(targetRowId, 'primary_objections', result.primaryObjections);
+            await handleCampaignParamUpdate(targetRowId, 'swipe_files', result.swipeFiles);
+            // Note: custom_prompt is intentionally NOT updated - left empty by auto-fill
 
             // Match and update project/subproject if found
             if (result.suggestedProjectName) {
@@ -477,7 +661,7 @@ export function CopyWizard() {
                     result.suggestedProjectName!.toLowerCase().includes(p.name.toLowerCase())
                 );
                 if (matchingProject) {
-                    await handleCampaignParamUpdate(autoFillRowId, 'project_id', matchingProject.id);
+                    await handleCampaignParamUpdate(targetRowId, 'project_id', matchingProject.id);
 
                     if (result.suggestedSubprojectName) {
                         const matchingSubproject = subprojects.find(s =>
@@ -486,16 +670,34 @@ export function CopyWizard() {
                                 result.suggestedSubprojectName!.toLowerCase().includes(s.name.toLowerCase()))
                         );
                         if (matchingSubproject) {
-                            await handleCampaignParamUpdate(autoFillRowId, 'subproject_id', matchingSubproject.id);
+                            await handleCampaignParamUpdate(targetRowId, 'subproject_id', matchingSubproject.id);
                         }
                     }
                 }
             }
 
+            // Clear feedback and field selection after successful regeneration
+            if (withFeedback) {
+                setAutoFillFeedback('');
+                clearRefineFieldSelection(); // Clear selected fields after refinement
+            }
+
             setShowAutoFillModal(false);
             setAutoFillBrief('');
             setAutoFillRowId(null);
-            setProgressMessage('Auto-Fill Complete!');
+            setShowPromptEditor(false);
+            setCustomSystemPrompt('');
+            setCustomUserPrompt('');
+            // Build success message
+            let successMsg = 'Auto-Fill Complete!';
+            if (isRefinement) {
+                if (isPartialRefinement) {
+                    successMsg = `Refined ${fieldsToRefine.length} field${fieldsToRefine.length > 1 ? 's' : ''} (Round ${autoFillHistory.length + 1})!`;
+                } else {
+                    successMsg = `Refinement Complete (Round ${autoFillHistory.length + 1})!`;
+                }
+            }
+            setProgressMessage(successMsg);
             setProgressStatus('success');
         } catch (error) {
             console.error('Failed to auto-fill:', error);
@@ -505,6 +707,20 @@ export function CopyWizard() {
         } finally {
             setAutoFillLoading(false);
         }
+    };
+
+    // Clear auto-fill history (persisted to DB)
+    const clearAutoFillHistory = async () => {
+        if (selectedCampaignParamId) {
+            await clearAutoFillHistoryDB(selectedCampaignParamId);
+            // Update local state to reflect the change
+            setCampaignParams(prev => prev.map(c =>
+                c.id === selectedCampaignParamId
+                    ? { ...c, refinement_history: { ...c.refinement_history, personas: c.refinement_history?.personas || [], angles: c.refinement_history?.angles || [], ads: c.refinement_history?.ads || [], autofill: [] } }
+                    : c
+            ));
+        }
+        setAutoFillFeedback('');
     };
 
     // Selection helpers
@@ -521,6 +737,11 @@ export function CopyWizard() {
         if (!selectedCampaignParamId) return null;
         return campaignParams.find(c => c.id === selectedCampaignParamId) || null;
     }, [selectedCampaignParamId, campaignParams]);
+
+    // Auto-fill history from selected campaign (persisted in DB)
+    const autoFillHistory: AutoFillRefinementRound[] = useMemo(() => {
+        return selectedCampaign?.refinement_history?.autofill || [];
+    }, [selectedCampaign]);
 
     const selectedProjectId = selectedCampaign?.project_id || null;
     const selectedSubprojectId = selectedCampaign?.subproject_id || null;
@@ -566,7 +787,7 @@ export function CopyWizard() {
     // Create new campaign parameter
     const handleCreateCampaignParam = async (defaults?: Record<string, unknown>): Promise<CampaignParameter> => {
         const newParam = await createCampaignParameter({
-            name: 'New Campaign',
+            name: '',
             description: '',
             persona_input: null,
             swipe_files: null,
@@ -666,6 +887,45 @@ export function CopyWizard() {
             return next;
         });
     };
+
+    // Toggle liked/disliked for frameworks
+    const toggleFrameworkLiked = (id: string) => {
+        setLikedFrameworkIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+                setDislikedFrameworkIds(d => {
+                    const nd = new Set(d);
+                    nd.delete(id);
+                    return nd;
+                });
+            }
+            return next;
+        });
+    };
+
+    const toggleFrameworkDisliked = (id: string) => {
+        setDislikedFrameworkIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+                setLikedFrameworkIds(l => {
+                    const nl = new Set(l);
+                    nl.delete(id);
+                    return nl;
+                });
+            }
+            return next;
+        });
+    };
+
+    // Liked/disliked framework objects for context display
+    const likedFrameworks = generatedFrameworks.filter(f => likedFrameworkIds.has(f.id));
+    const dislikedFrameworks = generatedFrameworks.filter(f => dislikedFrameworkIds.has(f.id));
 
     // Toggle selection
     const toggleAngleSelection = (id: string) => {
@@ -824,6 +1084,152 @@ export function CopyWizard() {
         }
     };
 
+    // Generate persona frameworks
+    const generateFrameworks = async (withFeedback = false) => {
+        // Validate required fields
+        if (!productDescription.trim()) {
+            alert('⚠️ Please enter a Product/Service Description first');
+            return;
+        }
+        if (!selectedProjectId) {
+            alert('⚠️ Please select a Project before generating frameworks');
+            return;
+        }
+
+        // Build comprehensive feedback from: liked, disliked, and text feedback
+        const feedbackParts: string[] = [];
+
+        if (likedFrameworks.length > 0) {
+            const likedTitles = likedFrameworks.map(f => `"${f.title}"`).join(', ');
+            feedbackParts.push(`Generate MORE frameworks like these (I liked them): ${likedTitles}. Keep similar approach and depth.`);
+        }
+
+        if (dislikedFrameworks.length > 0) {
+            const dislikedTitles = dislikedFrameworks.map(f => `"${f.title}"`).join(', ');
+            feedbackParts.push(`Generate LESS frameworks like these (I didn't like them): ${dislikedTitles}. Avoid similar styles or approaches.`);
+        }
+
+        if (frameworkFeedback.trim()) {
+            feedbackParts.push(`Additional instructions: ${frameworkFeedback.trim()}`);
+        }
+
+        const combinedFeedback = feedbackParts.join('\n\n');
+        const hasAnyFeedback = combinedFeedback.length > 0;
+
+        // If regenerating with feedback, save current state to history first
+        if (withFeedback && generatedFrameworks.length > 0 && hasAnyFeedback) {
+            const newRound: FrameworkRefinementRound = {
+                timestamp: new Date().toISOString(),
+                output: generatedFrameworks.map(f => ({ title: f.title, content: f.content || '' })),
+                feedback: combinedFeedback
+            };
+            const updatedHistory = [...frameworkHistory, newRound];
+            setFrameworkHistory(updatedHistory);
+        }
+
+        setFrameworksLoading(true);
+        const isRefinement = withFeedback && (frameworkHistory.length > 0 || hasAnyFeedback);
+        setProgressMessage(isRefinement
+            ? `Refining frameworks based on feedback (Round ${frameworkHistory.length + 1})...`
+            : 'Generating Persona Frameworks (this can take up to ~1 minute)...');
+        setProgressStatus('loading');
+        setLiveOutput(`🤖 Model: ${getModelDisplayName(selectedModel)}\n📡 Sending request...\n\n`);
+        setProgressSteps([]);
+
+        try {
+            // Build history context for refinement
+            const historyContext = withFeedback && frameworkHistory.length > 0
+                ? frameworkHistory.map((round, i) => ({
+                    round: i + 1,
+                    frameworks: round.output,
+                    feedback: round.feedback || ''
+                }))
+                : undefined;
+
+            // Include current feedback if regenerating
+            const currentFeedback = withFeedback && hasAnyFeedback ? combinedFeedback : undefined;
+
+            const result = await AI.generatePersonaFrameworks({
+                model: selectedModel,
+                productDescription,
+                personaInput,
+                swipeFiles,
+                customPrompt: productCustomPrompt,
+                frameworkCount,
+                // Marketing context fields from campaign
+                keyQualifyingCriteria: selectedCampaign?.key_qualifying_criteria || undefined,
+                offerFlow: selectedCampaign?.offer_flow || undefined,
+                proofPoints: selectedCampaign?.proof_points || undefined,
+                primaryObjections: selectedCampaign?.primary_objections || undefined,
+                // Pass history for refinement
+                history: historyContext,
+                currentFeedback,
+                // Custom prompts if provided
+                customSystemPrompt: customFrameworkSystemPrompt || undefined,
+                customUserPrompt: customFrameworkUserPrompt || undefined
+            });
+
+            // Store prompts for viewing
+            setFrameworksPrompts({ system: result.systemPrompt, user: result.userPrompt, model: result.model });
+
+            // Show the response with model confirmation
+            setLiveOutput(prev => prev + `✅ Response from ${getModelDisplayName(result.model as AIModel)}\n📦 Received ${result.data.length} frameworks!\n\n` + JSON.stringify(result.data, null, 2));
+
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            setGeneratedFrameworks(result.data);
+            setPersonaFrameworksExpanded(true);
+            setProductExpanded(false);
+            setProgressMessage(`Successfully generated ${result.data.length} persona frameworks!`);
+            setProgressStatus('success');
+            setLiveOutput('');
+
+            // Clear feedback and liked/disliked after successful regeneration
+            if (withFeedback) {
+                setFrameworkFeedback('');
+                setLikedFrameworkIds(new Set());
+                setDislikedFrameworkIds(new Set());
+            }
+        } catch (error) {
+            console.error('Failed to generate frameworks:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            setProgressMessage(`Failed to generate frameworks`);
+            setProgressStatus('error');
+            setLiveOutput(prev => prev + `\n\n❌ Error: ${errorMessage}`);
+        } finally {
+            setFrameworksLoading(false);
+        }
+    };
+
+    // Clear framework history and start fresh
+    const clearFrameworkHistory = () => {
+        setFrameworkHistory([]);
+        setFrameworkFeedback('');
+        setGeneratedFrameworks([]);
+        setFrameworksPrompts(null);
+        setLikedFrameworkIds(new Set());
+        setDislikedFrameworkIds(new Set());
+    };
+
+    // Save generated frameworks to library
+    const saveFrameworksToLibrary = async (frameworksToSave: PersonaFrameworkResult[]) => {
+        try {
+            const frameworksData = frameworksToSave.map(f => ({
+                title: f.title,
+                content: f.content,
+                project_id: selectedProjectId,
+                subproject_id: selectedSubprojectId || null,
+                created_by: currentUserId
+            }));
+
+            const saved = await createPersonaFrameworksBatch(frameworksData);
+            setPersonaFrameworks(prev => [...saved, ...prev]);
+            alert(`Successfully saved ${frameworksToSave.length} framework${frameworksToSave.length > 1 ? 's' : ''} to library!`);
+        } catch (error) {
+            console.error('Failed to save frameworks:', error);
+            alert('Failed to save frameworks to library.');
+        }
+    };
 
     const generateAngles = async () => {
         if (!productDescription.trim()) {
@@ -1067,90 +1473,243 @@ export function CopyWizard() {
                                     )}
                                 </div>
                                 <div className="columns-1 md:columns-2 gap-3 text-sm">
-                                    {selectedCampaign.description?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Product/Service</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.description}</div>
+                                    {/* Selectable Fields - click to select for targeted refinement */}
+                                    {([
+                                        { key: 'description' as CampaignFieldKey, label: 'Product/Service', value: selectedCampaign.description },
+                                        { key: 'persona_input' as CampaignFieldKey, label: 'Target Audience', value: selectedCampaign.persona_input },
+                                        { key: 'key_qualifying_criteria' as CampaignFieldKey, label: 'Key Qualifying Criteria', value: selectedCampaign.key_qualifying_criteria },
+                                        { key: 'offer_flow' as CampaignFieldKey, label: 'Offer Flow', value: selectedCampaign.offer_flow },
+                                        { key: 'proof_points' as CampaignFieldKey, label: 'Proof Points', value: selectedCampaign.proof_points },
+                                        { key: 'primary_objections' as CampaignFieldKey, label: 'Primary Objections', value: selectedCampaign.primary_objections },
+                                        { key: 'swipe_files' as CampaignFieldKey, label: 'Swipe Files', value: selectedCampaign.swipe_files },
+                                        { key: 'custom_prompt' as CampaignFieldKey, label: 'Custom Prompt', value: selectedCampaign.custom_prompt },
+                                    ]).filter(f => f.value?.trim()).map(field => (
+                                        <div
+                                            key={field.key}
+                                            onClick={() => toggleRefineField(field.key)}
+                                            className={cn(
+                                                "bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid cursor-pointer transition-all border-2",
+                                                selectedRefineFields.has(field.key)
+                                                    ? "border-purple-500 bg-purple-50/50 ring-1 ring-purple-300"
+                                                    : "border-transparent hover:border-gray-300"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className={cn(
+                                                    "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0",
+                                                    selectedRefineFields.has(field.key)
+                                                        ? "bg-purple-600 border-purple-600"
+                                                        : "border-gray-300"
+                                                )}>
+                                                    {selectedRefineFields.has(field.key) && <Check className="w-3 h-3 text-white" />}
+                                                </div>
+                                                <div className="text-xs font-medium text-gray-500">{field.label}</div>
+                                            </div>
+                                            <div className="text-gray-700 whitespace-pre-wrap pl-6">{field.value}</div>
                                         </div>
-                                    )}
-                                    {selectedCampaign.persona_input?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Target Audience</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.persona_input}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.key_qualifying_criteria?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Key Qualifying Criteria</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.key_qualifying_criteria}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.offer_flow?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Offer Flow</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.offer_flow}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.proof_points?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Proof Points</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.proof_points}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.primary_objections?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Primary Objections</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.primary_objections}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.swipe_files?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Swipe File/Winner Ad</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.swipe_files}</div>
-                                        </div>
-                                    )}
-                                    {selectedCampaign.custom_prompt?.trim() && (
-                                        <div className="bg-white/60 rounded-md p-2.5 mb-3 break-inside-avoid">
-                                            <div className="text-xs font-medium text-gray-500 mb-1">Custom Prompt</div>
-                                            <div className="text-gray-700 whitespace-pre-wrap">{selectedCampaign.custom_prompt}</div>
-                                        </div>
-                                    )}
+                                    ))}
                                 </div>
+
+                                {/* Selection indicator */}
+                                {selectedRefineFields.size > 0 && (
+                                    <div className="flex items-center justify-between mt-2 px-2 py-1.5 bg-purple-50 border border-purple-200 rounded-lg">
+                                        <span className="text-xs text-purple-700">
+                                            <span className="font-medium">{selectedRefineFields.size}</span> field{selectedRefineFields.size > 1 ? 's' : ''} selected for refinement
+                                        </span>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); clearRefineFieldSelection(); }}
+                                            className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+                                        >
+                                            Clear selection
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Iterative Refinement Section */}
+                                {selectedCampaign.description && (
+                                    <div className="mt-4 pt-4 border-t border-green-200">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <History className="w-4 h-4 text-green-600" />
+                                                <span className="text-sm font-medium text-green-800">Refine with Feedback</span>
+                                                {autoFillHistory.length > 0 && (
+                                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-full">
+                                                        {autoFillHistory.length} round{autoFillHistory.length > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setShowAutoFillPrompts(!showAutoFillPrompts)}
+                                                    className={`text-xs flex items-center gap-1 ${showAutoFillPrompts ? 'text-purple-700 bg-purple-100 px-2 py-0.5 rounded' : 'text-purple-600 hover:text-purple-700'}`}
+                                                >
+                                                    <Code className="w-3 h-3" />
+                                                    {showAutoFillPrompts ? 'Hide' : 'View'} Prompts
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowAutoFillHistory(!showAutoFillHistory)}
+                                                    className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
+                                                >
+                                                    {showAutoFillHistory ? 'Hide' : 'Show'} History
+                                                    {showAutoFillHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Prompts Preview */}
+                                        {showAutoFillPrompts && (
+                                            <div className="mb-3 p-3 bg-gray-900 rounded-lg text-xs font-mono overflow-auto max-h-96">
+                                                <div className="mb-4">
+                                                    <div className="text-purple-400 font-semibold mb-2 flex items-center gap-2">
+                                                        <FileText className="w-3 h-3" />
+                                                        SYSTEM PROMPT
+                                                        {autoFillFeedback.trim() && (
+                                                            <span className="text-green-400 text-[10px] bg-green-900/50 px-1.5 py-0.5 rounded">REFINEMENT MODE</span>
+                                                        )}
+                                                    </div>
+                                                    <pre className="text-gray-300 whitespace-pre-wrap">
+{autoFillFeedback.trim()
+? `You are an expert marketing strategist refining marketing inputs based on user feedback.
+
+Review the CURRENT CONTENT and feedback below, then generate IMPROVED marketing inputs that address the feedback while preserving what works well.
+
+IMPORTANT: Each field must be approximately ${autoFillWordCount} WORDS. Keep responses focused and concise.
+
+Generate improved versions of:
+1. productDescription (~${autoFillWordCount} words): What the product/service is, who it's for, and key benefits.
+
+2. personaInput (~${autoFillWordCount} words): Brief description of 2-3 target audience types and their key characteristics.
+
+3. swipeFiles (~${autoFillWordCount} words): 4-5 compelling headline examples in various styles.
+
+4. productCustomPrompt (~${autoFillWordCount} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
+
+5. suggestedProjectName: A short project name (2-4 words)
+
+6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+
+Apply the feedback to improve the content. Return ONLY a valid JSON object with these exact keys, no additional text.`
+: `You are an expert marketing strategist. Given a brief product/service description, expand it into concise marketing inputs for an ad campaign.
+
+IMPORTANT: Each field must be approximately ${autoFillWordCount} WORDS. Keep responses focused and concise.
+
+Generate:
+1. productDescription (~${autoFillWordCount} words): What the product/service is, who it's for, and key benefits.
+
+2. personaInput (~${autoFillWordCount} words): Brief description of 2-3 target audience types and their key characteristics.
+
+3. swipeFiles (~${autoFillWordCount} words): 4-5 compelling headline examples in various styles.
+
+4. productCustomPrompt (~${autoFillWordCount} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
+
+5. suggestedProjectName: A short project name (2-4 words)
+
+6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+
+Return ONLY a valid JSON object with these exact keys, no additional text.`}
+                                                    </pre>
+                                                </div>
+                                                <div>
+                                                    <div className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+                                                        <UserIcon className="w-3 h-3" />
+                                                        USER PROMPT
+                                                    </div>
+                                                    <pre className="text-gray-300 whitespace-pre-wrap">
+{`Brief Description: ${selectedCampaign.name || selectedCampaign.description || '[Your product/service description]'}
+`}
+{autoFillFeedback.trim() ? `
+=== CURRENT CONTENT TO REFINE ===
+
+[Product/Service Description]
+${selectedCampaign.description || '(empty)'}
+
+[Target Audience]
+${selectedCampaign.persona_input || '(empty)'}
+
+[Swipe Files/Headlines]
+${selectedCampaign.swipe_files || '(empty)'}
+
+[Custom Prompt/Guidelines]
+${selectedCampaign.custom_prompt || '(empty)'}
+${autoFillHistory.length > 0 ? `
+=== PREVIOUS REFINEMENT HISTORY ===
+${autoFillHistory.map((round, i) => `
+Round ${i + 1}:
+Feedback given: "${round.feedback}"`).join('\n')}` : ''}
+
+=== FEEDBACK TO ADDRESS NOW ===
+"${autoFillFeedback}"
+
+Generate IMPROVED marketing inputs as JSON, applying the feedback while keeping what works well.`
+: `
+Generate product information (~${autoFillWordCount} words per field) in JSON format.`}
+                                                    </pre>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* History Display */}
+                                        {showAutoFillHistory && autoFillHistory.length > 0 && (
+                                            <div className="mb-3 space-y-2 max-h-48 overflow-y-auto">
+                                                {autoFillHistory.map((round, i) => (
+                                                    <div key={i} className="border-l-2 border-green-300 pl-2 text-xs">
+                                                        <div className="font-medium text-green-700">
+                                                            Round {round.round} - {new Date(round.timestamp).toLocaleString()}
+                                                        </div>
+                                                        <div className="text-gray-600 truncate">
+                                                            Output: {round.output.productDescription.substring(0, 100)}...
+                                                        </div>
+                                                        {round.feedback && (
+                                                            <div className="text-green-600 mt-1 whitespace-pre-wrap">
+                                                                Feedback: {round.feedback}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Feedback Input */}
+                                        <div className="flex gap-2">
+                                            <textarea
+                                                rows={2}
+                                                className="flex-1 px-3 py-2 text-sm border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-y bg-white"
+                                                placeholder="Enter feedback to refine the auto-fill results (e.g., 'Make the description more professional', 'Focus more on younger audiences')..."
+                                                value={autoFillFeedback}
+                                                onChange={e => setAutoFillFeedback(e.target.value)}
+                                            />
+                                            <div className="flex flex-col gap-1">
+                                                <button
+                                                    onClick={() => {
+                                                        setAutoFillRowId(selectedCampaign.id);
+                                                        setAutoFillBrief(selectedCampaign.name || selectedCampaign.description || '');
+                                                        handleAutoFill(true);
+                                                    }}
+                                                    disabled={autoFillLoading || !autoFillFeedback.trim()}
+                                                    className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                                >
+                                                    {autoFillLoading ? (
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                    ) : (
+                                                        <RefreshCw className="w-3 h-3" />
+                                                    )}
+                                                    Refine
+                                                </button>
+                                                {autoFillHistory.length > 0 && (
+                                                    <button
+                                                        onClick={clearAutoFillHistory}
+                                                        className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                                                    >
+                                                        <RotateCcw className="w-3 h-3" />
+                                                        Clear
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
-
-                        {/* Generate Personas Controls */}
-                        <div className="flex flex-col sm:flex-row justify-center sm:justify-end items-center gap-3 sm:gap-4 pt-2 border-t border-gray-100">
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm text-gray-500">Generating</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="20"
-                                    value={personaCount}
-                                    onChange={e => setPersonaCount(parseInt(e.target.value) || 5)}
-                                    className="w-16 px-2 py-1.5 text-sm font-bold text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                />
-                                <span className="text-sm font-medium text-gray-600">Personas</span>
-                            </div>
-                            <button
-                                onClick={() => generatePersonas()}
-                                disabled={personasLoading || !productDescription.trim()}
-                                className="group relative flex items-center gap-2 px-5 sm:px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                            >
-                                {personasLoading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Generating...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="w-4 h-4" />
-                                        Generate Personas
-                                    </>
-                                )}
-                            </button>
-                        </div>
                     </div>
                 )}
             </div>
@@ -1168,14 +1727,34 @@ export function CopyWizard() {
                         <div className="text-left min-w-0">
                             <h3 className="text-base font-semibold text-gray-900">Persona Frameworks</h3>
                             <p className="text-xs text-gray-500">
-                                {selectedPersonaFrameworkId ? 'Framework selected' : 'Select a persona framework to guide generation'}
+                                {generatedFrameworks.length > 0
+                                    ? `${generatedFrameworks.length} frameworks generated`
+                                    : 'Generate persona frameworks from campaign parameters'}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                        {selectedPersonaFrameworkId && (
+                        {frameworksPrompts && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPromptModal({
+                                        isOpen: true,
+                                        title: 'Frameworks Generation',
+                                        systemPrompt: frameworksPrompts.system,
+                                        userPrompt: frameworksPrompts.user,
+                                        model: getModelDisplayName(frameworksPrompts.model as AIModel)
+                                    });
+                                }}
+                                className="p-1.5 sm:px-2 sm:py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
+                                title="View prompts used"
+                            >
+                                <Eye className="w-4 h-4" />
+                            </button>
+                        )}
+                        {generatedFrameworks.length > 0 && (
                             <span className="hidden sm:inline px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-medium rounded">
-                                1 selected
+                                {generatedFrameworks.length} generated
                             </span>
                         )}
                         <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform", personaFrameworksExpanded && "rotate-180")} />
@@ -1183,66 +1762,540 @@ export function CopyWizard() {
                 </button>
 
                 {personaFrameworksExpanded && (
-                    <div className="p-3 sm:p-4 pt-0 space-y-3 border-t border-gray-100">
-                        {/* Persona Frameworks List */}
-                        {personaFrameworks.length === 0 ? (
-                            <div className="text-center py-6 text-gray-500">
-                                <Library className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No persona frameworks yet.</p>
-                                <p className="text-xs text-gray-400 mt-1">Create frameworks in the Persona Frameworks page.</p>
+                    <div className="p-3 sm:p-4 pt-0 space-y-4 border-t border-gray-100">
+                        {/* Generate Frameworks Controls - AT THE TOP */}
+                        <div className="flex flex-col sm:flex-row justify-center sm:justify-end items-center gap-3 sm:gap-4 pt-2">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm text-gray-500">Generate</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    value={frameworkCount}
+                                    onChange={e => setFrameworkCount(parseInt(e.target.value) || 5)}
+                                    className="w-16 px-2 py-1.5 text-sm font-bold text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                />
+                                <span className="text-sm font-medium text-gray-600">Frameworks</span>
                             </div>
-                        ) : (
-                            <div className="grid gap-2">
-                                {personaFrameworks.map(framework => (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        if (!showFrameworkPromptEditor) {
+                                            // Initialize with default prompts when opening
+                                            const defaultSystem = `You are a senior advertising strategist helping to develop a persona framework for an ad campaign.
+
+Your task is to analyze the campaign and propose ${frameworkCount} persona frameworks—not actual personas, but strategic lenses we should use to generate them.
+
+Think through:
+- What makes this campaign unique?
+- What's the core psychological journey for this audience?
+- What dimensions would create the most meaningful variation in ad creative?
+- What does the winner ad/swipe file tell us about what works, and what's left unexplored?
+
+Be direct and strategic. Each framework should have:
+- title: A short descriptive label (2-5 words, e.g., "The Skeptical Professional", "The Overwhelmed Caregiver")
+- content: A strategic description (50-150 words) explaining this archetype, their core characteristics, psychological drivers, and why this framework matters for ad creative
+
+Don't force a template. Think through the best way to slice this audience for creative development.
+
+Return ONLY a valid JSON array with objects containing "title" and "content" fields.`;
+                                            // Build user prompt based on selected fields
+                                            const fieldParts: string[] = [];
+                                            if (frameworkPromptFields.productDescription && productDescription) {
+                                                fieldParts.push(`- Product/Service: ${productDescription}`);
+                                            }
+                                            if (frameworkPromptFields.targetAudience && personaInput) {
+                                                fieldParts.push(`- Target Audience: ${personaInput}`);
+                                            }
+                                            if (frameworkPromptFields.keyQualifyingCriteria && selectedCampaign?.key_qualifying_criteria) {
+                                                fieldParts.push(`- Key Qualifying Criteria: ${selectedCampaign.key_qualifying_criteria}`);
+                                            }
+                                            if (frameworkPromptFields.offerFlow && selectedCampaign?.offer_flow) {
+                                                fieldParts.push(`- Offer Flow: ${selectedCampaign.offer_flow}`);
+                                            }
+                                            if (frameworkPromptFields.proofPoints && selectedCampaign?.proof_points) {
+                                                fieldParts.push(`- Proof Points: ${selectedCampaign.proof_points}`);
+                                            }
+                                            if (frameworkPromptFields.primaryObjections && selectedCampaign?.primary_objections) {
+                                                fieldParts.push(`- Primary Objections: ${selectedCampaign.primary_objections}`);
+                                            }
+                                            if (frameworkPromptFields.swipeFile && swipeFiles) {
+                                                fieldParts.push(`- Swipe File/Winner Ad: ${swipeFiles}`);
+                                            }
+
+                                            let defaultUser = `## Campaign Parameters\n${fieldParts.join('\n')}`;
+
+                                            if (frameworkPromptFields.customPrompt && productCustomPrompt) {
+                                                defaultUser += `\n\n## Additional Instructions\n${productCustomPrompt}`;
+                                            }
+
+                                            defaultUser += `\n\nGenerate ${frameworkCount} distinct persona frameworks as JSON array with "title" and "content" fields only.`;
+
+                                            if (!customFrameworkSystemPrompt) setCustomFrameworkSystemPrompt(defaultSystem);
+                                            setCustomFrameworkUserPrompt(defaultUser);
+                                        }
+                                        setShowFrameworkPromptEditor(!showFrameworkPromptEditor);
+                                    }}
+                                    className={`p-2 rounded-lg transition-colors ${showFrameworkPromptEditor ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                                    title="Edit prompts"
+                                >
+                                    <Code className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => generateFrameworks()}
+                                    disabled={frameworksLoading || !productDescription.trim()}
+                                    className="group relative flex items-center gap-2 px-5 sm:px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                                >
+                                    {frameworksLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Generating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="w-4 h-4" />
+                                            Generate Frameworks
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Framework Prompt Editor */}
+                        {showFrameworkPromptEditor && (
+                            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                                        <Code className="w-4 h-4" />
+                                        <span>Custom Prompts</span>
+                                    </div>
                                     <button
-                                        key={framework.id}
-                                        onClick={() => setSelectedPersonaFrameworkId(
-                                            selectedPersonaFrameworkId === framework.id ? null : framework.id
-                                        )}
-                                        className={cn(
-                                            "w-full text-left p-3 rounded-lg border transition-all",
-                                            selectedPersonaFrameworkId === framework.id
-                                                ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
-                                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                                        )}
+                                        type="button"
+                                        onClick={() => {
+                                            setCustomFrameworkSystemPrompt('');
+                                            setCustomFrameworkUserPrompt('');
+                                        }}
+                                        className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
                                     >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-gray-400">#{framework.row_number || '—'}</span>
-                                                    <span className="font-medium text-gray-900 truncate">{framework.title}</span>
-                                                </div>
-                                                {framework.content && (
-                                                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{framework.content}</p>
-                                                )}
-                                            </div>
-                                            {selectedPersonaFrameworkId === framework.id && (
-                                                <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                                            )}
-                                        </div>
+                                        <RotateCcw className="w-3 h-3" />
+                                        Reset to defaults
                                     </button>
-                                ))}
+                                </div>
+
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                                        <FileText className="w-3.5 h-3.5" />
+                                        System Prompt
+                                    </label>
+                                    <textarea
+                                        value={customFrameworkSystemPrompt}
+                                        onChange={e => setCustomFrameworkSystemPrompt(e.target.value)}
+                                        className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-y bg-white"
+                                        rows={8}
+                                        placeholder="System prompt..."
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                                        <UserIcon className="w-3.5 h-3.5" />
+                                        User Prompt - Select Fields to Include
+                                    </label>
+
+                                    {/* Field Selection Checkboxes */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 p-3 bg-white rounded-lg border border-gray-200">
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.productDescription}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, productDescription: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.productDescription ? 'text-gray-900' : 'text-gray-400'}>Product/Service</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.targetAudience}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, targetAudience: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.targetAudience ? 'text-gray-900' : 'text-gray-400'}>Target Audience</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.keyQualifyingCriteria}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, keyQualifyingCriteria: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.keyQualifyingCriteria ? 'text-gray-900' : 'text-gray-400'}>Qualifying Criteria</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.offerFlow}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, offerFlow: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.offerFlow ? 'text-gray-900' : 'text-gray-400'}>Offer Flow</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.proofPoints}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, proofPoints: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.proofPoints ? 'text-gray-900' : 'text-gray-400'}>Proof Points</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.primaryObjections}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, primaryObjections: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.primaryObjections ? 'text-gray-900' : 'text-gray-400'}>Objections</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.swipeFile}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, swipeFile: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.swipeFile ? 'text-gray-900' : 'text-gray-400'}>Swipe File</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={frameworkPromptFields.customPrompt}
+                                                onChange={e => setFrameworkPromptFields(prev => ({ ...prev, customPrompt: e.target.checked }))}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className={frameworkPromptFields.customPrompt ? 'text-gray-900' : 'text-gray-400'}>Custom Instructions</span>
+                                        </label>
+
+                                        {/* Rebuild Prompt Button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const fieldParts: string[] = [];
+                                                if (frameworkPromptFields.productDescription && productDescription) {
+                                                    fieldParts.push(`- Product/Service: ${productDescription}`);
+                                                }
+                                                if (frameworkPromptFields.targetAudience && personaInput) {
+                                                    fieldParts.push(`- Target Audience: ${personaInput}`);
+                                                }
+                                                if (frameworkPromptFields.keyQualifyingCriteria && selectedCampaign?.key_qualifying_criteria) {
+                                                    fieldParts.push(`- Key Qualifying Criteria: ${selectedCampaign.key_qualifying_criteria}`);
+                                                }
+                                                if (frameworkPromptFields.offerFlow && selectedCampaign?.offer_flow) {
+                                                    fieldParts.push(`- Offer Flow: ${selectedCampaign.offer_flow}`);
+                                                }
+                                                if (frameworkPromptFields.proofPoints && selectedCampaign?.proof_points) {
+                                                    fieldParts.push(`- Proof Points: ${selectedCampaign.proof_points}`);
+                                                }
+                                                if (frameworkPromptFields.primaryObjections && selectedCampaign?.primary_objections) {
+                                                    fieldParts.push(`- Primary Objections: ${selectedCampaign.primary_objections}`);
+                                                }
+                                                if (frameworkPromptFields.swipeFile && swipeFiles) {
+                                                    fieldParts.push(`- Swipe File/Winner Ad: ${swipeFiles}`);
+                                                }
+
+                                                let newPrompt = `## Campaign Parameters\n${fieldParts.join('\n')}`;
+
+                                                if (frameworkPromptFields.customPrompt && productCustomPrompt) {
+                                                    newPrompt += `\n\n## Additional Instructions\n${productCustomPrompt}`;
+                                                }
+
+                                                newPrompt += `\n\nGenerate ${frameworkCount} distinct persona frameworks as JSON array with "title" and "content" fields only.`;
+
+                                                setCustomFrameworkUserPrompt(newPrompt);
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                                        >
+                                            <RotateCcw className="w-3 h-3" />
+                                            Rebuild Prompt
+                                        </button>
+                                    </div>
+
+                                    <textarea
+                                        value={customFrameworkUserPrompt}
+                                        onChange={e => setCustomFrameworkUserPrompt(e.target.value)}
+                                        className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-y bg-white"
+                                        rows={6}
+                                        placeholder="User prompt..."
+                                    />
+                                </div>
                             </div>
                         )}
 
-                        {/* Selected Framework Preview */}
-                        {selectedPersonaFrameworkId && (
-                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-4">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Check className="w-4 h-4 text-indigo-600" />
-                                    <span className="text-sm font-semibold text-indigo-800">Selected Framework</span>
+                        {/* Generated Frameworks List */}
+                        {generatedFrameworks.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-medium text-gray-700">Generated Frameworks</h4>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => saveFrameworksToLibrary(generatedFrameworks)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                                        >
+                                            <Save className="w-3 h-3" />
+                                            Save All to Library
+                                        </button>
+                                    </div>
                                 </div>
-                                {(() => {
-                                    const selectedFramework = personaFrameworks.find(f => f.id === selectedPersonaFrameworkId);
-                                    return selectedFramework ? (
-                                        <div className="text-sm">
-                                            <div className="font-medium text-gray-900 mb-1">{selectedFramework.title}</div>
-                                            {selectedFramework.content && (
-                                                <div className="text-gray-700 whitespace-pre-wrap text-xs">{selectedFramework.content}</div>
+
+                                <div className="grid gap-2">
+                                    {generatedFrameworks.map(framework => (
+                                        <div
+                                            key={framework.id}
+                                            className="relative p-3 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="font-medium text-gray-900">{framework.title}</div>
+                                                    {framework.content && (
+                                                        <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{framework.content}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                    <button
+                                                        onClick={() => toggleFrameworkLiked(framework.id)}
+                                                        className={cn(
+                                                            "p-1.5 rounded-lg transition-colors",
+                                                            likedFrameworkIds.has(framework.id)
+                                                                ? "bg-green-100 text-green-600"
+                                                                : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+                                                        )}
+                                                        title="More like this"
+                                                    >
+                                                        <ThumbsUp className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleFrameworkDisliked(framework.id)}
+                                                        className={cn(
+                                                            "p-1.5 rounded-lg transition-colors",
+                                                            dislikedFrameworkIds.has(framework.id)
+                                                                ? "bg-red-100 text-red-600"
+                                                                : "text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                                        )}
+                                                        title="Less like this"
+                                                    >
+                                                        <ThumbsDown className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => saveFrameworksToLibrary([framework])}
+                                                        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                        title="Save to library"
+                                                    >
+                                                        <Save className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Iterative Refinement Section */}
+                                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <MessageCircle className="w-4 h-4 text-indigo-600" />
+                                            <span className="text-sm font-medium text-indigo-900">Refine Frameworks</span>
+                                            {frameworkHistory.length > 0 && (
+                                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-medium rounded-full">
+                                                    {frameworkHistory.length} round{frameworkHistory.length > 1 ? 's' : ''}
+                                                </span>
                                             )}
                                         </div>
-                                    ) : null;
-                                })()}
+                                        {frameworkHistory.length > 0 && (
+                                            <button
+                                                onClick={clearFrameworkHistory}
+                                                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                title="Clear history and start fresh"
+                                            >
+                                                <RotateCcw className="w-3 h-3" />
+                                                Clear History
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Liked/Disliked tags display */}
+                                    {(likedFrameworks.length > 0 || dislikedFrameworks.length > 0) && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {likedFrameworks.map(f => (
+                                                <span
+                                                    key={f.id}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full cursor-pointer hover:bg-green-200"
+                                                    onClick={() => toggleFrameworkLiked(f.id)}
+                                                    title="Click to remove from liked"
+                                                >
+                                                    <ThumbsUp className="w-3 h-3" />
+                                                    {f.title}
+                                                    <X className="w-3 h-3 hover:text-green-900" />
+                                                </span>
+                                            ))}
+                                            {dislikedFrameworks.map(f => (
+                                                <span
+                                                    key={f.id}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full cursor-pointer hover:bg-red-200"
+                                                    onClick={() => toggleFrameworkDisliked(f.id)}
+                                                    title="Click to remove from disliked"
+                                                >
+                                                    <ThumbsDown className="w-3 h-3" />
+                                                    {f.title}
+                                                    <X className="w-3 h-3 hover:text-red-900" />
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <textarea
+                                        rows={2}
+                                        className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-y bg-white"
+                                        placeholder="Additional feedback (optional)..."
+                                        value={frameworkFeedback}
+                                        onChange={e => setFrameworkFeedback(e.target.value)}
+                                    />
+
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <button
+                                            onClick={() => setShowFrameworkContext(!showFrameworkContext)}
+                                            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800"
+                                        >
+                                            <History className="w-3 h-3" />
+                                            {showFrameworkContext ? 'Hide' : 'Show'} Context
+                                            <ChevronDown className={cn("w-3 h-3 transition-transform", showFrameworkContext && "rotate-180")} />
+                                        </button>
+
+                                        <button
+                                            onClick={() => generateFrameworks(true)}
+                                            disabled={frameworksLoading || (likedFrameworks.length === 0 && dislikedFrameworks.length === 0 && !frameworkFeedback.trim())}
+                                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {frameworksLoading ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                    Refining...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="w-4 h-4" />
+                                                    <span className="hidden sm:inline">Regenerate with Feedback</span>
+                                                    <span className="sm:hidden">Refine</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Context Preview Panel */}
+                                    {showFrameworkContext && (
+                                        <div className="mt-2 p-3 bg-white border border-indigo-100 rounded-lg text-xs text-gray-600 max-h-60 overflow-y-auto">
+                                            <div className="font-medium text-gray-800 mb-2">Context that will be sent to AI:</div>
+
+                                            {/* Previous rounds */}
+                                            {frameworkHistory.length > 0 && (
+                                                <div className="space-y-2 mb-3">
+                                                    {frameworkHistory.map((round, i) => (
+                                                        <div key={i} className="border-l-2 border-indigo-300 pl-2">
+                                                            <div className="font-medium text-indigo-700">
+                                                                Round {i + 1}
+                                                                <span className="font-normal text-gray-400 ml-2">
+                                                                    {new Date(round.timestamp).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-gray-500">
+                                                                Generated: {round.output.map(f => f.title).join(', ')}
+                                                            </div>
+                                                            {round.feedback && (
+                                                                <div className="text-indigo-600 mt-1 whitespace-pre-wrap">
+                                                                    {round.feedback}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Current feedback to be applied */}
+                                            {(likedFrameworks.length > 0 || dislikedFrameworks.length > 0 || frameworkFeedback) ? (
+                                                <div className="border-l-2 border-blue-400 pl-2 bg-blue-50 py-1 space-y-1">
+                                                    <div className="font-medium text-blue-700">Next Round Feedback (will be applied):</div>
+                                                    {likedFrameworks.length > 0 && (
+                                                        <div className="flex items-center gap-1 text-green-600">
+                                                            <ThumbsUp className="w-3 h-3" />
+                                                            More like: {likedFrameworks.map(f => f.title).join(', ')}
+                                                        </div>
+                                                    )}
+                                                    {dislikedFrameworks.length > 0 && (
+                                                        <div className="flex items-center gap-1 text-red-600">
+                                                            <ThumbsDown className="w-3 h-3" />
+                                                            Less like: {dislikedFrameworks.map(f => f.title).join(', ')}
+                                                        </div>
+                                                    )}
+                                                    {frameworkFeedback && (
+                                                        <div className="text-blue-600">
+                                                            Additional: "{frameworkFeedback}"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-gray-500 italic">
+                                                    {frameworkHistory.length === 0
+                                                        ? 'No feedback yet. Use thumbs up/down on frameworks above, or type feedback below.'
+                                                        : 'Add more feedback using thumbs up/down or the text field above.'}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Saved Frameworks Library */}
+                        {personaFrameworks.length > 0 && (
+                            <div className="pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Library className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-700">Saved Frameworks Library</span>
+                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-medium rounded">
+                                        {personaFrameworks.length}
+                                    </span>
+                                </div>
+                                <div className="grid gap-2 max-h-60 overflow-y-auto">
+                                    {personaFrameworks.map(framework => (
+                                        <button
+                                            key={framework.id}
+                                            onClick={() => setSelectedPersonaFrameworkId(
+                                                selectedPersonaFrameworkId === framework.id ? null : framework.id
+                                            )}
+                                            className={cn(
+                                                "w-full text-left p-3 rounded-lg border transition-all",
+                                                selectedPersonaFrameworkId === framework.id
+                                                    ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
+                                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-400">#{framework.row_number || '—'}</span>
+                                                        <span className="font-medium text-gray-900 truncate">{framework.title}</span>
+                                                    </div>
+                                                    {framework.content && (
+                                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{framework.content}</p>
+                                                    )}
+                                                </div>
+                                                {selectedPersonaFrameworkId === framework.id && (
+                                                    <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1306,6 +2359,39 @@ export function CopyWizard() {
 
                     {personasExpanded && (
                         <div className="p-3 sm:p-4 pt-0 space-y-3 border-t border-gray-100">
+                            {/* Generate Personas Controls */}
+                            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pb-3 border-b border-gray-100">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm text-gray-500">Generate</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="20"
+                                        value={personaCount}
+                                        onChange={e => setPersonaCount(parseInt(e.target.value) || 5)}
+                                        className="w-16 px-2 py-1.5 text-sm font-bold text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                                    />
+                                    <span className="text-sm font-medium text-gray-600">personas</span>
+                                </div>
+                                <button
+                                    onClick={() => generatePersonas()}
+                                    disabled={personasLoading || !productDescription.trim()}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                                >
+                                    {personasLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Generating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="w-4 h-4" />
+                                            Generate Personas
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
                             <PersonaSelector
                                 personas={personas}
                                 selectedIds={personas.filter(p => p.selected).map(p => p.id)}
@@ -2031,19 +3117,57 @@ export function CopyWizard() {
             {/* Auto-Fill Modal */}
             {showAutoFillModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                    <div className={`bg-white rounded-xl shadow-xl w-full p-6 transition-all duration-200 ${showPromptEditor ? 'max-w-3xl' : 'max-w-md'}`}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-2">
                                 <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 flex items-center justify-center">
                                     <Sparkles className="w-5 h-5 text-white" />
                                 </div>
                                 <h2 className="text-lg font-bold text-gray-900">Auto-Fill</h2>
+                                <button
+                                    onClick={() => {
+                                        if (!showPromptEditor) {
+                                            // Initialize with default prompts when opening
+                                            const defaultSystem = `You are an expert marketing strategist. Given a brief product/service description, expand it into concise marketing inputs for an ad campaign.
+
+IMPORTANT: Each field must be approximately ${autoFillWordCount} WORDS. Keep responses focused and concise.
+
+Generate:
+1. productDescription (~${autoFillWordCount} words): What the product/service is, who it's for, and key benefits.
+
+2. personaInput (~${autoFillWordCount} words): Brief description of 2-3 target audience types and their key characteristics.
+
+3. swipeFiles (~${autoFillWordCount} words): 4-5 compelling headline examples in various styles.
+
+4. productCustomPrompt (~${autoFillWordCount} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
+
+5. suggestedProjectName: A short project name (2-4 words)
+
+6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+
+Return ONLY a valid JSON object with these exact keys, no additional text.`;
+                                            const defaultUser = `Brief Description: ${autoFillBrief || '[Your product/service description]'}
+
+Generate product information (~${autoFillWordCount} words per field) in JSON format.`;
+                                            if (!customSystemPrompt) setCustomSystemPrompt(defaultSystem);
+                                            if (!customUserPrompt) setCustomUserPrompt(defaultUser);
+                                        }
+                                        setShowPromptEditor(!showPromptEditor);
+                                    }}
+                                    className={`p-1.5 rounded-md transition-colors ${showPromptEditor ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                                    title="Edit prompts"
+                                >
+                                    <Code className="w-4 h-4" />
+                                </button>
                             </div>
                             <button
                                 onClick={() => {
                                     setShowAutoFillModal(false);
                                     setAutoFillBrief('');
                                     setAutoFillRowId(null);
+                                    setShowPromptEditor(false);
+                                    setCustomSystemPrompt('');
+                                    setCustomUserPrompt('');
                                 }}
                                 className="text-gray-400 hover:text-gray-600"
                             >
@@ -2073,9 +3197,9 @@ export function CopyWizard() {
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="range"
-                                        min="50"
-                                        max="300"
-                                        step="25"
+                                        min="30"
+                                        max="200"
+                                        step="10"
                                         value={autoFillWordCount}
                                         onChange={e => setAutoFillWordCount(parseInt(e.target.value))}
                                         className="flex-1"
@@ -2089,15 +3213,89 @@ export function CopyWizard() {
                                 </p>
                             </div>
 
-                            <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-3 text-xs text-gray-700">
-                                <p className="font-medium mb-1">AI will generate:</p>
-                                <ul className="list-disc list-inside space-y-0.5 ml-1 text-gray-600">
-                                    <li>Product/Service description</li>
-                                    <li>Target Audience</li>
-                                    <li>Swipe Files (headline examples)</li>
-                                    <li>Custom Prompt suggestions</li>
-                                </ul>
-                            </div>
+                            {/* Prompt Editor Section */}
+                            {showPromptEditor && (
+                                <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                                        <Code className="w-4 h-4" />
+                                        <span>Custom Prompts</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                                            <FileText className="w-3.5 h-3.5" />
+                                            System Prompt
+                                        </label>
+                                        <textarea
+                                            value={customSystemPrompt}
+                                            onChange={e => setCustomSystemPrompt(e.target.value)}
+                                            className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none resize-y bg-white"
+                                            rows={8}
+                                            placeholder="System prompt..."
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                                            <UserIcon className="w-3.5 h-3.5" />
+                                            User Prompt
+                                        </label>
+                                        <textarea
+                                            value={customUserPrompt}
+                                            onChange={e => setCustomUserPrompt(e.target.value)}
+                                            className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none resize-y bg-white"
+                                            rows={4}
+                                            placeholder="User prompt..."
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            // Regenerate prompts based on current description and word count
+                                            const updatedSystem = `You are an expert marketing strategist. Given a brief product/service description, expand it into concise marketing inputs for an ad campaign.
+
+IMPORTANT: Each field must be approximately ${autoFillWordCount} WORDS. Keep responses focused and concise.
+
+Generate:
+1. productDescription (~${autoFillWordCount} words): What the product/service is, who it's for, and key benefits.
+
+2. personaInput (~${autoFillWordCount} words): Brief description of 2-3 target audience types and their key characteristics.
+
+3. swipeFiles (~${autoFillWordCount} words): 4-5 compelling headline examples in various styles.
+
+4. productCustomPrompt (~${autoFillWordCount} words): Special considerations for ad copywriting (tone, legal requirements, sensitivities).
+
+5. suggestedProjectName: A short project name (2-4 words)
+
+6. suggestedSubprojectName: An optional subproject name (2-4 words) or empty string
+
+Return ONLY a valid JSON object with these exact keys, no additional text.`;
+                                            const updatedUser = `Brief Description: ${autoFillBrief || '[Your product/service description]'}
+
+Generate product information (~${autoFillWordCount} words per field) in JSON format.`;
+                                            setCustomSystemPrompt(updatedSystem);
+                                            setCustomUserPrompt(updatedUser);
+                                        }}
+                                        className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1 font-medium"
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        Update Prompts
+                                    </button>
+                                </div>
+                            )}
+
+                            {!showPromptEditor && (
+                                <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-3 text-xs text-gray-700">
+                                    <p className="font-medium mb-1">AI will generate:</p>
+                                    <ul className="list-disc list-inside space-y-0.5 ml-1 text-gray-600">
+                                        <li>Product/Service description</li>
+                                        <li>Target Audience</li>
+                                        <li>Swipe Files (headline examples)</li>
+                                        <li>Custom Prompt suggestions</li>
+                                    </ul>
+                                </div>
+                            )}
 
                             <div className="pt-4 flex justify-end gap-3 border-t border-gray-200">
                                 <button
@@ -2106,6 +3304,9 @@ export function CopyWizard() {
                                         setShowAutoFillModal(false);
                                         setAutoFillBrief('');
                                         setAutoFillRowId(null);
+                                        setShowPromptEditor(false);
+                                        setCustomSystemPrompt('');
+                                        setCustomUserPrompt('');
                                     }}
                                     disabled={autoFillLoading}
                                     className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors disabled:opacity-50"
@@ -2114,7 +3315,7 @@ export function CopyWizard() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={handleAutoFill}
+                                    onClick={() => handleAutoFill()}
                                     disabled={!autoFillBrief.trim() || autoFillLoading}
                                     className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                 >

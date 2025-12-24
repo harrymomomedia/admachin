@@ -36,8 +36,8 @@ export interface DataTableSelectionModalProps<T> {
     onPreferencesChange?: (prefs: ViewPreferences) => void;
 
     // View mode
-    viewMode?: 'table' | 'gallery';
-    onViewModeChange?: (mode: 'table' | 'gallery') => void;
+    viewMode?: 'table' | 'gallery' | 'card';
+    onViewModeChange?: (mode: 'table' | 'gallery' | 'card') => void;
     cardColumns?: number;
     galleryConfig?: GalleryConfig;
     galleryLookups?: GalleryLookups;
@@ -75,7 +75,7 @@ export function DataTableSelectionModal<T>({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
 
     // Local view mode state (fallback if not provided externally)
-    const [internalViewMode, setInternalViewMode] = useState<'table' | 'gallery'>(externalViewMode || 'table');
+    const [internalViewMode, setInternalViewMode] = useState<'table' | 'gallery' | 'card'>(externalViewMode || 'table');
     const viewMode = externalViewMode ?? internalViewMode;
     const onViewModeChange = externalOnViewModeChange ?? setInternalViewMode;
 
