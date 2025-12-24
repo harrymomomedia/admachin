@@ -8,7 +8,8 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm ci"]
 
 [phases.build]
-cmds = ["npm run build", "npm run build:server"]
+# Force cache bust with date check and explicit build
+cmds = ["date", "rm -rf dist-server", "npm run build", "npm run build:server", "ls -la dist-server/server/"]
 
 [start]
 # Direct command to avoid npm script caching issues
