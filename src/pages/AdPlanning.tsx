@@ -225,9 +225,9 @@ export function AdPlanning() {
         },
         {
             key: 'priority',
-            header: 'Pri.',
-            width: 50,
-            minWidth: 40,
+            header: 'Priority',
+            width: 70,
+            minWidth: 50,
             editable: true,
             type: 'priority',
             maxPriority: 5,
@@ -239,7 +239,7 @@ export function AdPlanning() {
             minWidth: 70,
             editable: true,
             type: 'rating',
-            maxRating: 10,
+            maxRating: 5,
         },
         {
             key: 'user_id',

@@ -32,3 +32,4 @@ playwright-data/
 
 # Temp files
 temp/
+test-results

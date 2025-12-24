@@ -11,7 +11,7 @@ interface RatingCellProps {
  */
 export function RatingCell({
     value,
-    maxRating = 10,
+    maxRating = 5,
     showValue = true
 }: RatingCellProps) {
     const numValue = Number(value) || 0;

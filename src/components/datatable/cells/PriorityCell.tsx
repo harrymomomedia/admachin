@@ -1,3 +1,4 @@
+import { Flame } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
 interface PriorityCellProps {
@@ -7,7 +8,8 @@ interface PriorityCellProps {
 
 /**
  * Reusable Priority cell renderer for DataTable.
- * Shows color-coded priority value (red for high, orange for medium, gray for low).
+ * Shows P1-P5 with flame icons. Lower number = higher priority.
+ * P1: 3 flames (red), P2: 2 flames (orange), P3: 1 flame (yellow), P4-P5: no flames (gray)
  */
 export function PriorityCell({
     value,
@@ -15,24 +17,50 @@ export function PriorityCell({
 }: PriorityCellProps) {
     const numValue = Number(value) || 0;
 
-    // Calculate thresholds based on maxPriority
-    // High: top 20% (e.g., 4-5 out of 5)
-    // Medium: middle 40% (e.g., 2-3 out of 5)
-    // Low: bottom 40% (e.g., 1 out of 5)
-    const highThreshold = Math.ceil(maxPriority * 0.8);
-    const mediumThreshold = Math.ceil(maxPriority * 0.4);
+    if (!value && value !== 0) {
+        return <span className="text-xs text-gray-400">-</span>;
+    }
+
+    // Priority config: lower number = higher priority
+    // P1 = most urgent (3 flames, red)
+    // P2 = high (2 flames, orange)
+    // P3 = medium (1 flame, yellow)
+    // P4, P5 = low (no flames, gray)
+    const getConfig = (priority: number) => {
+        if (priority <= 1) {
+            return { flames: 3, color: 'text-red-500', flameColor: 'text-red-500' };
+        } else if (priority === 2) {
+            return { flames: 2, color: 'text-orange-500', flameColor: 'text-orange-500' };
+        } else if (priority === 3) {
+            return { flames: 1, color: 'text-yellow-500', flameColor: 'text-yellow-500' };
+        } else if (priority === 4) {
+            return { flames: 0, color: 'text-gray-500', flameColor: '' };
+        } else {
+            return { flames: 0, color: 'text-gray-400', flameColor: '' };
+        }
+    };
+
+    const config = getConfig(numValue);
 
     return (
-        <span className={cn(
-            "text-xs font-medium",
-            numValue >= highThreshold
-                ? "text-red-600"
-                : numValue >= mediumThreshold
-                    ? "text-orange-500"
-                    : "text-gray-600"
-        )}>
-            {value ? String(value) : '-'}
-        </span>
+        <div className="flex items-center gap-1">
+            {/* P-text */}
+            <span className={cn("text-xs font-semibold", config.color)}>
+                P{numValue}
+            </span>
+            {/* Flames */}
+            {config.flames > 0 && (
+                <div className="flex items-center -space-x-1">
+                    {Array.from({ length: config.flames }).map((_, i) => (
+                        <Flame
+                            key={i}
+                            className={cn("w-3.5 h-3.5", config.flameColor)}
+                            fill="currentColor"
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 

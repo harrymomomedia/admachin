@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil } from 'lucide-react';
+import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, Settings, Columns, LayoutList } from 'lucide-react';
 import { SingleSelect, SearchInput } from '../fields';
 import {
     DndContext,
@@ -79,6 +79,202 @@ interface LocalColumnDef<T> {
         parentKey: string; // The column key this depends on (e.g., 'project_id')
         getParentValue: (value: string | number) => string | number | null; // Function to resolve parent value from this column's value
     };
+}
+
+// ============ Masonry Grid Component ============
+// Smart horizontal-flow masonry that places items left-to-right while allowing dynamic heights
+
+interface MasonryGridProps {
+    children: ReactNode[];
+    minWidth: number;
+    gap?: number;
+}
+
+function MasonryGrid({ children, minWidth, gap = 16 }: MasonryGridProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const [positions, setPositions] = useState<{ left: number; top: number; width: number }[]>([]);
+    const [containerHeight, setContainerHeight] = useState<number | null>(null);
+    const rafIdRef = useRef<number | null>(null);
+    const measurementVersionRef = useRef(0);
+
+    // Calculate column width directly from minWidth prop (no state needed)
+    const calculateColumnWidth = useCallback(() => {
+        if (!containerRef.current) return minWidth;
+        const containerWidth = containerRef.current.offsetWidth;
+        if (containerWidth === 0) return minWidth;
+        const numColumns = Math.max(1, Math.floor((containerWidth + gap) / (minWidth + gap)));
+        return (containerWidth - (numColumns - 1) * gap) / numColumns;
+    }, [minWidth, gap]);
+
+    // Memoize column width to avoid recalculating on every render
+    const [columnWidth, setColumnWidth] = useState<number>(minWidth);
+
+    // Update column width when minWidth changes
+    useEffect(() => {
+        setColumnWidth(calculateColumnWidth());
+    }, [calculateColumnWidth]);
+
+    // Main measurement and positioning effect
+    useLayoutEffect(() => {
+        // Cancel any pending RAF from previous effect
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+        }
+
+        if (!containerRef.current || children.length === 0) {
+            setContainerHeight(null);
+            setPositions([]);
+            return;
+        }
+
+        // Increment version to invalidate any in-flight callbacks
+        const currentVersion = ++measurementVersionRef.current;
+
+        const containerWidth = containerRef.current.offsetWidth;
+        if (containerWidth === 0) return;
+
+        const numColumns = Math.max(1, Math.floor((containerWidth + gap) / (minWidth + gap)));
+        const calculatedColumnWidth = (containerWidth - (numColumns - 1) * gap) / numColumns;
+
+        // Update column width state for initial render
+        setColumnWidth(calculatedColumnWidth);
+
+        // Clear positions to trigger re-render at new width
+        setPositions([]);
+        setContainerHeight(null);
+
+        // Measure and position after DOM updates
+        const measureAndPosition = () => {
+            // Check if this callback is still valid
+            if (measurementVersionRef.current !== currentVersion) return;
+            if (!containerRef.current) return;
+
+            const columnHeights = new Array(numColumns).fill(0);
+            const newPositions: { left: number; top: number; width: number }[] = [];
+
+            // Measure each card and assign to shortest column
+            cardRefs.current.forEach((cardEl, index) => {
+                if (!cardEl) return;
+
+                // Find the shortest column (left-to-right preference for ties)
+                const minColHeight = Math.min(...columnHeights);
+                const shortestCol = columnHeights.indexOf(minColHeight);
+
+                const left = shortestCol * (calculatedColumnWidth + gap);
+                const top = columnHeights[shortestCol];
+
+                newPositions[index] = { left, top, width: calculatedColumnWidth };
+
+                // Update column height (using getBoundingClientRect for precise measurement)
+                const rect = cardEl.getBoundingClientRect();
+                columnHeights[shortestCol] = top + rect.height + gap;
+            });
+
+            // Only update if this version is still current
+            if (measurementVersionRef.current === currentVersion) {
+                setPositions(newPositions);
+                setContainerHeight(Math.max(...columnHeights, 0) - gap);
+            }
+        };
+
+        // Use double RAF to ensure DOM has updated with new column width
+        rafIdRef.current = requestAnimationFrame(() => {
+            rafIdRef.current = requestAnimationFrame(() => {
+                measureAndPosition();
+            });
+        });
+
+        // Cleanup
+        return () => {
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+                rafIdRef.current = null;
+            }
+        };
+    }, [children, minWidth, gap]);
+
+    const hasPositions = positions.length > 0 && containerHeight !== null;
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative"
+            style={{ minHeight: hasPositions ? containerHeight : 'auto' }}
+        >
+            {React.Children.map(children, (child, index) => (
+                <div
+                    key={index}
+                    ref={el => { cardRefs.current[index] = el; }}
+                    style={hasPositions && positions[index] ? {
+                        position: 'absolute',
+                        left: positions[index].left,
+                        top: positions[index].top,
+                        width: positions[index].width,
+                    } : {
+                        // Initial/measurement render: use calculated column width
+                        display: 'inline-block',
+                        verticalAlign: 'top',
+                        width: columnWidth,
+                    }}
+                >
+                    {child}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ============ Sortable Footer Item Component ============
+// Compact draggable item for card settings footer order
+
+interface SortableFooterItemProps {
+    id: string;
+    label: string;
+    onRemove: () => void;
+}
+
+function SortableFooterItem({ id, label, onRemove }: SortableFooterItemProps) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={cn(
+                "flex items-center gap-1 bg-white rounded px-1.5 py-1 border border-gray-200",
+                isDragging && "opacity-50 shadow-lg z-50"
+            )}
+        >
+            <div
+                {...attributes}
+                {...listeners}
+                className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+            >
+                <GripVertical className="w-3 h-3" />
+            </div>
+            <span className="text-[11px] text-gray-700 flex-1">{label}</span>
+            <button
+                onClick={onRemove}
+                className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+            >
+                <X className="w-3 h-3" />
+            </button>
+        </div>
+    );
 }
 
 interface LocalDataTableProps<T> {
@@ -1350,14 +1546,17 @@ function SortableRow<T>({
                             <td
                             className={cn(
                                 "data-grid-td px-2 relative",
-                                wrapLines !== 'full' && "overflow-hidden"
+                                // Remove overflow-hidden when editing so inline textarea can expand
+                                wrapLines !== 'full' && !isEditing && "overflow-hidden"
                             )}
                             style={{
                                 width,
                                 maxWidth: width,
-                                ...((!wrapLines || wrapLines === '1') && { maxHeight: '34px' }),
-                                ...(wrapLines === '2' && { maxHeight: '56px' }),
-                                ...(wrapLines === '3' && { maxHeight: '76px' })
+                                // When editing, no height constraints - textarea expands naturally
+                                // When not editing, apply maxHeight based on wrap settings
+                                ...(!isEditing && (!wrapLines || wrapLines === '1') && { maxHeight: '34px' }),
+                                ...(!isEditing && wrapLines === '2' && { maxHeight: '56px' }),
+                                ...(!isEditing && wrapLines === '3' && { maxHeight: '76px' })
                             }}
                         >
                             {/* Check for editing FIRST - takes priority over custom render */}
@@ -1441,92 +1640,43 @@ function SortableRow<T>({
                                         )}
                                     </>
                                 ) : col.type === 'longtext' || col.type === 'text' ? (
-                                    <>
-                                        {/* Popup editor via portal - overlays the cell */}
-                                        {createPortal(
-                                            <>
-                                                {/* Backdrop */}
-                                                <div
-                                                    className="fixed inset-0 z-[9998]"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onCellCommit();
-                                                    }}
-                                                />
-                                                {/* Popup Editor - Notion style with smart positioning */}
-                                                {(() => {
-                                                    const spaceBelow = window.innerHeight - dropdownPosition.top - 50;
-                                                    const spaceAbove = dropdownPosition.top - 50;
-                                                    const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
-                                                    const maxH = showAbove ? spaceAbove : spaceBelow;
-
-                                                    return (
-                                                        <textarea
-                                                            ref={(el) => {
-                                                                (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
-                                                                if (el) {
-                                                                    // Match cell height (34px) for single line, grow for multi-line
-                                                                    const cellHeight = 34;
-                                                                    const lineHeight = 20;
-                                                                    const verticalPadding = 14; // 7px top + 7px bottom to center text
-                                                                    // Estimate wrapped lines based on character count
-                                                                    const charPerLine = Math.floor(dropdownPosition.width / 8);
-                                                                    const estimatedWrappedLines = Math.ceil((editingValue?.length || 0) / charPerLine);
-                                                                    const explicitLineCount = (editingValue?.split('\n').length || 1);
-                                                                    const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
-                                                                    const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                    const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
-                                                                    el.style.height = `${newHeight}px`;
-                                                                    el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
-                                                                    if (showAbove) {
-                                                                        el.style.top = `${dropdownPosition.top - newHeight}px`;
-                                                                    }
-                                                                }
-                                                            }}
-                                                            value={editingValue}
-                                                            onChange={(e) => {
-                                                                onEditChange(e.target.value);
-                                                                const el = e.target;
-                                                                const cellHeight = 34;
-                                                                const lineHeight = 20;
-                                                                const verticalPadding = 14;
-                                                                // Estimate wrapped lines based on character count
-                                                                const charPerLine = Math.floor(dropdownPosition.width / 8);
-                                                                const estimatedWrappedLines = Math.ceil((e.target.value?.length || 0) / charPerLine);
-                                                                const explicitLineCount = (e.target.value?.split('\n').length || 1);
-                                                                const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
-                                                                const contentHeight = lineCount * lineHeight + verticalPadding;
-                                                                const newHeight = Math.min(Math.max(cellHeight, contentHeight), maxH);
-                                                                el.style.height = `${newHeight}px`;
-                                                                el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
-                                                                if (showAbove) {
-                                                                    el.style.top = `${dropdownPosition.top - newHeight}px`;
-                                                                }
-                                                            }}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Escape') {
-                                                                    onEditCancel();
-                                                                }
-                                                            }}
-                                                            className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 resize focus:outline-none focus:border-blue-400"
-                                                            style={{
-                                                                top: showAbove ? undefined : dropdownPosition.top,
-                                                                bottom: showAbove ? `${window.innerHeight - dropdownPosition.top}px` : undefined,
-                                                                left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
-                                                                width: dropdownPosition.width,
-                                                                padding: '7px 8px',
-                                                                lineHeight: '20px',
-                                                                boxSizing: 'border-box',
-                                                            }}
-                                                            placeholder="Enter text..."
-                                                            autoFocus
-                                                        />
-                                                    );
-                                                })()}
-                                            </>,
-                                            document.body
-                                        )}
-                                    </>
+                                    /* Inline textarea - renders directly in cell, row expands naturally */
+                                    <textarea
+                                        ref={(el) => {
+                                            (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                                            if (el) {
+                                                // Auto-size: set to 0, read scrollHeight, set to that
+                                                el.style.height = '0px';
+                                                el.style.height = `${el.scrollHeight}px`;
+                                            }
+                                        }}
+                                        value={editingValue}
+                                        onChange={(e) => {
+                                            onEditChange(e.target.value);
+                                            const el = e.target;
+                                            // Auto-resize on content change
+                                            el.style.height = '0px';
+                                            el.style.height = `${el.scrollHeight}px`;
+                                        }}
+                                        onBlur={() => {
+                                            // Commit on blur (click outside)
+                                            onCellCommit();
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Escape') {
+                                                onEditCancel();
+                                            }
+                                        }}
+                                        className="w-full bg-white border-2 border-blue-400 rounded text-[13px] text-gray-700 resize-none focus:outline-none overflow-hidden"
+                                        style={{
+                                            padding: '6px 10px',
+                                            lineHeight: '20px',
+                                            minHeight: '32px',
+                                            boxSizing: 'border-box',
+                                        }}
+                                        placeholder="Enter text..."
+                                        autoFocus
+                                    />
                                 ) : (
                                     <>
                                         {/* Popup editor via portal - overlays the cell */}
@@ -1588,8 +1738,10 @@ function SortableRow<T>({
                                     const fallbackValue = fallbackRaw && typeof fallbackRaw === 'object'
                                         ? (fallbackRaw as Record<string, unknown>).name || null
                                         : fallbackRaw;
-                                    // Only show optionLabel or fallbackValue - don't show raw UUID if no match
-                                    const displayValue = optionLabel || (fallbackValue ? String(fallbackValue) : null);
+                                    // Only use fallback if value exists but wasn't found in options (legacy data)
+                                    // Don't use fallback when value is empty/null (user intentionally cleared it)
+                                    const shouldUseFallback = value != null && value !== '' && !optionLabel;
+                                    const displayValue = optionLabel || (shouldUseFallback && fallbackValue ? String(fallbackValue) : null);
 
                                     if (!displayValue) {
                                         return (
@@ -2296,6 +2448,38 @@ export function DataTable<T>({
             setInternalViewMode(mode);
         }
     };
+
+    // Card view settings state
+    const [showCardSettings, setShowCardSettings] = useState(false);
+    const [cardLayout, setCardLayout] = useState<'horizontal' | 'vertical'>(
+        cardConfig?.layout === 'masonry' ? 'horizontal' : 'vertical'
+    );
+    const [cardMinWidth, setCardMinWidth] = useState(cardConfig?.minWidth || 300);
+    const [cardVisibleMetadata, setCardVisibleMetadata] = useState<string[]>(
+        cardConfig?.metadataKeys || []
+    );
+
+    // Sync cardVisibleMetadata when cardConfig.metadataKeys changes
+    useEffect(() => {
+        if (cardConfig?.metadataKeys) {
+            setCardVisibleMetadata(cardConfig.metadataKeys);
+        }
+    }, [cardConfig?.metadataKeys?.join(',')]);
+
+    const cardSettingsRef = useRef<HTMLDivElement>(null);
+
+    // Close card settings on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (cardSettingsRef.current && !cardSettingsRef.current.contains(event.target as Node)) {
+                setShowCardSettings(false);
+            }
+        };
+        if (showCardSettings) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showCardSettings]);
 
     // Ad copy picker modal state
     const [adCopyModalState, setAdCopyModalState] = useState<{
@@ -3732,6 +3916,174 @@ export function DataTable<T>({
                         >
                             <List className="w-4 h-4" />
                         </button>
+                    </div>
+                )}
+
+                {/* Card View Settings Button - only when in card view */}
+                {viewMode === 'card' && cardConfig && (
+                    <div className="relative flex-shrink-0" ref={cardSettingsRef}>
+                        <button
+                            onClick={() => setShowCardSettings(!showCardSettings)}
+                            className={cn(
+                                "flex items-center justify-center w-8 h-8 rounded-md transition-colors",
+                                showCardSettings
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                            )}
+                            title="Card settings"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
+
+                        {/* Card Settings Dropdown */}
+                        {showCardSettings && (
+                            <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50 p-4 space-y-4">
+                                <div className="text-sm font-medium text-gray-900 border-b pb-2">Card Settings</div>
+
+                                {/* Layout Toggle */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-700">Layout Style</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setCardLayout('horizontal')}
+                                            className={cn(
+                                                "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors",
+                                                cardLayout === 'horizontal'
+                                                    ? "bg-blue-100 text-blue-700 border border-blue-200"
+                                                    : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
+                                            )}
+                                        >
+                                            <LayoutList className="w-3.5 h-3.5" />
+                                            Horizontal
+                                        </button>
+                                        <button
+                                            onClick={() => setCardLayout('vertical')}
+                                            className={cn(
+                                                "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors",
+                                                cardLayout === 'vertical'
+                                                    ? "bg-blue-100 text-blue-700 border border-blue-200"
+                                                    : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
+                                            )}
+                                        >
+                                            <Columns className="w-3.5 h-3.5" />
+                                            Vertical
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Card Width */}
+                                <div className="space-y-2">
+                                    <label htmlFor="card-width-slider" className="text-xs font-medium text-gray-700">
+                                        Card Width: {cardMinWidth}px
+                                    </label>
+                                    <input
+                                        id="card-width-slider"
+                                        name="card-width"
+                                        type="range"
+                                        min="200"
+                                        max="600"
+                                        step="50"
+                                        value={cardMinWidth}
+                                        onChange={(e) => setCardMinWidth(Number(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-gray-400">
+                                        <span>Narrow</span>
+                                        <span>Wide</span>
+                                    </div>
+                                </div>
+
+                                {/* Metadata Toggles - show all select/people columns as options */}
+                                {(() => {
+                                    // Get all columns that can be shown as metadata (select, people, or have colorMap)
+                                    const metadataColumns = columns.filter(col =>
+                                        col.type === 'select' ||
+                                        col.type === 'people' ||
+                                        col.colorMap ||
+                                        col.key === 'project_id' ||
+                                        col.key === 'subproject_id'
+                                    );
+
+                                    if (metadataColumns.length === 0) return null;
+
+                                    // Split into visible (in order) and available
+                                    const visibleItems = cardVisibleMetadata
+                                        .map(key => metadataColumns.find(c => c.key === key))
+                                        .filter(Boolean) as typeof metadataColumns;
+                                    const availableItems = metadataColumns.filter(
+                                        col => !cardVisibleMetadata.includes(col.key)
+                                    );
+
+                                    // Handle drag end for reordering
+                                    const handleFooterDragEnd = (event: DragEndEvent) => {
+                                        const { active, over } = event;
+                                        if (!over || active.id === over.id) return;
+
+                                        setCardVisibleMetadata(prev => {
+                                            const oldIdx = prev.indexOf(String(active.id));
+                                            const newIdx = prev.indexOf(String(over.id));
+                                            if (oldIdx === -1 || newIdx === -1) return prev;
+                                            const newArr = [...prev];
+                                            newArr.splice(oldIdx, 1);
+                                            newArr.splice(newIdx, 0, String(active.id));
+                                            return newArr;
+                                        });
+                                    };
+
+                                    return (
+                                        <div className="space-y-2">
+                                            {/* Visible items with drag reorder */}
+                                            {visibleItems.length > 0 && (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-gray-700">Footer Order</label>
+                                                    <DndContext
+                                                        collisionDetection={closestCenter}
+                                                        onDragEnd={handleFooterDragEnd}
+                                                    >
+                                                        <SortableContext
+                                                            items={cardVisibleMetadata}
+                                                            strategy={verticalListSortingStrategy}
+                                                        >
+                                                            <div className="space-y-0.5">
+                                                                {visibleItems.map((col) => (
+                                                                    <SortableFooterItem
+                                                                        key={col.key}
+                                                                        id={col.key}
+                                                                        label={col.header}
+                                                                        onRemove={() => setCardVisibleMetadata(prev => prev.filter(k => k !== col.key))}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </SortableContext>
+                                                    </DndContext>
+                                                </div>
+                                            )}
+
+                                            {/* Available items to add */}
+                                            {availableItems.length > 0 && (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-gray-700">
+                                                        {visibleItems.length > 0 ? 'Add' : 'Show in Footer'}
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {availableItems.map((col) => (
+                                                            <button
+                                                                key={col.key}
+                                                                onClick={() => setCardVisibleMetadata(prev => [...prev, col.key])}
+                                                                className="flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                            >
+                                                                <Plus className="w-3 h-3" />
+                                                                {col.header}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -5321,7 +5673,7 @@ export function DataTable<T>({
                             <div
                                 className="grid gap-4"
                                 style={{
-                                    gridTemplateColumns: `repeat(auto-fill, minmax(${cardConfig?.minWidth || 300}px, 1fr))`
+                                    gridTemplateColumns: `repeat(auto-fill, minmax(${cardMinWidth}px, 1fr))`
                                 }}
                             >
                                 {Array.from({ length: 6 }).map((_, i) => (
@@ -5336,14 +5688,9 @@ export function DataTable<T>({
                             <div className="text-center py-12 text-gray-500 text-sm">
                                 {emptyMessage}
                             </div>
-                        ) : (
-                            <div
-                                className="grid gap-4"
-                                style={{
-                                    gridTemplateColumns: `repeat(auto-fill, minmax(${cardConfig?.minWidth || 300}px, 1fr))`
-                                }}
-                            >
-                                {sortedData.map((item) => {
+                        ) : (() => {
+                            // Build card elements - use paginatedData to respect pagination
+                            const cardElements = paginatedData.map((item) => {
                                     const id = getRowId(item);
                                     const isSelected = selectedIds ? selectedIds.has(id) : false;
                                     const handleToggle = () => {
@@ -5376,34 +5723,77 @@ export function DataTable<T>({
                                         const subtitleText = cardConfig.subtitleKey ? String(itemAny[cardConfig.subtitleKey] || '') : '';
                                         const rowNumber = cardConfig.rowNumberKey ? itemAny[cardConfig.rowNumberKey] as number : null;
 
-                                        // Get metadata values
-                                        const metadataItems = (cardConfig.metadataKeys || []).map(key => {
+                                        // Get metadata values - use cardVisibleMetadata for filtering which to show
+                                        const metadataKeys = cardVisibleMetadata.length > 0 ? cardVisibleMetadata : (cardConfig.metadataKeys || []);
+                                        const metadataItems = metadataKeys.map(key => {
                                             const col = columns.find(c => c.key === key);
-                                            const value = itemAny[key];
+                                            const rawValue = itemAny[key];
+
+                                            // Skip if no value
+                                            if (rawValue === null || rawValue === undefined || rawValue === '') {
+                                                return null;
+                                            }
+
+                                            const valueStr = String(rawValue);
 
                                             // Resolve ID to name if lookups available
-                                            let displayValue = String(value || '');
+                                            let displayValue = valueStr;
                                             let colorClass: string | undefined;
+                                            let avatarUrl: string | null | undefined;
+                                            let isUser = false;
 
-                                            if (key === 'project_id' && cardLookups?.projects) {
-                                                displayValue = cardLookups.projects.get(String(value)) || displayValue;
-                                                colorClass = cardLookups.projectColors?.[String(value)];
-                                            } else if (key === 'subproject_id' && cardLookups?.subprojects) {
-                                                displayValue = cardLookups.subprojects.get(String(value)) || displayValue;
-                                                colorClass = cardLookups.subprojectColors?.[String(value)];
-                                            } else if (key === 'user_id' && cardLookups?.users) {
-                                                displayValue = cardLookups.users.get(String(value)) || displayValue;
+                                            // For ID fields, require successful lookup - don't show raw UUIDs
+                                            if (key === 'project_id') {
+                                                if (cardLookups?.projects) {
+                                                    const resolved = cardLookups.projects.get(valueStr);
+                                                    if (!resolved) return null; // Hide if lookup fails
+                                                    displayValue = resolved;
+                                                    colorClass = cardLookups.projectColors?.[valueStr];
+                                                } else {
+                                                    return null; // No lookup available, hide UUID
+                                                }
+                                            } else if (key === 'subproject_id') {
+                                                if (cardLookups?.subprojects) {
+                                                    const resolved = cardLookups.subprojects.get(valueStr);
+                                                    if (!resolved) return null; // Hide if lookup fails
+                                                    displayValue = resolved;
+                                                    colorClass = cardLookups.subprojectColors?.[valueStr];
+                                                } else {
+                                                    return null; // No lookup available, hide UUID
+                                                }
+                                            } else if (key === 'user_id') {
+                                                if (cardLookups?.users) {
+                                                    const resolved = cardLookups.users.get(valueStr);
+                                                    if (!resolved) return null; // Hide if lookup fails
+                                                    displayValue = resolved;
+                                                    avatarUrl = cardLookups.userAvatars?.get(valueStr);
+                                                    isUser = true;
+                                                } else {
+                                                    return null; // No lookup available, hide UUID
+                                                }
+                                            } else if (col?.type === 'select' && col?.options) {
+                                                // For select columns, look up the display label from options
+                                                const options = typeof col.options === 'function' ? [] : col.options;
+                                                const option = options.find(o => String(o.value) === valueStr);
+                                                if (option) {
+                                                    displayValue = option.label;
+                                                }
+                                                if (col?.colorMap) {
+                                                    colorClass = col.colorMap[valueStr];
+                                                }
                                             } else if (col?.colorMap) {
-                                                colorClass = col.colorMap[String(value)];
+                                                colorClass = col.colorMap[valueStr];
                                             }
 
                                             return {
                                                 key,
                                                 header: col?.header || key,
                                                 value: displayValue,
-                                                colorClass
+                                                colorClass,
+                                                avatarUrl,
+                                                isUser
                                             };
-                                        }).filter(m => m.value);
+                                        }).filter((m): m is NonNullable<typeof m> => m !== null && m.value !== '');
 
                                         // Color scheme styling
                                         const colorSchemeClasses = {
@@ -5414,6 +5804,9 @@ export function DataTable<T>({
                                         const colorScheme = cardConfig.colorScheme || 'warm';
                                         const cardBgClass = colorSchemeClasses[colorScheme];
                                         const borderDividerClass = colorScheme === 'warm' ? 'border-amber-200/50' : colorScheme === 'cool' ? 'border-slate-200/50' : 'border-gray-100';
+
+                                        // Use cardLayout state for masonry style (horizontal = JS masonry, vertical = CSS columns)
+                                        const isMasonry = cardLayout === 'horizontal';
 
                                         return (
                                             <div
@@ -5428,6 +5821,7 @@ export function DataTable<T>({
                                                         : '',
                                                     selectable ? 'cursor-pointer' : 'cursor-default'
                                                 )}
+                                                style={isMasonry ? { breakInside: 'avoid' } : undefined}
                                             >
                                                 {/* Selection checkbox */}
                                                 {selectable && (
@@ -5445,15 +5839,18 @@ export function DataTable<T>({
                                                     </div>
                                                 )}
 
-                                                {/* Row number badge */}
+                                                {/* Row number badge - positioned at bottom-right to avoid text overlap */}
                                                 {rowNumber !== null && (
-                                                    <div className="absolute top-3 right-3 z-10">
+                                                    <div className="absolute bottom-3 right-3 z-10">
                                                         <span className="text-xs text-gray-400 font-medium">#{rowNumber}</span>
                                                     </div>
                                                 )}
 
                                                 {/* Content */}
-                                                <div className={cn("p-4", selectable && "pt-10")}>
+                                                <div className={cn(
+                                                    "p-4",
+                                                    selectable && "pt-10"
+                                                )}>
                                                     {/* Title */}
                                                     {titleText && (
                                                         <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
@@ -5473,17 +5870,39 @@ export function DataTable<T>({
 
                                                     {/* Metadata footer */}
                                                     {metadataItems.length > 0 && (
-                                                        <div className={cn("mt-4 pt-3 border-t flex flex-wrap gap-1.5", borderDividerClass)}>
+                                                        <div className={cn("mt-4 pt-3 border-t flex flex-wrap items-center gap-1.5", borderDividerClass)}>
                                                             {metadataItems.map((meta) => (
-                                                                <span
-                                                                    key={meta.key}
-                                                                    className={cn(
-                                                                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
-                                                                        meta.colorClass || "bg-gray-100 text-gray-600"
-                                                                    )}
-                                                                >
-                                                                    {meta.value}
-                                                                </span>
+                                                                meta.isUser ? (
+                                                                    // User with avatar
+                                                                    <div
+                                                                        key={meta.key}
+                                                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                                                                    >
+                                                                        {meta.avatarUrl ? (
+                                                                            <img
+                                                                                src={meta.avatarUrl}
+                                                                                alt=""
+                                                                                className="w-4 h-4 rounded-full object-cover"
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-[8px] font-medium">
+                                                                                {meta.value.charAt(0).toUpperCase()}
+                                                                            </div>
+                                                                        )}
+                                                                        <span className="text-[10px] font-medium pr-0.5">{meta.value}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    // Regular tag
+                                                                    <span
+                                                                        key={meta.key}
+                                                                        className={cn(
+                                                                            "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                                                                            meta.colorClass || "bg-gray-100 text-gray-600"
+                                                                        )}
+                                                                    >
+                                                                        {meta.value}
+                                                                    </span>
+                                                                )
                                                             ))}
                                                         </div>
                                                     )}
@@ -5493,9 +5912,34 @@ export function DataTable<T>({
                                     }
 
                                     return null;
-                                })}
-                            </div>
-                        )}
+                            });
+
+                            // Wrap in appropriate container based on layout setting
+                            // horizontal = JS masonry (horizontal reading order), vertical = CSS columns
+                            if (cardLayout === 'horizontal') {
+                                return (
+                                    <MasonryGrid minWidth={cardMinWidth} gap={16}>
+                                        {cardElements}
+                                    </MasonryGrid>
+                                );
+                            }
+
+                            // Vertical layout: CSS columns (flows top-to-bottom in each column)
+                            return (
+                                <div
+                                    style={{
+                                        columnWidth: `${cardMinWidth}px`,
+                                        columnGap: '16px',
+                                    }}
+                                >
+                                    {cardElements.map((el, idx) => (
+                                        <div key={idx} style={{ breakInside: 'avoid', marginBottom: '16px' }}>
+                                            {el}
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
             </div>

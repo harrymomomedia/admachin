@@ -314,9 +314,11 @@ Use `src/lib/supabase-service.ts` for all database operations.
 
 ## Mandatory Feature Testing (CRITICAL)
 
-**Every interactive feature MUST be tested immediately after implementation.** Do NOT tell the user to test - YOU must verify it works.
+**Every function/feature built MUST be tested with Playwright E2E tests before completing the task.** Do NOT tell the user to test - YOU must verify it works end-to-end.
 
-Features that require immediate E2E testing:
+### What Requires Testing
+
+ANY new or modified functionality that involves:
 - **Button clicks** - Any button that triggers an action (save, delete, generate, etc.)
 - **Form submissions** - Creating, updating, or saving data
 - **API calls** - Any function that calls the backend or database
@@ -324,19 +326,66 @@ Features that require immediate E2E testing:
 - **CRUD operations** - Create, Read, Update, Delete on any data
 - **Modal interactions** - Opening modals, selecting items, confirming actions
 - **Navigation flows** - Multi-step wizards, page transitions with state
+- **DataTable features** - Column edits, row creation, filtering, sorting, reordering
+- **UI state changes** - Dropdowns, toggles, expand/collapse, selections
 
-**Testing process:**
-1. After implementing a feature, immediately run a Playwright E2E test
-2. If no E2E test exists, create one in `e2e/` folder
-3. Verify the data actually persists (check database/UI)
-4. Confirm the user can see the results (e.g., saved item appears in list)
+### Testing Process (MANDATORY)
 
-**Example:** After implementing "Save Personas to Library":
+1. **Build completes** - Run `npm run build` to verify TypeScript compiles
+2. **Write/run E2E test** - Create or run a Playwright test that exercises the feature
+3. **Verify the action** - Test must confirm the intended behavior works
+4. **Check data persistence** - Verify data is saved to database (not just UI update)
+5. **Report results** - Show the test output to confirm pass/fail
+
+### Running Tests
+
 ```bash
-npx playwright test copy-wizard-real.spec.ts --grep "Save" --project=chromium
+# Run specific test file
+npx playwright test e2e/your-feature.spec.ts --project=chromium
+
+# Run with grep to target specific test
+npx playwright test --grep "feature name" --project=chromium
+
+# Run in headed mode to see the browser
+npx playwright test --headed --project=chromium
+
+# Run with UI for debugging
+npx playwright test --ui
 ```
 
-**Never assume code works just because TypeScript compiles.** Database schemas, API responses, and runtime behavior must be verified through actual testing.
+### Test File Location
+
+- E2E tests go in `e2e/` folder
+- Name format: `feature-name.spec.ts`
+- Use existing test patterns from other spec files
+
+### Example Test Structure
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test('should create new row in DataTable', async ({ page }) => {
+  await page.goto('/ad-planning');
+
+  // Click the + button to create row
+  await page.click('[data-testid="create-row-btn"]');
+
+  // Verify row was created
+  await expect(page.locator('table tbody tr')).toHaveCount(/* expected count */);
+
+  // Verify data persisted (reload and check)
+  await page.reload();
+  await expect(page.locator('table tbody tr')).toHaveCount(/* same count */);
+});
+```
+
+### ⛔ Task is NOT Complete Until
+
+1. Playwright test runs successfully
+2. Test verifies the actual feature behavior
+3. Test output shows PASS (not just "no errors")
+
+**Never assume code works just because TypeScript compiles.** Database schemas, API responses, and runtime behavior must be verified through actual Playwright testing before marking any task as done.
 
 ## Environment Variables
 

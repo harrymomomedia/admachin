@@ -8,7 +8,7 @@ import { FBProfiles } from "./pages/FBProfiles";
 import { FBAdAccounts } from "./pages/FBAdAccounts";
 import { FBAdLibrary } from './pages/FBAdLibrary';
 import { TeamSettings } from "./pages/TeamSettings";
-import { AdCopyLibrary } from "./pages/AdCopyLibrary";
+import { AdCopy } from "./pages/AdCopy";
 import { AdPlanning } from "./pages/AdPlanning";
 import { AdCombosList } from "./pages/AdCombosList";
 import { AdCombos } from "./pages/AdCombos";
@@ -89,7 +89,7 @@ function App() {
                 <DashboardLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<AdCopyLibrary />} />
+              <Route index element={<AdCopy />} />
               <Route path="launch" element={<LaunchAd />} />
               <Route path="creatives" element={<Creatives />} />
 

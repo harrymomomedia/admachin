@@ -26,7 +26,7 @@ import {
     COLUMN_WIDTH_DEFAULTS,
 } from '../lib/datatable-defaults';
 
-export function AdCopyLibrary() {
+export function AdCopy() {
     const [copies, setCopies] = useState<AdCopy[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [subprojects, setSubprojects] = useState<Subproject[]>([]);
@@ -328,7 +328,7 @@ export function AdCopyLibrary() {
                 data={copies}
                 isLoading={isLoading}
                 emptyMessage="No ad copies found. Create one for your next campaign!"
-                title="Ad Text"
+                title="Ad Copy"
                 onNewClick={() => setIsCreateModalOpen(true)}
                 newButtonLabel="New"
                 getRowId={(copy) => copy.id}
@@ -346,14 +346,15 @@ export function AdCopyLibrary() {
                 viewId="ad_copies"
                 // Column config editing (field editor)
                 onColumnConfigChange={handleColumnConfigChange}
-                // Card view configuration - smart masonry with horizontal flow
+                // Card view configuration
                 cardConfig={{
                     bodyKey: 'text',
                     rowNumberKey: 'row_number',
                     metadataKeys: ['project_id', 'subproject_id', 'type', 'platform', 'user_id'],
                     colorScheme: 'warm',
                     minWidth: 300,
-                    layout: 'masonry', // horizontal flow + dynamic heights
+                    maxWidth: 450,
+                    layout: 'masonry', // Pinterest-style dynamic layout
                 }}
                 cardLookups={{
                     projects: new Map(projects.map(p => [p.id, p.name])),

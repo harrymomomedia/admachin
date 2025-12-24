@@ -79,7 +79,7 @@ export interface ColumnDef<T> {
     getValue?: (row: T) => unknown;
     fallbackKey?: string; // For legacy data - show this field's value if current value not found in options
     maxPriority?: number; // For priority type - max value (default: 5)
-    maxRating?: number; // For rating type - max value (default: 10)
+    maxRating?: number; // For rating type - max value (default: 5)
     urlMaxLength?: number; // For url type - max characters to show (default: 25)
     users?: PeopleOption[]; // For people type - list of users to select from
     adCopyType?: 'headline' | 'primary_text' | 'description'; // For adcopy type - which type of ad copy
@@ -166,6 +166,8 @@ export interface CardConfig {
     minWidth?: number;
     /** Max card width in pixels (default: 500) */
     maxWidth?: number;
+    /** Layout style: 'grid' = equal height rows, 'masonry' = dynamic height (Pinterest-style) */
+    layout?: 'grid' | 'masonry';
 }
 
 /** Lookup maps for resolving IDs to names/colors in card view */
@@ -173,6 +175,7 @@ export interface CardLookups {
     projects?: Map<string, string>;
     subprojects?: Map<string, string>;
     users?: Map<string, string>;
+    userAvatars?: Map<string, string | null>; // user_id -> avatar_url
     projectColors?: Record<string, string>;
     subprojectColors?: Record<string, string>;
 }
