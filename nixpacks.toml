@@ -11,4 +11,5 @@ cmds = ["npm ci"]
 cmds = ["npm run build", "npm run build:server"]
 
 [start]
-cmd = "npm run start:server"
+# Direct command to avoid npm script caching issues
+cmd = "node dist-server/server/index.js"
