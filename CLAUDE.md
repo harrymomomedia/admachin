@@ -384,6 +384,33 @@ Keep entries compact - one line per change. Group related changes together. Add 
 - `docs/RAILWAY_MIGRATION.md` - Guide for Vercel → Railway migration
 - `CHANGELOG.md` - Log of all major changes
 
+## Railway Deployment (IMPORTANT)
+
+**After every `git push`, check Railway build logs for errors:**
+
+```bash
+# Check build logs for errors
+railway logs --build --lines 50
+
+# Look for: "error TS", "Build Failed", "exit code"
+```
+
+**Common build failures:**
+- TypeScript errors in server build (`npm run build:server`)
+- Import errors when server imports from `src/` (fix `tsconfig.server.json`)
+- Missing environment variables
+
+**If build fails:**
+1. Check logs with `railway logs --build --lines 100`
+2. Fix the error locally
+3. Run `npm run build && npm run build:server` to verify
+4. Push fix and re-check logs
+
+**Runtime error monitoring:**
+```bash
+railway logs --lines 100 --filter "@level:error"
+```
+
 ## Server-Side Processing (IMPORTANT)
 
 **All background processes must be server-side.** When any task is triggered:
