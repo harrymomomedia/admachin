@@ -1026,7 +1026,7 @@ Generate ${count} ad copy variations highlighting different aspects of the produ
 
 // Use serverless function proxy to avoid CORS issues
 async function callAIProxy(model: AIModel, systemPrompt: string, userPrompt: string): Promise<string> {
-    // Use relative URL - Vite middleware proxies /api routes in dev, Vercel handles in prod
+    // Use relative URL - Vite middleware proxies /api routes in dev, Railway handles in prod
     const apiUrl = '/api/ai-generate';
 
     const response = await fetch(apiUrl, {

@@ -11,7 +11,7 @@ AI-powered ad copy and creative management platform for Facebook/Meta advertisin
 - **Drag & Drop**: @dnd-kit
 - **Charts**: Recharts
 - **Routing**: React Router DOM v7
-- **Deployment**: Vercel
+- **Deployment**: Railway
 
 ## Project Structure
 
@@ -62,7 +62,7 @@ npm run build        # TypeScript check + Vite build
 npm run test         # Run Vitest tests
 npm run test:run     # Run tests once
 npm run lint         # ESLint check
-npm run deploy       # Save + deploy to Vercel
+npm run deploy       # Save + deploy to Railway
 ```
 
 ## Code Conventions
