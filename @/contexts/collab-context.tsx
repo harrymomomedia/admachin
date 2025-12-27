@@ -33,6 +33,7 @@ export const useCollaboration = (room: string) => {
   const [provider, setProvider] = useState<TiptapCollabProvider | null>(null)
   const [collabToken, setCollabToken] = useState<string | null>(null)
   const [hasCollab, setHasCollab] = useState<boolean>(true)
+  const [collabFailed, setCollabFailed] = useState<boolean>(false)
   const ydoc = useMemo(() => new YDoc(), [])
 
   useEffect(() => {
@@ -45,14 +46,21 @@ export const useCollaboration = (room: string) => {
 
     const getToken = async () => {
       const token = await fetchCollabToken()
-      setCollabToken(token)
+      if (token) {
+        setCollabToken(token)
+      } else {
+        // Token fetch failed - disable collaboration and continue with local editor
+        console.warn("Collaboration token fetch failed - running in local mode")
+        setCollabFailed(true)
+        setHasCollab(false)
+      }
     }
 
     getToken()
   }, [hasCollab])
 
   useEffect(() => {
-    if (!hasCollab || !collabToken) return
+    if (!hasCollab || !collabToken || collabFailed) return
 
     const docPrefix = TIPTAP_COLLAB_DOC_PREFIX
     const documentName = room ? `${docPrefix}${room}` : docPrefix
@@ -70,7 +78,7 @@ export const useCollaboration = (room: string) => {
     return () => {
       newProvider.destroy()
     }
-  }, [collabToken, ydoc, room, hasCollab])
+  }, [collabToken, ydoc, room, hasCollab, collabFailed])
 
   return { provider, ydoc, hasCollab }
 }

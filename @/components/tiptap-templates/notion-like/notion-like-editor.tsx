@@ -88,7 +88,7 @@ export interface NotionEditorProps {
 }
 
 export interface EditorProviderProps {
-  provider: TiptapCollabProvider
+  provider: TiptapCollabProvider | null
   ydoc: YDoc
   placeholder?: string
   aiToken: string | null
@@ -177,6 +177,15 @@ export function EditorProvider(props: EditorProviderProps) {
 
   const { user } = useUser()
 
+  // Build collaboration extensions only when provider is available
+  const collabExtensions = provider ? [
+    Collaboration.configure({ document: ydoc }),
+    CollaborationCaret.configure({
+      provider,
+      user: { id: user.id, name: user.name, color: user.color },
+    }),
+  ] : []
+
   const editor = useEditor({
     immediatelyRender: false,
     editorProps: {
@@ -186,7 +195,7 @@ export function EditorProvider(props: EditorProviderProps) {
     },
     extensions: [
       StarterKit.configure({
-        undoRedo: false,
+        undoRedo: provider ? false : {}, // Enable undo/redo when not using collaboration
         horizontalRule: false,
         dropcursor: {
           width: 2,
@@ -195,11 +204,7 @@ export function EditorProvider(props: EditorProviderProps) {
       }),
       HorizontalRule,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Collaboration.configure({ document: ydoc }),
-      CollaborationCaret.configure({
-        provider,
-        user: { id: user.id, name: user.name, color: user.color },
-      }),
+      ...collabExtensions,
       Placeholder.configure({
         placeholder,
         emptyNodeClass: "is-empty with-slash",
@@ -328,13 +333,16 @@ export function NotionEditor({
  * Internal component that handles the editor loading state
  */
 export function NotionEditorContent({ placeholder }: { placeholder?: string }) {
-  const { provider, ydoc } = useCollab()
+  const { provider, ydoc, hasCollab } = useCollab()
   const { aiToken } = useAi()
 
-  if (!provider || !aiToken) {
+  // Only wait for provider if collaboration is enabled and we're still trying
+  if (hasCollab && !provider) {
     return <LoadingSpinner />
   }
 
+  // AI token is optional - editor works without it
+  // Collaboration is optional - if provider is null, editor works locally
   return (
     <EditorProvider
       provider={provider}
