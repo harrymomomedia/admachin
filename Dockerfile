@@ -4,8 +4,21 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Tiptap Pro token for private registry access
-# Set TIPTAP_PRO_TOKEN in Railway environment variables
 ARG TIPTAP_PRO_TOKEN
+
+# Frontend environment variables (needed at build time for Vite)
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_SUPABASE_PUBLISHABLE_KEY
+ARG VITE_FB_APP_ID
+ARG VITE_FB_CONFIG_ID
+
+# Set env vars for Vite build
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+ENV VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}
+ENV VITE_FB_APP_ID=${VITE_FB_APP_ID}
+ENV VITE_FB_CONFIG_ID=${VITE_FB_CONFIG_ID}
 
 # Create .npmrc with Tiptap Pro registry auth
 RUN echo '@tiptap-pro:registry=https://registry.tiptap.dev/' > .npmrc && \
