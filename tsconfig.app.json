@@ -25,11 +25,17 @@
     "jsx": "react-jsx",
     /* Linting */
     "strict": true,
-    "erasableSyntaxOnly": true,
+    "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    /* Path aliases for Tiptap UI components */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./@/*"]
+    }
   },
   "include": [
-    "src"
+    "src",
+    "@"
   ]
 }

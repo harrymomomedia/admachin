@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { config as dotenvConfig } from 'dotenv';
+import path from 'path';
 
 // Load .env.local for server middleware
 dotenvConfig({ path: '.env.local' });
@@ -21,4 +22,9 @@ export default defineConfig({
     react(),
     process.env.HTTPS ? basicSsl() : undefined,
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './@'),
+    },
+  },
 })
