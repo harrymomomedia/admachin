@@ -6,6 +6,116 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-27: Table Support, Richtext Truncation & Editor.js Typography
+
+**Added:**
+- Full table support via TipTap MIT extensions (@tiptap/extension-table, table-row, table-cell, table-header)
+- Table insertion via slash command ("/table" creates 3x3 table with header row)
+- TableContextMenu component - floating menu appears when cursor is in table
+- Row operations: Insert row above/below, Delete row
+- Column operations: Insert column left/right, Delete column
+- Table operations: Toggle header row/column, Delete table
+- Resizable table columns
+- Editor.js-style typography for ProseMirror/TipTap editor
+
+**Changed:**
+- BlockMenu (+ button and drag handle) now only shows on hover near left margin of blocks
+- Improved hover zone detection for BlockMenu (0-70px from left edge)
+- Added hover state tracking to keep BlockMenu visible while interacting with it
+- Slash command menu z-index increased to 99999 for modal compatibility
+- NotionEditor now uses global ProseMirror styles instead of Tailwind prose classes
+
+**Fixed:**
+- Richtext columns (richtext, notioneditor, blockeditor) now properly truncate to ONE line in default DataTable view
+- Tables and multi-line content in richtext columns no longer expand rows - content is clipped with overflow:hidden
+- DataTable row height reduced from 34px to 24px for more compact single-line display
+- Wrapper divs for richtext column types now have proper max-height and overflow constraints
+- Editor.js (blockeditor) list indentation - bullet/number at same position as paragraph text (using `list-style-position: inside` with `pl-0`)
+- NotionEditor (TipTap) list indentation - bullet hangs in left margin, text aligns with paragraphs
+- Only nested lists get indentation (1.5em per level)
+- Richtext column preview text now has same padding as longtext columns (px-2 py-2)
+
+**Technical:**
+- All table features use MIT open source TipTap extensions (not Pro)
+- TableContextMenu uses editor.isActive('table') to detect table focus
+- Position tracking uses view.posAtCoords() for accurate block detection
+- tippy.js popup now positioned correctly above modals
+- CSS `.data-grid-td` and `.data-grid-td > div` use max-height:24px and overflow:hidden to enforce single-line display
+- Editor.js-style typography: 16px font-size, 1.6 line-height, 0.4em paragraph padding
+- Comprehensive ProseMirror CSS styles for headings (h1-h3), lists, blockquotes, code blocks, inline code, tables, and text formatting
+- NotionEditor list styles: custom ::before bullets with `left: -1em` negative positioning, text aligns with paragraphs
+- Editor.js list styles: `list-style-position: inside` with `pl-0` on `.cdx-list` and `.cdx-nested-list`, nested lists 1.5em indent
+
+---
+
+### 2025-12-26: Notion-like Rich Text Editor
+
+**Added:**
+- SlashCommandMenu component with "/" trigger for block insertions
+- Floating BubbleMenu that appears on text selection
+- "Turn Into" dropdown in bubble menu to convert block types (Text, H1-H3, lists, quote, code)
+- Text color picker with 9 colors (Default, Gray, Red, Orange, Yellow, Green, Blue, Purple, Pink)
+- Highlight color picker with 8 background colors
+- "+" button on left side to add new blocks
+- Expand button on richtext cells to open fullscreen editor
+- Fullscreen modal editor with Cancel/Save buttons
+- Slash commands: Text, Heading 1/2/3, Bullet List, Numbered List, To-do List, Inline Code, Quote, Code Block, Divider
+- New `ad_page` column in Ad Copy table with richtext type
+
+**Changed:**
+- RichTextEditor now uses Notion-style UX: no fixed toolbar, clean borderless design
+- BubbleMenu uses light theme with dropdowns (matches Notion style)
+- Richtext cells now align content to top, not center
+- Placeholder text: "Type '/' for commands..."
+
+**Technical:**
+- TipTap v3 with @tiptap/react/menus for BubbleMenu
+- @tiptap/extension-text-style and @tiptap/extension-color for text colors
+- @tiptap/suggestion for slash command implementation
+- Uses Floating UI instead of tippy.js for positioning
+- Database migration for ad_page column on ad_copies table
+
+---
+
+### 2025-12-25: Code Cleanup - Remove AdCopyLibrary Duplicate
+
+**Removed:**
+- Deleted `AdCopyLibrary.tsx` - was unused duplicate of `AdCopy.tsx`
+- Removed stale comments referencing AdCopyLibrary in datatable-defaults.ts
+
+**Fixed:**
+- Made required fields nullable in database for inline row creation (title, name, content)
+- Updated TypeScript interfaces to match nullable fields
+
+---
+
+### 2025-12-25: Global Column Colors
+
+**Added:**
+- Global color system for DataTable columns (project, subproject, traffic, type)
+- `column_color_maps` field in ViewPreferences for persisting color customizations
+- `handleColumnConfigChange` in useDataTableConfig hook for saving colors globally
+- `getColumnColorMap` helper to retrieve saved colors for any column
+- Colors now stored in `__global_colors__` shared preferences (team-wide)
+
+**Changed:**
+- AdCopy.tsx now uses useDataTableConfig for global colors
+- Custom colors from FieldEditor are saved to database and apply across all tables
+- Color maps merge: auto-generated base colors + user customizations overlay
+
+---
+
+### 2025-12-25: Revert Longtext Editor to Floating Popup
+
+**Changed:**
+- Reverted longtext/text column editor from inline textarea to floating popup via portal
+- Floating popup has smart positioning (shows above if not enough space below)
+- Includes backdrop for click-outside-to-save behavior
+- Resizable textarea with minimum 120px height for longtext columns
+- Improved height calculation using scrollHeight for accurate sizing
+
+---
+
 ### 2025-12-24: DataTable Card View Mode
 
 **Added:**

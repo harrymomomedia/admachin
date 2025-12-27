@@ -33,3 +33,7 @@ playwright-data/
 # Temp files
 temp/
 test-results
+
+
+# Authentication tokens
+.npmrc

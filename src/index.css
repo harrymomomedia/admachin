@@ -1,3 +1,6 @@
+@import '../@/styles/_variables.scss';
+@import '../@/styles/_keyframe-animations.scss';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -62,13 +65,26 @@
   }
 
   .data-grid-td {
-    @apply border-b border-r border-gray-100 px-0 py-0 bg-white relative hover:bg-blue-50/30 transition-colors align-middle h-[34px];
+    @apply border-b border-r border-gray-100 px-0 py-0 bg-white relative hover:bg-blue-50/30 transition-colors;
+    display: table-cell;
+    vertical-align: top;
+    /* Default single-line height - can be overridden by wrapLines inline styles */
+    height: 24px;
+    max-height: 24px;
+    overflow: hidden;
+  }
+
+  /* Force richtext column content to clip to single line */
+  .data-grid-td > div {
+    max-height: 24px;
+    overflow: hidden;
   }
 
   /* Optimized row rendering - browser can skip off-screen rows */
+  /* Default single-line row height - wrapLines setting will override via inline style */
   .data-grid-row {
     content-visibility: auto;
-    contain-intrinsic-size: auto 34px;
+    contain-intrinsic-size: auto 24px;
   }
 
   /* Skeleton shimmer animation */
@@ -90,6 +106,260 @@
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
+  }
+
+  /* ==========================================
+   * Editor.js-style Typography for TipTap/ProseMirror
+   * Based on Editor.js native defaults:
+   * - Font size: 16px
+   * - Line height: 1.6 (25.6px)
+   * - Paragraph padding: 0.4em (6.4px) top/bottom
+   * ========================================== */
+
+  /* Base editor styles - matches Editor.js cdx-block */
+  .ProseMirror {
+    font-size: 16px;
+    line-height: 1.6;
+    color: rgb(55, 53, 47); /* Notion-like dark gray */
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  .ProseMirror:focus {
+    outline: none;
+  }
+
+  /* Paragraph styling - matches Editor.js ce-paragraph */
+  .ProseMirror p {
+    margin: 0;
+    padding: 0.4em 0; /* 6.4px at 16px font size */
+  }
+
+  .ProseMirror p.is-editor-empty:first-child::before {
+    color: #adb5bd;
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  /* Heading styles - larger with proper spacing */
+  .ProseMirror h1 {
+    font-size: 1.875em; /* 30px */
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 1em 0 0.4em 0;
+    padding: 0.2em 0;
+  }
+
+  .ProseMirror h2 {
+    font-size: 1.5em; /* 24px */
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 0.9em 0 0.35em 0;
+    padding: 0.2em 0;
+  }
+
+  .ProseMirror h3 {
+    font-size: 1.25em; /* 20px */
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0.8em 0 0.3em 0;
+    padding: 0.15em 0;
+  }
+
+  /* First heading has no top margin */
+  .ProseMirror > h1:first-child,
+  .ProseMirror > h2:first-child,
+  .ProseMirror > h3:first-child {
+    margin-top: 0;
+  }
+
+  /* List styles - matches Editor.js cdx-list
+   * Editor.js style: list item TEXT aligns with paragraph text
+   * Bullet/number hangs to the LEFT of text in the margin area
+   */
+  .ProseMirror ul,
+  .ProseMirror ol {
+    margin: 0;
+    padding: 0.4em 0;
+    padding-left: 0; /* No padding - text aligns with paragraphs */
+    list-style: none; /* Custom bullets via ::before */
+  }
+
+  /* Custom bullet for unordered lists - positioned in margin */
+  .ProseMirror ul > li {
+    position: relative;
+  }
+
+  .ProseMirror ul > li::before {
+    content: "•";
+    position: absolute;
+    left: -1em; /* Bullet hangs in left margin */
+    color: inherit;
+  }
+
+  /* Custom numbers for ordered lists */
+  .ProseMirror ol {
+    counter-reset: list-counter;
+  }
+
+  .ProseMirror ol > li {
+    position: relative;
+    counter-increment: list-counter;
+  }
+
+  .ProseMirror ol > li::before {
+    content: counter(list-counter) ".";
+    position: absolute;
+    left: -1.5em; /* Number hangs in left margin */
+    color: inherit;
+  }
+
+  /* Nested lists - indent from parent */
+  .ProseMirror ul ul,
+  .ProseMirror ul ol,
+  .ProseMirror ol ul,
+  .ProseMirror ol ol {
+    padding-left: 1.5em; /* Indent nested lists */
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .ProseMirror li {
+    margin: 0;
+    padding-top: 0.15em;
+    padding-bottom: 0.15em;
+  }
+
+  .ProseMirror li p {
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Task list (checklist) - Editor.js style */
+  .ProseMirror ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0; /* No indent - checkbox provides visual anchor */
+  }
+
+  .ProseMirror ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5em;
+  }
+
+  .ProseMirror ul[data-type="taskList"] li > label {
+    flex-shrink: 0;
+    margin-top: 0.25em;
+  }
+
+  .ProseMirror ul[data-type="taskList"] li > div {
+    flex: 1;
+  }
+
+  /* Nested task lists - small indent */
+  .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+    padding-left: 1.5em; /* Indent nested checklists */
+  }
+
+  /* Blockquote - Editor.js style */
+  .ProseMirror blockquote {
+    margin: 0.4em 0;
+    padding: 0.4em 0 0.4em 1em;
+    border-left: 3px solid #e0e0e0;
+    color: #666;
+  }
+
+  /* Code block */
+  .ProseMirror pre {
+    background: #f5f5f5;
+    border-radius: 4px;
+    padding: 0.8em 1em;
+    margin: 0.4em 0;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+  }
+
+  .ProseMirror pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* Inline code */
+  .ProseMirror code {
+    background: rgba(135, 131, 120, 0.15);
+    border-radius: 3px;
+    padding: 0.2em 0.4em;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    color: #eb5757;
+  }
+
+  /* Horizontal rule */
+  .ProseMirror hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 1.5em 0;
+  }
+
+  /* Table styles */
+  .ProseMirror table {
+    border-collapse: collapse;
+    margin: 0.4em 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .ProseMirror th,
+  .ProseMirror td {
+    border: 1px solid #e0e0e0;
+    padding: 0.5em 0.75em;
+    vertical-align: top;
+    min-width: 100px;
+  }
+
+  .ProseMirror th {
+    background: #f7f7f7;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  /* Selected cells */
+  .ProseMirror .selectedCell {
+    background: rgba(200, 200, 255, 0.4);
+  }
+
+  /* Links */
+  .ProseMirror a {
+    color: #2563eb;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .ProseMirror a:hover {
+    color: #1d4ed8;
+  }
+
+  /* Bold and italic */
+  .ProseMirror strong {
+    font-weight: 600;
+  }
+
+  .ProseMirror em {
+    font-style: italic;
+  }
+
+  /* Strikethrough */
+  .ProseMirror s {
+    text-decoration: line-through;
+  }
+
+  /* Selection highlight */
+  .ProseMirror ::selection {
+    background: rgba(35, 131, 226, 0.28);
   }
 
   .data-grid-input {
@@ -146,5 +416,317 @@
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: #9ca3af;
+  }
+}
+
+/* Editor.js Styles - Comprehensive styling for all block types */
+@layer components {
+  .block-editor {
+    @apply relative;
+  }
+
+  /* Basic typography - Paragraph */
+  .block-editor .ce-paragraph {
+    line-height: 1.6;
+  }
+
+  /* Headers */
+  .block-editor h1.ce-header {
+    @apply text-2xl font-bold mb-2;
+  }
+
+  .block-editor h2.ce-header {
+    @apply text-xl font-semibold mb-2;
+  }
+
+  .block-editor h3.ce-header {
+    @apply text-lg font-medium mb-2;
+  }
+
+  .block-editor h4.ce-header {
+    @apply text-base font-medium mb-1;
+  }
+
+  /* Quote styling */
+  .block-editor .cdx-quote {
+    @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 my-4;
+  }
+
+  .block-editor .cdx-quote__caption {
+    @apply text-sm text-gray-500 mt-2 not-italic;
+  }
+
+  /* Code block */
+  .block-editor .ce-code__textarea {
+    @apply bg-gray-100 rounded-lg p-3 font-mono text-sm;
+  }
+
+  /* Marker (highlight) */
+  .block-editor mark.cdx-marker {
+    @apply bg-yellow-200 px-0.5 rounded;
+  }
+
+  /* Inline code */
+  .block-editor code.inline-code {
+    @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-pink-600;
+  }
+
+  /* Underline */
+  .block-editor .cdx-underline {
+    text-decoration: underline;
+  }
+
+  /* Delimiter */
+  .block-editor .ce-delimiter {
+    @apply my-6 text-center;
+  }
+
+  .block-editor .ce-delimiter::before {
+    content: '***';
+    @apply text-gray-400 tracking-[0.5em];
+  }
+
+  /* Image */
+  .block-editor .cdx-simple-image {
+    @apply my-4;
+  }
+
+  .block-editor .cdx-simple-image__picture {
+    @apply block overflow-hidden rounded-lg;
+  }
+
+  .block-editor .cdx-simple-image__picture img {
+    @apply w-full h-auto;
+  }
+
+  .block-editor .cdx-simple-image__caption {
+    @apply text-sm text-gray-500 text-center mt-2 italic;
+  }
+
+  .block-editor .cdx-simple-image--stretched .cdx-simple-image__picture {
+    @apply w-full;
+  }
+
+  .block-editor .cdx-simple-image--with-border .cdx-simple-image__picture {
+    @apply border border-gray-200;
+  }
+
+  .block-editor .cdx-simple-image--with-background .cdx-simple-image__picture {
+    @apply bg-gray-100 p-4;
+  }
+
+  /* Warning block - follows Editor.js size guidelines */
+  .block-editor .cdx-warning {
+    @apply bg-orange-50 border border-orange-200 rounded-lg p-4 my-4 relative;
+  }
+
+  /* On wider screens, add left padding for icon (Editor.js guideline: 36px at ≥736px) */
+  @media (min-width: 736px) {
+    .block-editor .cdx-warning {
+      padding-left: 36px;
+    }
+  }
+
+  .block-editor .cdx-warning__title {
+    @apply font-semibold text-orange-800;
+    margin-bottom: 6px; /* Editor.js guideline: 6px */
+  }
+
+  .block-editor .cdx-warning__message {
+    @apply text-orange-700 text-sm;
+    min-height: 85px; /* Editor.js guideline: 85px min-height */
+  }
+
+  .block-editor .cdx-warning [contentEditable=true][data-placeholder]::before {
+    @apply text-orange-400;
+  }
+
+  /* Warning icon styling - position the ::before pseudo-element properly */
+  .block-editor .cdx-warning::before {
+    @apply absolute text-orange-500;
+    left: 12px;
+    top: 16px;
+    font-size: 20px;
+  }
+
+  /* Checklist */
+  .block-editor .cdx-checklist {
+    @apply my-2;
+  }
+
+  .block-editor .cdx-checklist__item {
+    @apply flex items-start gap-2 py-1;
+  }
+
+  .block-editor .cdx-checklist__item-checkbox {
+    @apply w-4 h-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500;
+  }
+
+  .block-editor .cdx-checklist__item--checked .cdx-checklist__item-text {
+    @apply line-through text-gray-400;
+  }
+
+  /* Nested list - first level no indent, nested levels indented */
+  .block-editor .cdx-nested-list {
+    @apply my-2 pl-0;
+    list-style-position: inside;
+  }
+
+  .block-editor .cdx-nested-list__item {
+    @apply py-1;
+  }
+
+  .block-editor .cdx-nested-list--unordered {
+    @apply list-disc;
+  }
+
+  .block-editor .cdx-nested-list--ordered {
+    @apply list-decimal;
+  }
+
+  /* Nested levels get indent */
+  .block-editor .cdx-nested-list .cdx-nested-list {
+    @apply pl-5;
+  }
+
+  /* Raw HTML */
+  .block-editor .cdx-raw-html {
+    @apply my-4 p-3 bg-gray-900 text-gray-100 rounded-lg font-mono text-sm overflow-x-auto;
+  }
+
+  /* Embed */
+  .block-editor .cdx-embed {
+    @apply my-4;
+  }
+
+  .block-editor .cdx-embed__content {
+    @apply relative w-full aspect-video rounded-lg overflow-hidden bg-gray-100;
+  }
+
+  .block-editor .cdx-embed__content iframe {
+    @apply absolute inset-0 w-full h-full;
+  }
+
+  .block-editor .cdx-embed__caption {
+    @apply text-sm text-gray-500 text-center mt-2;
+  }
+
+  /* List (regular) - bullet/number at paragraph position, text follows inline */
+  .block-editor .cdx-list {
+    @apply my-2 pl-0;
+    list-style-position: inside;
+  }
+
+  .block-editor .cdx-list--unordered {
+    @apply list-disc;
+  }
+
+  .block-editor .cdx-list--ordered {
+    @apply list-decimal;
+  }
+
+  .block-editor .cdx-list__item {
+    @apply py-0.5;
+  }
+
+  /* Block tune buttons */
+  .block-editor .ce-toolbar__plus,
+  .block-editor .ce-toolbar__settings-btn {
+    @apply hover:bg-gray-100 rounded;
+  }
+}
+
+/* Editor.js Display Styles - For rendered HTML output */
+@layer components {
+  /* Table display */
+  .editor-table {
+    @apply w-full border-collapse my-4 text-sm;
+  }
+
+  .editor-table th,
+  .editor-table td {
+    @apply border border-gray-200 px-3 py-2;
+  }
+
+  .editor-table th {
+    @apply bg-gray-50 font-medium text-left;
+  }
+
+  /* Image display */
+  .editor-image {
+    @apply my-4;
+  }
+
+  .editor-image img {
+    @apply w-full h-auto rounded-lg;
+  }
+
+  .editor-image.stretched img {
+    @apply w-full;
+  }
+
+  .editor-image.with-border img {
+    @apply border border-gray-200;
+  }
+
+  .editor-image.with-background {
+    @apply bg-gray-100 p-4 rounded-lg;
+  }
+
+  .editor-image figcaption {
+    @apply text-sm text-gray-500 text-center mt-2 italic;
+  }
+
+  /* Warning display */
+  .editor-warning {
+    @apply bg-orange-50 border border-orange-200 rounded-lg p-4 my-4;
+  }
+
+  .editor-warning .warning-title {
+    @apply font-semibold text-orange-800 mb-1;
+  }
+
+  .editor-warning .warning-message {
+    @apply text-orange-700 text-sm;
+  }
+
+  /* Embed display */
+  .editor-embed {
+    @apply my-4;
+  }
+
+  .editor-embed iframe {
+    @apply w-full aspect-video rounded-lg;
+  }
+
+  .editor-embed .embed-caption {
+    @apply text-sm text-gray-500 text-center mt-2;
+  }
+
+  /* Checklist display */
+  .checklist {
+    @apply list-none pl-0 my-2;
+  }
+
+  .checklist .checklist-item {
+    @apply flex items-start gap-2 py-1;
+  }
+
+  .checklist .checklist-item input[type="checkbox"] {
+    @apply w-4 h-4 mt-0.5 rounded border-gray-300;
+  }
+
+  .checklist .checklist-item.checked span {
+    @apply line-through text-gray-400;
+  }
+
+  /* Delimiter display */
+  hr.delimiter {
+    @apply my-6 border-0 text-center;
+  }
+
+  hr.delimiter::before {
+    content: '***';
+    @apply text-gray-400 tracking-[0.5em];
   }
 }

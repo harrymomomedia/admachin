@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { DataTable, type ColumnDef } from '../components/datatable';
 import { DataTablePageLayout } from '../components/DataTablePageLayout';
 import {
-    generateColorMap,
     createIdColumn,
     createProjectColumn,
     createSubprojectColumn,
@@ -13,6 +12,7 @@ import {
     DEFAULT_DATATABLE_PROPS,
     DEFAULT_QUICK_FILTERS,
 } from '../lib/datatable-defaults';
+import { useDataTableConfig } from '../hooks/useDataTableConfig';
 import {
     getPersonaFrameworks,
     getProjects,
@@ -36,8 +36,18 @@ export function PersonaFrameworks() {
     const [users, setUsers] = useState<User[]>([]);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
-    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
+    // Global colors from hook
+    const {
+        projectColorMap,
+        subprojectColorMap,
+        handleColumnConfigChange,
+    } = useDataTableConfig({
+        viewId: 'persona-frameworks',
+        userId: currentUserId,
+        projects,
+        subprojects,
+        users,
+    });
 
     useEffect(() => {
         loadData();
@@ -107,6 +117,7 @@ export function PersonaFrameworks() {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onCreateRow={handleCreateRow}
+                onColumnConfigChange={handleColumnConfigChange}
                 quickFilters={[...DEFAULT_QUICK_FILTERS]}
                 viewId="persona-frameworks"
                 {...DEFAULT_DATATABLE_PROPS}

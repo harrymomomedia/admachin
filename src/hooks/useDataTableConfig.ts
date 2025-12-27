@@ -4,7 +4,8 @@
  * Provides common DataTable configuration including:
  * - User and shared preferences state
  * - Preference persistence handlers (save, saveForEveryone, reset)
- * - Color maps for projects/subprojects
+ * - Global color maps for projects/subprojects (persisted to shared preferences)
+ * - Column config change handler for FieldEditor (colors are global across all tables)
  * - Standard column builders
  *
  * Usage:
@@ -15,6 +16,7 @@
  *     handlePreferencesChange,
  *     handleSaveForEveryone,
  *     handleResetPreferences,
+ *     handleColumnConfigChange, // For FieldEditor - saves colors globally
  *     projectColorMap,
  *     subprojectColorMap,
  *     createColumns,
@@ -81,10 +83,14 @@ interface UseDataTableConfigReturn {
     handleSaveForEveryone: (preferences: ViewPreferences, rowOrder?: string[]) => Promise<void>;
     /** Handler for resetting to shared preferences */
     handleResetPreferences: () => Promise<void>;
-    /** Color map for projects */
+    /** Handler for column config changes (FieldEditor) - saves colors globally to shared preferences */
+    handleColumnConfigChange: (columnKey: string, updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }) => Promise<void>;
+    /** Color map for projects (merged: auto-generated + saved custom) */
     projectColorMap: Record<string, string>;
-    /** Color map for subprojects */
+    /** Color map for subprojects (merged: auto-generated + saved custom) */
     subprojectColorMap: Record<string, string>;
+    /** Get color map for any column (from saved preferences or empty) */
+    getColumnColorMap: (columnKey: string) => Record<string, string>;
     /** Helper to create project column */
     createProjectCol: <T extends { project_id?: string | null }>(editable?: boolean) => ReturnType<typeof createProjectColumn<T>>;
     /** Helper to create subproject column */
@@ -107,6 +113,9 @@ interface UseDataTableConfigReturn {
     reloadPreferences: () => Promise<void>;
 }
 
+// Global view ID for storing color maps that apply across all tables
+const GLOBAL_COLORS_VIEW_ID = '__global_colors__';
+
 export function useDataTableConfig(options: UseDataTableConfigOptions): UseDataTableConfigReturn {
     const { viewId, userId, projects, subprojects, users = [], onPreferencesLoaded } = options;
 
@@ -115,17 +124,32 @@ export function useDataTableConfig(options: UseDataTableConfigOptions): UseDataT
     const [sharedPreferences, setSharedPreferences] = useState<ViewPreferences | null>(null);
     const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
 
-    // Color maps (memoized)
-    const projectColorMap = useMemo(() => generateColorMap(projects), [projects]);
-    const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
+    // Global color maps state (loaded from __global_colors__ shared preferences)
+    const [globalColorMaps, setGlobalColorMaps] = useState<Record<string, Record<string, string>>>({});
+
+    // Auto-generated color maps (fallback when no custom colors saved)
+    const autoProjectColorMap = useMemo(() => generateColorMap(projects), [projects]);
+    const autoSubprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
+
+    // Merged color maps: saved custom colors override auto-generated
+    const projectColorMap = useMemo(() => ({
+        ...autoProjectColorMap,
+        ...(globalColorMaps['project_id'] || {}),
+    }), [autoProjectColorMap, globalColorMaps]);
+
+    const subprojectColorMap = useMemo(() => ({
+        ...autoSubprojectColorMap,
+        ...(globalColorMaps['subproject_id'] || {}),
+    }), [autoSubprojectColorMap, globalColorMaps]);
 
     // Load preferences on mount and when userId changes
     const loadPreferences = useCallback(async () => {
         setIsLoadingPreferences(true);
         try {
-            const [userPrefs, sharedPrefs] = await Promise.all([
+            const [userPrefs, sharedPrefs, globalColorPrefs] = await Promise.all([
                 userId ? getUserViewPreferences(userId, viewId) : null,
                 getSharedViewPreferences(viewId),
+                getSharedViewPreferences(GLOBAL_COLORS_VIEW_ID), // Load global colors
             ]);
 
             // Extract and set user preferences
@@ -158,6 +182,11 @@ export function useDataTableConfig(options: UseDataTableConfigOptions): UseDataT
                 });
             } else {
                 setSharedPreferences(null);
+            }
+
+            // Load global color maps
+            if (globalColorPrefs?.column_color_maps) {
+                setGlobalColorMaps(globalColorPrefs.column_color_maps);
             }
 
             // Notify parent if callback provided
@@ -206,6 +235,40 @@ export function useDataTableConfig(options: UseDataTableConfigOptions): UseDataT
         }
     }, [userId, viewId]);
 
+    // Handler for column config changes (FieldEditor) - saves colors globally
+    const handleColumnConfigChange = useCallback(async (
+        columnKey: string,
+        updates: { options?: { label: string; value: string | number }[]; colorMap?: Record<string, string> }
+    ) => {
+        if (!updates.colorMap) return;
+
+        try {
+            // Merge new color map with existing
+            const newGlobalColorMaps = {
+                ...globalColorMaps,
+                [columnKey]: {
+                    ...(globalColorMaps[columnKey] || {}),
+                    ...updates.colorMap,
+                },
+            };
+
+            // Save to global shared preferences
+            await saveSharedViewPreferences(GLOBAL_COLORS_VIEW_ID, {
+                column_color_maps: newGlobalColorMaps,
+            });
+
+            // Update local state
+            setGlobalColorMaps(newGlobalColorMaps);
+        } catch (error) {
+            console.error(`[useDataTableConfig] Failed to save global color map for ${columnKey}:`, error);
+        }
+    }, [globalColorMaps]);
+
+    // Get color map for any column (from saved preferences)
+    const getColumnColorMap = useCallback((columnKey: string): Record<string, string> => {
+        return globalColorMaps[columnKey] || {};
+    }, [globalColorMaps]);
+
     // Column builders (memoized)
     const createProjectCol = useCallback(<T extends { project_id?: string | null }>(editable = true) => {
         return createProjectColumn<T>({
@@ -250,8 +313,10 @@ export function useDataTableConfig(options: UseDataTableConfigOptions): UseDataT
         handlePreferencesChange,
         handleSaveForEveryone,
         handleResetPreferences,
+        handleColumnConfigChange,
         projectColorMap,
         subprojectColorMap,
+        getColumnColorMap,
         createProjectCol,
         createSubprojectCol,
         createUserCol,

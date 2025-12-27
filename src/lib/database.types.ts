@@ -26,6 +26,8 @@ export interface Database {
                     source_angle: string | null
                     source_persona: string | null
                     ai_model: string | null
+                    ad_page: string | null
+                    notion: string | null
                     created_at: string
                     updated_at: string
                     row_number: number
@@ -43,6 +45,8 @@ export interface Database {
                     source_angle?: string | null
                     source_persona?: string | null
                     ai_model?: string | null
+                    ad_page?: string | null
+                    notion?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -59,6 +63,8 @@ export interface Database {
                     source_angle?: string | null
                     source_persona?: string | null
                     ai_model?: string | null
+                    ad_page?: string | null
+                    notion?: string | null
                     created_at?: string
                     updated_at?: string
                 }

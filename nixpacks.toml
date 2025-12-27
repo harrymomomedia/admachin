@@ -8,7 +8,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm ci"]
 
 [phases.build]
-# v2 - force rebuild with tiptap routes
+# v3 - force complete rebuild with .dockerignore fix
 cmds = ["npm run build", "npm run build:server"]
 
 [start]

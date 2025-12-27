@@ -54,7 +54,7 @@ test.describe('Card View Metadata', () => {
         // Listen to console logs to debug
         page.on('console', msg => {
             const text = msg.text();
-            if (text.includes('[Card Debug]') || text.includes('[AdCopyLibrary]')) {
+            if (text.includes('[Card Debug]') || text.includes('[AdCopy]')) {
                 console.log('BROWSER:', text);
             }
         });
@@ -177,13 +177,13 @@ test.describe('Card View Metadata', () => {
 
         // Check console logs
         const cardDebugLogs = consoleLogs.filter(log => log.includes('[Card Debug]'));
-        const adCopyLibraryLogs = consoleLogs.filter(log => log.includes('[AdCopyLibrary]'));
+        const adCopyLogs = consoleLogs.filter(log => log.includes('[AdCopy]'));
 
         console.log('=== Card Debug Logs ===');
         cardDebugLogs.forEach(log => console.log(log));
 
-        console.log('=== AdCopyLibrary Logs ===');
-        adCopyLibraryLogs.forEach(log => console.log(log));
+        console.log('=== AdCopy Logs ===');
+        adCopyLogs.forEach(log => console.log(log));
 
         // Check if cardLookups has subprojects and users
         const lookupsLog = cardDebugLogs.find(log => log.includes('cardLookups keys'));

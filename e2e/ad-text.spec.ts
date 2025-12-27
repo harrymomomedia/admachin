@@ -170,16 +170,16 @@ test.describe('Ad Copy Library', () => {
     });
 
     test('should delete ad copy', async ({ page }) => {
-        // We need to trigger hover to see delete button? 
+        // We need to trigger hover to see delete button?
         // DataTable usually shows actions on hover, or always?
-        // Wait, looking at DataTable code or UI... context menu? 
-        // AdCopyLibrary uses DataTable which has "actions" column?
-        // Actually AdCopyLibrary Columns definition does NOT have an explicit "Actions" column in the code I viewed earlier!
+        // Wait, looking at DataTable code or UI... context menu?
+        // AdCopy uses DataTable which has "actions" column?
+        // Actually AdCopy Columns definition does NOT have an explicit "Actions" column in the code I viewed earlier!
         // Let's re-verify columns...
         // Ah, DataTable component might add it automatically if onDelete is passed?
 
         // Let's assume there is a way to delete. context menu or row hover?
-        // The earlier `AdCopyLibrary.tsx` passed `onDelete`.
+        // The earlier `AdCopy.tsx` passed `onDelete`.
         // Let's check `DataTable.tsx` quickly to see how delete is exposed.
         // Assuming it's a context menu or hover button.
 

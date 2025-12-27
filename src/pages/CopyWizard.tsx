@@ -286,6 +286,7 @@ export function CopyWizard() {
         const convertedAngles: Angle[] = selectedAngles.map(a => {
             // Try to parse stored JSON content, or create a basic angle
             try {
+                if (!a.content) throw new Error('No content');
                 const parsed = JSON.parse(a.content);
                 return {
                     ...parsed,
@@ -295,7 +296,7 @@ export function CopyWizard() {
             } catch {
                 return {
                     id: a.id,
-                    angle: a.content,
+                    angle: a.content || '',
                     persona_id: 'library',
                     persona_name: 'From Library',
                     pain_point: '',
@@ -312,7 +313,7 @@ export function CopyWizard() {
     const importLibraryAdCopies = (selectedAds: AIGeneratedAd[]) => {
         const convertedAds: AdCopyItem[] = selectedAds.map(ad => ({
             id: ad.id,
-            copy: ad.content,
+            copy: ad.content || '',
             angle_ids: ['library'],
             angle_names: ['From Library'],
             selected: true,

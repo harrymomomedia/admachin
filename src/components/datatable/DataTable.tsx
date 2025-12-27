@@ -2,6 +2,8 @@ import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMe
 import { createPortal } from 'react-dom';
 import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, Settings, Columns, LayoutList } from 'lucide-react';
 import { SingleSelect, SearchInput } from '../fields';
+import { BlockEditor, BlockEditorDisplay } from '../BlockEditor';
+import { NotionLikeEditorStandalone as NotionEditor, NotionEditorDisplay } from '../NotionEditor';
 import {
     DndContext,
     closestCenter,
@@ -58,7 +60,7 @@ interface LocalColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
+    type?: 'text' | 'longtext' | 'richtext' | 'blockeditor' | 'notioneditor' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -1325,6 +1327,10 @@ interface SortableRowProps<T> {
     onMediaPreviewClick?: (url: string, isVideo: boolean, title?: string) => void;
     // Thumbnail size rules for media columns
     thumbnailSizeRules?: ThumbnailSizeRule[];
+    // Fullscreen richtext editing
+    setFullscreenEdit: React.Dispatch<React.SetStateAction<{ id: string; field: string; value: string; type?: string } | null>>;
+    setEditingCell: React.Dispatch<React.SetStateAction<{ id: string; field: string } | null>>;
+    getRowId: (row: T) => string;
 }
 
 function SortableRow<T>({
@@ -1365,6 +1371,9 @@ function SortableRow<T>({
     onAdCopyClick,
     onMediaPreviewClick,
     thumbnailSizeRules,
+    setFullscreenEdit,
+    setEditingCell,
+    getRowId,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1545,7 +1554,7 @@ function SortableRow<T>({
                             {insertActionsHere && actionsCell}
                             <td
                             className={cn(
-                                "data-grid-td px-2 relative",
+                                "data-grid-td relative",
                                 // Remove overflow-hidden when editing so inline textarea can expand
                                 wrapLines !== 'full' && !isEditing && "overflow-hidden"
                             )}
@@ -1554,9 +1563,9 @@ function SortableRow<T>({
                                 maxWidth: width,
                                 // When editing, no height constraints - textarea expands naturally
                                 // When not editing, apply maxHeight based on wrap settings
-                                ...(!isEditing && (!wrapLines || wrapLines === '1') && { maxHeight: '34px' }),
-                                ...(!isEditing && wrapLines === '2' && { maxHeight: '56px' }),
-                                ...(!isEditing && wrapLines === '3' && { maxHeight: '76px' })
+                                ...(!isEditing && (!wrapLines || wrapLines === '1') && { maxHeight: '24px' }),
+                                ...(!isEditing && wrapLines === '2' && { maxHeight: '44px' }),
+                                ...(!isEditing && wrapLines === '3' && { maxHeight: '64px' })
                             }}
                         >
                             {/* Check for editing FIRST - takes priority over custom render */}
@@ -1640,43 +1649,268 @@ function SortableRow<T>({
                                         )}
                                     </>
                                 ) : col.type === 'longtext' || col.type === 'text' ? (
-                                    /* Inline textarea - renders directly in cell, row expands naturally */
-                                    <textarea
-                                        ref={(el) => {
-                                            (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
-                                            if (el) {
-                                                // Auto-size: set to 0, read scrollHeight, set to that
-                                                el.style.height = '0px';
-                                                el.style.height = `${el.scrollHeight}px`;
-                                            }
-                                        }}
-                                        value={editingValue}
-                                        onChange={(e) => {
-                                            onEditChange(e.target.value);
-                                            const el = e.target;
-                                            // Auto-resize on content change
-                                            el.style.height = '0px';
-                                            el.style.height = `${el.scrollHeight}px`;
-                                        }}
-                                        onBlur={() => {
-                                            // Commit on blur (click outside)
-                                            onCellCommit();
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Escape') {
-                                                onEditCancel();
-                                            }
-                                        }}
-                                        className="w-full bg-white border-2 border-blue-400 rounded text-[13px] text-gray-700 resize-none focus:outline-none overflow-hidden"
-                                        style={{
-                                            padding: '6px 10px',
-                                            lineHeight: '20px',
-                                            minHeight: '32px',
-                                            boxSizing: 'border-box',
-                                        }}
-                                        placeholder="Enter text..."
-                                        autoFocus
-                                    />
+                                    <>
+                                        {/* Popup editor via portal - overlays the cell */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onCellCommit();
+                                                    }}
+                                                />
+                                                {/* Popup Editor - Notion style with smart positioning */}
+                                                {(() => {
+                                                    const spaceBelow = window.innerHeight - dropdownPosition.top - 50;
+                                                    const spaceAbove = dropdownPosition.top - 50;
+                                                    const showAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
+                                                    const maxH = showAbove ? spaceAbove : spaceBelow;
+
+                                                    return (
+                                                        <textarea
+                                                            ref={(el) => {
+                                                                (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                                                                if (el) {
+                                                                    // Use scrollHeight for accurate measurement
+                                                                    el.style.height = 'auto';
+                                                                    const scrollH = el.scrollHeight;
+                                                                    // Minimum 120px for longtext, 34px for text
+                                                                    const minHeight = col.type === 'longtext' ? 120 : 34;
+                                                                    const contentHeight = Math.max(scrollH, minHeight);
+                                                                    const newHeight = Math.min(contentHeight, maxH);
+                                                                    el.style.height = `${newHeight}px`;
+                                                                    el.style.overflowY = contentHeight > maxH ? 'auto' : 'hidden';
+                                                                    if (showAbove) {
+                                                                        el.style.top = `${dropdownPosition.top - newHeight}px`;
+                                                                    }
+                                                                }
+                                                            }}
+                                                            value={editingValue}
+                                                            onChange={(e) => {
+                                                                onEditChange(e.target.value);
+                                                                const el = e.target;
+                                                                // Use scrollHeight for accurate measurement
+                                                                el.style.height = 'auto';
+                                                                const scrollH = el.scrollHeight;
+                                                                const minHeight = col.type === 'longtext' ? 120 : 34;
+                                                                const contentHeight = Math.max(scrollH, minHeight);
+                                                                const currMaxH = showAbove ? spaceAbove : spaceBelow;
+                                                                const newHeight = Math.min(contentHeight, currMaxH);
+                                                                el.style.height = `${newHeight}px`;
+                                                                el.style.overflowY = contentHeight > currMaxH ? 'auto' : 'hidden';
+                                                                if (showAbove) {
+                                                                    el.style.top = `${dropdownPosition.top - newHeight}px`;
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Escape') {
+                                                                    onEditCancel();
+                                                                }
+                                                            }}
+                                                            className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-900 resize focus:outline-none focus:border-blue-400"
+                                                            style={{
+                                                                top: showAbove ? undefined : dropdownPosition.top,
+                                                                bottom: showAbove ? `${window.innerHeight - dropdownPosition.top}px` : undefined,
+                                                                left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
+                                                                width: dropdownPosition.width,
+                                                                padding: '8px',
+                                                                lineHeight: '20px',
+                                                                boxSizing: 'border-box',
+                                                            }}
+                                                            placeholder="Enter text..."
+                                                            autoFocus
+                                                        />
+                                                    );
+                                                })()}
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
+                                ) : col.type === 'richtext' ? (
+                                    <>
+                                        {/* Rich text editor via portal */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onCellCommit();
+                                                    }}
+                                                />
+                                                {/* Rich Text Editor popup */}
+                                                <div
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
+                                                        width: Math.max(400, dropdownPosition.width),
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* Header with expand button */}
+                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200">
+                                                        <button
+                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                                                            onClick={() => {
+                                                                setFullscreenEdit({
+                                                                    id: editingCell.id,
+                                                                    field: editingCell.field,
+                                                                    value: editingValue,
+                                                                    type: 'richtext'
+                                                                });
+                                                                setEditingCell(null);
+                                                            }}
+                                                            title="Open fullscreen editor"
+                                                        >
+                                                            <Maximize2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <NotionEditor
+                                                        content={editingValue || ''}
+                                                        onChange={(json) => onEditChange(json)}
+                                                        onBlur={() => {}}
+                                                        placeholder="Type '/' for commands..."
+                                                        minHeight="150px"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
+                                ) : col.type === 'blockeditor' ? (
+                                    <>
+                                        {/* Block editor (Editor.js) via portal */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onCellCommit();
+                                                    }}
+                                                />
+                                                {/* Block Editor popup */}
+                                                <div
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
+                                                        width: Math.max(400, dropdownPosition.width),
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* Header with expand button */}
+                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200 flex-shrink-0">
+                                                        <button
+                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                                                            onClick={() => {
+                                                                setFullscreenEdit({
+                                                                    id: editingCell.id,
+                                                                    field: editingCell.field,
+                                                                    value: editingValue,
+                                                                    type: 'blockeditor'
+                                                                });
+                                                                setEditingCell(null);
+                                                            }}
+                                                            title="Open fullscreen editor"
+                                                        >
+                                                            <Maximize2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex-1 overflow-y-auto overflow-x-auto">
+                                                        <BlockEditor
+                                                            content={editingValue || ''}
+                                                            onChange={(html) => onEditChange(html)}
+                                                            onBlur={() => {}}
+                                                            placeholder="Start typing..."
+                                                            minHeight="150px"
+                                                            autoFocus
+                                                            className="px-2 py-2"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
+                                ) : col.type === 'notioneditor' ? (
+                                    <>
+                                        {/* Notion editor (Tiptap) via portal */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onCellCommit();
+                                                    }}
+                                                />
+                                                {/* Notion Editor popup */}
+                                                <div
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
+                                                        width: Math.max(400, dropdownPosition.width),
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* Header with expand button */}
+                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200 flex-shrink-0">
+                                                        <button
+                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                                                            onClick={() => {
+                                                                setFullscreenEdit({
+                                                                    id: editingCell.id,
+                                                                    field: editingCell.field,
+                                                                    value: editingValue,
+                                                                    type: 'notioneditor'
+                                                                });
+                                                                setEditingCell(null);
+                                                            }}
+                                                            title="Open fullscreen editor"
+                                                        >
+                                                            <Maximize2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex-1 overflow-y-auto overflow-x-auto">
+                                                        <NotionEditor
+                                                            content={editingValue || ''}
+                                                            onChange={(json) => onEditChange(json)}
+                                                            onBlur={() => {}}
+                                                            placeholder="Type '/' for commands..."
+                                                            minHeight="150px"
+                                                            autoFocus
+                                                            className="px-2 py-2"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
                                 ) : (
                                     <>
                                         {/* Popup editor via portal - overlays the cell */}
@@ -1703,7 +1937,7 @@ function SortableRow<T>({
                                                             onEditCancel();
                                                         }
                                                     }}
-                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:border-blue-400"
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-900 focus:outline-none focus:border-blue-400"
                                                     style={{
                                                         top: dropdownPosition.top,
                                                         left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - dropdownPosition.width - 8)),
@@ -1766,7 +2000,7 @@ function SortableRow<T>({
                                         </div>
                                     );
                                 })() : col.type === 'date' ? (
-                                    <span className="text-[10px] text-gray-500 px-3 h-[34px] flex items-center">
+                                    <span className="text-[10px] text-gray-500 px-2 h-[34px] flex items-center">
                                         {value ? new Date(String(value)).toLocaleString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
@@ -1794,7 +2028,7 @@ function SortableRow<T>({
                                     </div>
                                 ) : col.type === 'priority' ? (
                                     <div
-                                        className="px-3 h-[34px] flex items-center cursor-pointer"
+                                        className="px-2 h-[34px] flex items-center cursor-pointer"
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <PriorityColumn value={value} maxPriority={col.maxPriority} />
@@ -1814,7 +2048,7 @@ function SortableRow<T>({
                                         <PeopleColumn value={value} users={col.users || []} />
                                     </div>
                                 ) : col.type === 'id' ? (
-                                    <span className="text-[11px] text-gray-700 font-medium px-3 h-[34px] flex items-center">{String(value || '-')}</span>
+                                    <span className="text-[11px] text-gray-700 font-medium px-2 h-[34px] flex items-center">{String(value || '-')}</span>
                                 ) : col.type === 'thumbnail' ? (
                                     <div className="px-2 h-[34px] flex items-center">
                                         <div className="h-10 w-10 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
@@ -1927,7 +2161,7 @@ function SortableRow<T>({
                                         );
                                     })()
                                 ) : col.type === 'filesize' ? (
-                                    <span className="text-[11px] text-gray-500 px-3 h-[34px] flex items-center">
+                                    <span className="text-[11px] text-gray-500 px-2 h-[34px] flex items-center">
                                         {value ? (() => {
                                             const bytes = Number(value);
                                             if (bytes < 1024) return `${bytes} B`;
@@ -1945,7 +2179,7 @@ function SortableRow<T>({
                                         return (
                                             <div
                                                 className={cn(
-                                                    "px-3 h-[34px] flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors",
+                                                    "px-2 h-[34px] flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors",
                                                     (!wrapLines || wrapLines === '1') && "truncate"
                                                 )}
                                                 onClick={() => col.adCopyType && onAdCopyClick?.(rowId, col.key, col.adCopyType, adCopyId)}
@@ -1956,7 +2190,7 @@ function SortableRow<T>({
                                                             #{rowNum || '?'}
                                                         </span>
                                                         <span className={cn(
-                                                            "text-[13px] text-gray-700",
+                                                            "text-[13px] text-gray-900",
                                                             (!wrapLines || wrapLines === '1') && "truncate"
                                                         )}>
                                                             {displayText}
@@ -1970,16 +2204,201 @@ function SortableRow<T>({
                                             </div>
                                         );
                                     })()
+                                ) : col.type === 'richtext' ? (
+                                    <div
+                                        className={cn(
+                                            "relative group w-full flex items-start overflow-hidden",
+                                            // Constrain height based on wrap setting
+                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                            wrapLines === '2' && "max-h-[44px]",
+                                            wrapLines === '3' && "max-h-[64px]"
+                                        )}
+                                        // Stop drag events from bubbling up to the row's drag handlers
+                                        // This prevents the DataTable row drag indicator from appearing
+                                        // when interacting with RichText content
+                                        draggable={false}
+                                        onDragStart={(e) => e.stopPropagation()}
+                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        onDragEnter={(e) => e.stopPropagation()}
+                                        onDrop={(e) => e.stopPropagation()}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
+                                                // Clickable if editable OR viewable
+                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
+                                                // For richtext, use max-height instead of line-clamp for proper truncation of HTML content
+                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                                wrapLines === '2' && "max-h-[48px]",
+                                                wrapLines === '3' && "max-h-[72px]"
+                                            )}
+                                            onClick={(e) => {
+                                                if (col.editable) {
+                                                    onEditStart(row, col.key, e);
+                                                } else if (col.viewable !== false) {
+                                                    onViewStart(row, col.key, e);
+                                                }
+                                            }}
+                                        >
+                                            {value && String(value).trim() ? (
+                                                <div
+                                                    className="prose prose-sm max-w-none [&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
+                                                    dangerouslySetInnerHTML={{ __html: String(value) }}
+                                                />
+                                            ) : <span className="text-gray-400">-</span>}
+                                        </div>
+                                        {/* Expand button */}
+                                        {col.editable && (
+                                            <button
+                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
+                                                    setFullscreenEdit({
+                                                        id: getRowId(row),
+                                                        field: col.key,
+                                                        value: String(currentValue || ''),
+                                                        type: 'richtext'
+                                                    });
+                                                }}
+                                                title="Open fullscreen editor"
+                                            >
+                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : col.type === 'blockeditor' ? (
+                                    <div
+                                        className={cn(
+                                            "relative group w-full flex items-start overflow-hidden",
+                                            // Constrain height based on wrap setting
+                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                            wrapLines === '2' && "max-h-[44px]",
+                                            wrapLines === '3' && "max-h-[64px]"
+                                        )}
+                                        // Stop drag events from bubbling up to the row's drag handlers
+                                        // This prevents the DataTable row drag indicator from appearing
+                                        // when interacting with BlockEditor content
+                                        draggable={false}
+                                        onDragStart={(e) => e.stopPropagation()}
+                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        onDragEnter={(e) => e.stopPropagation()}
+                                        onDrop={(e) => e.stopPropagation()}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
+                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
+                                                // For richtext/blockeditor, use max-height instead of line-clamp for proper truncation
+                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                                wrapLines === '2' && "max-h-[48px]",
+                                                wrapLines === '3' && "max-h-[72px]"
+                                            )}
+                                            onClick={(e) => {
+                                                if (col.editable) {
+                                                    onEditStart(row, col.key, e);
+                                                } else if (col.viewable !== false) {
+                                                    onViewStart(row, col.key, e);
+                                                }
+                                            }}
+                                        >
+                                            {value && String(value).trim() ? (
+                                                <BlockEditorDisplay
+                                                    content={String(value)}
+                                                    className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
+                                                />
+                                            ) : <span className="text-gray-400">-</span>}
+                                        </div>
+                                        {/* Expand button */}
+                                        {col.editable && (
+                                            <button
+                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
+                                                    setFullscreenEdit({
+                                                        id: getRowId(row),
+                                                        field: col.key,
+                                                        value: String(currentValue || ''),
+                                                        type: 'blockeditor'
+                                                    });
+                                                }}
+                                                title="Open fullscreen editor"
+                                            >
+                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : col.type === 'notioneditor' ? (
+                                    <div
+                                        className={cn(
+                                            "relative group w-full flex items-start overflow-hidden",
+                                            // Constrain height based on wrap setting
+                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                            wrapLines === '2' && "max-h-[44px]",
+                                            wrapLines === '3' && "max-h-[64px]"
+                                        )}
+                                        // Stop drag events from bubbling up to the row's drag handlers
+                                        draggable={false}
+                                        onDragStart={(e) => e.stopPropagation()}
+                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        onDragEnter={(e) => e.stopPropagation()}
+                                        onDrop={(e) => e.stopPropagation()}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
+                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
+                                                // For richtext/notioneditor, use max-height instead of line-clamp for proper truncation
+                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                                wrapLines === '2' && "max-h-[48px]",
+                                                wrapLines === '3' && "max-h-[72px]"
+                                            )}
+                                            onClick={(e) => {
+                                                if (col.editable) {
+                                                    onEditStart(row, col.key, e);
+                                                } else if (col.viewable !== false) {
+                                                    onViewStart(row, col.key, e);
+                                                }
+                                            }}
+                                        >
+                                            {value && String(value).trim() ? (
+                                                <NotionEditorDisplay
+                                                    content={String(value)}
+                                                    className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
+                                                />
+                                            ) : <span className="text-gray-400">-</span>}
+                                        </div>
+                                        {/* Expand button */}
+                                        {col.editable && (
+                                            <button
+                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
+                                                    setFullscreenEdit({
+                                                        id: getRowId(row),
+                                                        field: col.key,
+                                                        value: String(currentValue || ''),
+                                                        type: 'notioneditor'
+                                                    });
+                                                }}
+                                                title="Open fullscreen editor"
+                                            >
+                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                                            </button>
+                                        )}
+                                    </div>
                                 ) : (
                                     <p
                                         className={cn(
-                                            "text-[13px] text-gray-700 transition-colors px-3",
+                                            "text-[13px] text-gray-900 transition-colors px-2 py-2",
                                             // Clickable if editable OR viewable (text/longtext)
                                             (col.editable || (col.viewable !== false && (col.type === 'text' || col.type === 'longtext'))) && "cursor-pointer hover:text-blue-600",
-                                            (!wrapLines || wrapLines === '1') && "truncate leading-[34px]",
-                                            wrapLines === '2' && "line-clamp-2 leading-[28px]",
-                                            wrapLines === '3' && "line-clamp-3 leading-[25px]",
-                                            wrapLines === 'full' && "whitespace-pre-wrap py-2 leading-relaxed"
+                                            (!wrapLines || wrapLines === '1') && "truncate",
+                                            wrapLines === '2' && "line-clamp-2",
+                                            wrapLines === '3' && "line-clamp-3",
+                                            wrapLines === 'full' && "whitespace-pre-wrap leading-relaxed"
                                         )}
                                         onClick={(e) => {
                                             if (col.editable) {
@@ -2726,6 +3145,9 @@ export function DataTable<T>({
     // Viewing state (for read-only text popup)
     const [viewingCell, setViewingCell] = useState<{ id: string; field: string; value: string; type?: string } | null>(null);
     const [viewingPosition, setViewingPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 400 });
+
+    // Fullscreen richtext editing state
+    const [fullscreenEdit, setFullscreenEdit] = useState<{ id: string; field: string; value: string; type?: string } | null>(null);
 
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -3615,8 +4037,8 @@ export function DataTable<T>({
         const col = columns.find(c => c.key === field);
         if (!col) return;
 
-        // Check if viewable (default true for text/longtext/url when not editable)
-        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'url');
+        // Check if viewable (default true for text/longtext/richtext/blockeditor/url when not editable)
+        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'richtext' || col.type === 'blockeditor' || col.type === 'notioneditor' || col.type === 'url');
         if (!isViewable) return;
 
         // Calculate position from the clicked element (cell)
@@ -5319,6 +5741,9 @@ export function DataTable<T>({
                                                                     });
                                                                 }}
                                                                 thumbnailSizeRules={thumbnailSizeRules}
+                                                                setFullscreenEdit={setFullscreenEdit}
+                                                                setEditingCell={setEditingCell}
+                                                                getRowId={getRowId}
                                                             />
                                                         ))
                                                 )}
@@ -5396,6 +5821,9 @@ export function DataTable<T>({
                                         });
                                     }}
                                     thumbnailSizeRules={thumbnailSizeRules}
+                                    setFullscreenEdit={setFullscreenEdit}
+                                    setEditingCell={setEditingCell}
+                                    getRowId={getRowId}
                                 />
                             ))
                         )}
@@ -6175,13 +6603,13 @@ export function DataTable<T>({
 
                         return (
                             <div
-                                className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-700 whitespace-pre-wrap overflow-y-auto resize overflow-auto"
+                                className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded text-[13px] text-gray-900 whitespace-pre-wrap overflow-y-auto resize overflow-auto"
                                 style={{
                                     top: showAbove ? viewingPosition.top - contentHeight : viewingPosition.top,
                                     left: Math.max(8, Math.min(viewingPosition.left, window.innerWidth - viewingPosition.width - 8)),
                                     width: viewingPosition.width,
                                     maxHeight: maxH,
-                                    padding: '7px 8px',
+                                    padding: '8px',
                                     lineHeight: '20px',
                                     boxSizing: 'border-box',
                                 }}
@@ -6196,6 +6624,21 @@ export function DataTable<T>({
                                     >
                                         {viewingCell.value || '-'}
                                     </a>
+                                ) : viewingCell.type === 'richtext' ? (
+                                    <div
+                                        className="prose prose-sm max-w-none"
+                                        dangerouslySetInnerHTML={{ __html: viewingCell.value || '-' }}
+                                    />
+                                ) : viewingCell.type === 'blockeditor' ? (
+                                    <BlockEditorDisplay
+                                        content={viewingCell.value || '-'}
+                                        className="prose prose-sm max-w-none"
+                                    />
+                                ) : viewingCell.type === 'notioneditor' ? (
+                                    <NotionEditorDisplay
+                                        content={viewingCell.value || '-'}
+                                        className="prose prose-sm max-w-none"
+                                    />
                                 ) : (
                                     viewingCell.value || '-'
                                 )}
@@ -6203,6 +6646,73 @@ export function DataTable<T>({
                         );
                     })()}
                 </>,
+                document.body
+            )}
+
+            {/* Fullscreen Rich Text Editor Modal */}
+            {fullscreenEdit && createPortal(
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-lg font-semibold text-gray-900">Edit Content</h2>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                    onClick={() => setFullscreenEdit(null)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={async () => {
+                                        if (onUpdate && fullscreenEdit) {
+                                            try {
+                                                await onUpdate(fullscreenEdit.id, fullscreenEdit.field, fullscreenEdit.value);
+                                            } catch (error) {
+                                                console.error('Failed to save:', error);
+                                            }
+                                        }
+                                        setFullscreenEdit(null);
+                                    }}
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                        {/* Editor */}
+                        <div className="flex-1 overflow-auto p-6">
+                            {fullscreenEdit.type === 'blockeditor' ? (
+                                <BlockEditor
+                                    content={fullscreenEdit.value}
+                                    onChange={(html) => setFullscreenEdit(prev => prev ? { ...prev, value: html } : null)}
+                                    placeholder="Start typing..."
+                                    minHeight="100%"
+                                    className="h-full"
+                                    autoFocus
+                                />
+                            ) : fullscreenEdit.type === 'notioneditor' ? (
+                                <NotionEditor
+                                    content={fullscreenEdit.value}
+                                    onChange={(json) => setFullscreenEdit(prev => prev ? { ...prev, value: json } : null)}
+                                    placeholder="Type '/' for commands..."
+                                    minHeight="100%"
+                                    className="h-full"
+                                    autoFocus
+                                />
+                            ) : (
+                                <NotionEditor
+                                    content={fullscreenEdit.value}
+                                    onChange={(json) => setFullscreenEdit(prev => prev ? { ...prev, value: json } : null)}
+                                    placeholder="Type '/' for commands..."
+                                    minHeight="100%"
+                                    className="h-full"
+                                    autoFocus
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>,
                 document.body
             )}
         </div >

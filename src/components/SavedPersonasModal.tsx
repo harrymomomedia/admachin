@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Search, Loader2, Download, Calendar, User } from 'lucide-react';
-import { getAIPersonas, type AIPersona, type AIPrompts, type Persona } from '../lib/supabase-service';
+import { getAIPersonas, getUsers, type AIPersona, type AIPrompts, type Persona, type User as DBUser } from '../lib/supabase-service';
 import { cn } from '../utils/cn';
 
 // Parsed persona from ai_personas table
@@ -9,6 +9,7 @@ interface ParsedAIPersona {
     content: Persona;
     prompts: AIPrompts | null;
     created_at: string;
+    created_by: string | null;
 }
 
 interface SavedPersonasModalProps {
@@ -19,6 +20,7 @@ interface SavedPersonasModalProps {
 
 export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPersonasModalProps) {
     const [savedPersonas, setSavedPersonas] = useState<ParsedAIPersona[]>([]);
+    const [users, setUsers] = useState<Record<string, DBUser>>({});
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -33,15 +35,26 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
     const loadSavedPersonas = async () => {
         try {
             setLoading(true);
-            const data = await getAIPersonas();
+            const [data, usersData] = await Promise.all([
+                getAIPersonas(),
+                getUsers()
+            ]);
+
+            // Build user lookup map
+            const userMap: Record<string, DBUser> = {};
+            usersData.forEach(u => { userMap[u.id] = u; });
+            setUsers(userMap);
+
             // Parse the JSON content field
             const parsed: ParsedAIPersona[] = data.map((item: AIPersona) => {
                 try {
+                    if (!item.content) return null;
                     return {
                         id: item.id,
                         content: JSON.parse(item.content) as Persona,
                         prompts: item.prompts,
                         created_at: item.created_at,
+                        created_by: item.created_by,
                     };
                 } catch {
                     return null;
@@ -145,6 +158,7 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
                                     </th>
                                     <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Persona</th>
                                     <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                                    <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
                                     <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
                                 </tr>
                             </thead>
@@ -178,6 +192,28 @@ export function SavedPersonasModal({ isOpen, onClose, onLoadPersonas }: SavedPer
                                             <span className="text-xs text-gray-600 line-clamp-2" title={item.content.description}>
                                                 {item.content.description || 'No description'}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {item.created_by && users[item.created_by] ? (
+                                                <div className="flex items-center gap-2">
+                                                    {users[item.created_by].avatar_url ? (
+                                                        <img
+                                                            src={users[item.created_by].avatar_url!}
+                                                            alt=""
+                                                            className="w-6 h-6 rounded-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                            <User className="w-3 h-3 text-gray-500" />
+                                                        </div>
+                                                    )}
+                                                    <span className="text-xs text-gray-600">
+                                                        {users[item.created_by].first_name || users[item.created_by].email?.split('@')[0] || '—'}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">—</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-1.5 text-[10px] text-gray-500">

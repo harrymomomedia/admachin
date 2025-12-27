@@ -70,7 +70,7 @@ export interface ColumnDef<T> {
     minWidth?: number;
     editable?: boolean;
     viewable?: boolean; // For text/longtext types - allows clicking to view full text in a read-only popup (default: true when not editable)
-    type?: 'text' | 'longtext' | 'select' | 'date' | 'url' | 'priority' | 'rating' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
+    type?: 'text' | 'longtext' | 'richtext' | 'blockeditor' | 'notioneditor' | 'select' | 'date' | 'url' | 'priority' | 'rating' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -106,6 +106,7 @@ export interface ViewPreferences {
     row_order?: string[];
     column_widths?: Record<string, number>;
     column_order?: string[];
+    column_color_maps?: Record<string, Record<string, string>>; // Global color maps per column key
 }
 
 // ============ Gallery Configuration ============

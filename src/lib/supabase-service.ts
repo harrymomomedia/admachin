@@ -974,6 +974,7 @@ export interface ViewPreferencesConfig {
     row_order?: string[];
     column_widths?: Record<string, number>;
     column_order?: string[];
+    column_color_maps?: Record<string, Record<string, string>>; // Global color maps per column key
 }
 
 export interface UserViewPreferences extends ViewPreferencesConfig {
@@ -1888,7 +1889,7 @@ export interface RefinementHistory {
 export interface CampaignParameter {
     id: string;
     row_number?: number;
-    name: string;
+    name: string | null;
     description: string | null;
     persona_input: string | null;
     swipe_files: string | null;
@@ -2067,7 +2068,7 @@ export async function getAutoFillHistory(
 export interface PersonaFramework {
     id: string;
     row_number?: number;
-    title: string;
+    title: string | null;
     content: string | null;
     project_id: string | null;
     subproject_id: string | null;
@@ -2159,7 +2160,7 @@ export async function createPersonaFrameworksBatch(
 export interface CreativeConcept {
     id: string;
     row_number?: number;
-    name: string;
+    name: string | null;
     description: string | null;
     example: string | null;
     project_id: string | null;
@@ -2240,7 +2241,7 @@ export interface AIPersona {
     id: string;
     row_number?: number;
     campaign_parameter_id: string | null;
-    content: string;
+    content: string | null;
     prompts: AIPrompts | null;
     project_id: string | null;
     subproject_id: string | null;
@@ -2336,7 +2337,7 @@ export interface AIAngle {
     campaign_parameter_id: string | null;
     persona_id: string | null;
     creative_concept_id: string | null;
-    content: string;
+    content: string | null;
     prompts: AIPrompts | null;
     project_id: string | null;
     subproject_id: string | null;
@@ -2436,8 +2437,8 @@ export interface AIGeneratedAd {
     persona_id: string | null;
     angle_id: string | null;
     creative_concept_id: string | null;
-    content: string;
-    ad_type: string;
+    content: string | null;
+    ad_type: string | null;
     prompts: AIPrompts | null;
     project_id: string | null;
     subproject_id: string | null;

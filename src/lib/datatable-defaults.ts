@@ -98,7 +98,6 @@ interface ProjectSubprojectColumnOptions {
 
 /**
  * Create standard project column configuration
- * Matches AdCopyLibrary implementation - the reference for all DataTables
  */
 export function createProjectColumn<T extends { project_id?: string | null }>(
     options: ProjectSubprojectColumnOptions
@@ -119,7 +118,6 @@ export function createProjectColumn<T extends { project_id?: string | null }>(
 
 /**
  * Create standard subproject column configuration with project dependency
- * Matches AdCopyLibrary implementation - the reference for all DataTables
  */
 export function createSubprojectColumn<T extends { project_id?: string | null; subproject_id?: string | null }>(
     options: ProjectSubprojectColumnOptions
