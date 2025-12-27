@@ -1778,7 +1778,7 @@ function SortableRow<T>({
                                                             <Maximize2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <div className="pl-12 pr-4 py-2">
+                                                    <div className="overflow-auto" style={{ maxHeight: 'calc(100% - 36px)' }}>
                                                         <NotionEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
@@ -1882,7 +1882,7 @@ function SortableRow<T>({
                                                             <Maximize2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <div className="flex-1 overflow-y-auto overflow-x-auto pl-12 pr-4 py-2">
+                                                    <div className="flex-1 overflow-auto">
                                                         <NotionEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
@@ -6697,20 +6697,12 @@ export function DataTable<T>({
                             </div>
                         </div>
                     ) : (
-                        // NotionEditor - clean layout matching Tiptap template (editor has its own header)
+                        // NotionEditor - letter-format layout with Tiptap toolbar
                         <div
-                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl overflow-hidden"
+                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl h-[90vh] max-w-3xl w-full overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* Close button - positioned to not interfere with editor header */}
-                            <button
-                                className="absolute top-3 left-4 z-10 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                                onClick={() => setFullscreenEdit(null)}
-                                title="Close (Esc)"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                            {/* NotionEditor fills the entire modal - it has its own header with undo/redo, theme, avatar */}
+                            {/* NotionEditor with toolbar - click outside to close */}
                             <NotionEditorCell
                                 roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
                                 roomPrefix="admachin"
