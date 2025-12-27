@@ -1388,6 +1388,41 @@ function SortableRow<T>({
 
     const inputRef = useRef<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>(null);
 
+    // EditorJS popup resize state
+    const [editorjsPopupSize, setEditorjsPopupSize] = useState({ width: 500, height: 300 });
+    const editorjsResizeRef = useRef<{ startX: number; startY: number; startWidth: number; startHeight: number } | null>(null);
+
+    // EditorJS popup resize handlers
+    const handleEditorjsResizeStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        editorjsResizeRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            startWidth: editorjsPopupSize.width,
+            startHeight: editorjsPopupSize.height,
+        };
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            if (!editorjsResizeRef.current) return;
+            const deltaX = moveEvent.clientX - editorjsResizeRef.current.startX;
+            const deltaY = moveEvent.clientY - editorjsResizeRef.current.startY;
+            setEditorjsPopupSize({
+                width: Math.max(300, editorjsResizeRef.current.startWidth + deltaX),
+                height: Math.max(150, editorjsResizeRef.current.startHeight + deltaY),
+            });
+        };
+
+        const handleMouseUp = () => {
+            editorjsResizeRef.current = null;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, [editorjsPopupSize]);
+
     useEffect(() => {
         if (editingCell?.id === rowId && inputRef.current) {
             inputRef.current.focus();
@@ -1799,14 +1834,14 @@ function SortableRow<T>({
                                                         onCellCommit();
                                                     }}
                                                 />
-                                                {/* Block Editor popup */}
+                                                {/* Block Editor popup - resizable */}
                                                 <div
                                                     className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col"
                                                     style={{
                                                         top: dropdownPosition.top,
-                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
-                                                        width: Math.max(400, dropdownPosition.width),
-                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - editorjsPopupSize.width - 8)),
+                                                        width: editorjsPopupSize.width,
+                                                        height: Math.min(editorjsPopupSize.height, window.innerHeight - dropdownPosition.top - 50),
                                                     }}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Escape') {
@@ -1824,6 +1859,24 @@ function SortableRow<T>({
                                                             autoFocus
                                                             className="px-2 py-2"
                                                         />
+                                                    </div>
+                                                    {/* Resize handle */}
+                                                    <div
+                                                        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize group"
+                                                        onMouseDown={handleEditorjsResizeStart}
+                                                    >
+                                                        <svg
+                                                            className="w-3 h-3 text-gray-400 group-hover:text-gray-600 absolute bottom-1 right-1"
+                                                            viewBox="0 0 6 6"
+                                                            fill="currentColor"
+                                                        >
+                                                            <circle cx="5" cy="1" r="0.75" />
+                                                            <circle cx="5" cy="3" r="0.75" />
+                                                            <circle cx="5" cy="5" r="0.75" />
+                                                            <circle cx="3" cy="3" r="0.75" />
+                                                            <circle cx="3" cy="5" r="0.75" />
+                                                            <circle cx="1" cy="5" r="0.75" />
+                                                        </svg>
                                                     </div>
                                                 </div>
                                             </>,
