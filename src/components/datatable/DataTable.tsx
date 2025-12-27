@@ -1849,14 +1849,18 @@ function SortableRow<T>({
                                                         onCellCommit();
                                                     }}
                                                 />
-                                                {/* Notion Editor popup */}
+                                                {/* Notion Editor popup - resizable */}
                                                 <div
-                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col"
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col resize overflow-hidden"
                                                     style={{
                                                         top: dropdownPosition.top,
-                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
-                                                        width: Math.max(400, dropdownPosition.width),
-                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(500, dropdownPosition.width) - 8)),
+                                                        width: Math.max(500, dropdownPosition.width),
+                                                        height: Math.min(400, window.innerHeight - dropdownPosition.top - 50),
+                                                        minWidth: '400px',
+                                                        minHeight: '200px',
+                                                        maxWidth: '90vw',
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 20,
                                                     }}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Escape') {
@@ -6709,6 +6713,7 @@ export function DataTable<T>({
                                 placeholder="Type '/' for commands..."
                                 className="h-full"
                                 initialContent={fullscreenEdit.value}
+                                hideHeader={true}
                                 onSave={async (html) => {
                                     if (onUpdate && fullscreenEdit) {
                                         try {

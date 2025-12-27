@@ -85,13 +85,13 @@ body,
 
 .notion-like-editor-content .tiptap.ProseMirror.notion-like-editor {
   flex: 1;
-  // Left padding: ~50px for block controls (+ and drag icons), right: 16px, bottom: 30vh for scroll space
-  padding: 1.5rem 1rem 30vh 3rem;
+  // Left padding: ~72px for block controls (+ and drag icons), right: 16px, bottom: 30vh for scroll space
+  padding: 1.5rem 1rem 30vh 4.5rem;
 }
 
 @media screen and (max-width: 480px) {
   .notion-like-editor-content .tiptap.ProseMirror.notion-like-editor {
-    padding: 1rem 0.75rem 30vh 2.5rem;
+    padding: 1rem 0.75rem 30vh 3.5rem;
   }
 }
 
