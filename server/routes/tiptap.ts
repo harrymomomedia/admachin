@@ -12,6 +12,8 @@ import jwt from 'jsonwebtoken';
 
 const router = Router();
 
+console.log('[Tiptap] Routes loaded');
+
 // Environment variables (server-side only, no VITE_ prefix)
 const TIPTAP_COLLAB_APP_ID = process.env.TIPTAP_COLLAB_APP_ID || '0k3drwem';
 const TIPTAP_COLLAB_SECRET = process.env.TIPTAP_COLLAB_SECRET || '';
