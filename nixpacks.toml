@@ -8,6 +8,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm ci"]
 
 [phases.build]
+# v2 - force rebuild with tiptap routes
 cmds = ["npm run build", "npm run build:server"]
 
 [start]
