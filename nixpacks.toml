@@ -12,4 +12,5 @@ cmds = ["npm ci"]
 cmds = ["npm run build", "npm run build:server"]
 
 [start]
+# Force cache bust: 2025-12-27-v2
 cmd = "npm run start:server"
