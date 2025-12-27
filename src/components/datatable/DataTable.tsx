@@ -1778,13 +1778,15 @@ function SortableRow<T>({
                                                             <Maximize2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <NotionEditorCell
-                                                        roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
-                                                        roomPrefix="admachin"
-                                                        placeholder="Type '/' for commands..."
-                                                        initialContent={editingValue}
-                                                        onSave={(html) => onCellCommit(html)}
-                                                    />
+                                                    <div className="pl-12 pr-4 py-2">
+                                                        <NotionEditorCell
+                                                            roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
+                                                            roomPrefix="admachin"
+                                                            placeholder="Type '/' for commands..."
+                                                            initialContent={editingValue}
+                                                            onSave={(html) => onCellCommit(html)}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </>,
                                             document.body
@@ -1898,12 +1900,11 @@ function SortableRow<T>({
                                                             <Maximize2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <div className="flex-1 overflow-y-auto overflow-x-auto">
+                                                    <div className="flex-1 overflow-y-auto overflow-x-auto pl-12 pr-4 py-2">
                                                         <NotionEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
-                                                            className="px-2 py-2"
                                                             initialContent={editingValue}
                                                             onSave={(html) => onCellCommit(html)}
                                                         />
@@ -6692,7 +6693,7 @@ export function DataTable<T>({
                             )}
                         </div>
                         {/* Editor */}
-                        <div className="flex-1 overflow-auto p-6">
+                        <div className="flex-1 overflow-auto p-6 pl-16">
                             {fullscreenEdit.type === 'blockeditor' ? (
                                 <BlockEditor
                                     content={fullscreenEdit.value}
