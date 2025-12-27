@@ -1782,6 +1782,8 @@ function SortableRow<T>({
                                                         roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                         roomPrefix="admachin"
                                                         placeholder="Type '/' for commands..."
+                                                        initialContent={editingValue}
+                                                        onSave={(html) => onCellCommit(html)}
                                                     />
                                                 </div>
                                             </>,
@@ -1902,6 +1904,8 @@ function SortableRow<T>({
                                                             roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
                                                             className="px-2 py-2"
+                                                            initialContent={editingValue}
+                                                            onSave={(html) => onCellCommit(html)}
                                                         />
                                                     </div>
                                                 </div>
