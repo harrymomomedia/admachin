@@ -6667,10 +6667,16 @@ export function DataTable<T>({
 
             {/* Fullscreen Rich Text Editor Modal */}
             {fullscreenEdit && createPortal(
-                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div
+                    className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setFullscreenEdit(null)}
+                >
                     {fullscreenEdit.type === 'blockeditor' ? (
                         // BlockEditor with custom header (needs Save/Cancel)
-                        <div className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
+                        <div
+                            className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Content</h2>
                                 <div className="flex items-center gap-2">
@@ -6710,7 +6716,10 @@ export function DataTable<T>({
                         </div>
                     ) : (
                         // NotionEditor - clean layout matching Tiptap template (editor has its own header)
-                        <div className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl overflow-hidden">
+                        <div
+                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             {/* Close button - positioned to not interfere with editor header */}
                             <button
                                 className="absolute top-3 left-4 z-10 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
