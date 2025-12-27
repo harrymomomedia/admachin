@@ -2334,13 +2334,7 @@ function SortableRow<T>({
                                     </div>
                                 ) : col.type === 'notioneditor' ? (
                                     <div
-                                        className={cn(
-                                            "relative group w-full flex items-start overflow-hidden",
-                                            // Constrain height based on wrap setting
-                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                            wrapLines === '2' && "max-h-[44px]",
-                                            wrapLines === '3' && "max-h-[64px]"
-                                        )}
+                                        className="relative group w-full flex items-start"
                                         // Stop drag events from bubbling up to the row's drag handlers
                                         draggable={false}
                                         onDragStart={(e) => e.stopPropagation()}
@@ -2350,12 +2344,12 @@ function SortableRow<T>({
                                     >
                                         <div
                                             className={cn(
-                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1",
                                                 (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
-                                                // For richtext/notioneditor, use max-height instead of line-clamp for proper truncation
-                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                                wrapLines === '2' && "max-h-[48px]",
-                                                wrapLines === '3' && "max-h-[72px]"
+                                                // Use truncate for single line (same as longtext)
+                                                (!wrapLines || wrapLines === '1') && "truncate",
+                                                wrapLines === '2' && "line-clamp-2",
+                                                wrapLines === '3' && "line-clamp-3"
                                             )}
                                             onClick={(e) => {
                                                 if (col.editable) {

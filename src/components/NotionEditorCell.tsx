@@ -63,7 +63,7 @@ export function NotionEditorCellDisplay({
     if (!content || content === '<p></p>' || content.trim() === '') {
         return (
             <div
-                className="text-gray-400 text-sm italic cursor-pointer hover:bg-gray-50 p-2 rounded"
+                className="text-gray-400 text-sm italic"
                 onClick={onClick}
             >
                 Click to edit...
@@ -73,7 +73,7 @@ export function NotionEditorCellDisplay({
 
     return (
         <div
-            className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 p-2 rounded line-clamp-3"
+            className="prose prose-sm max-w-none [&_p]:my-0 [&_p]:leading-normal"
             onClick={onClick}
             dangerouslySetInnerHTML={{ __html: content }}
         />
