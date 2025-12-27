@@ -1334,6 +1334,8 @@ interface SortableRowProps<T> {
     getRowId: (row: T) => string;
     // View ID for collaborative editor rooms
     viewId?: string;
+    // Auto-save for rich text editors (saves without closing popup)
+    onAutoSave?: (id: string, field: string, value: string) => Promise<void>;
 }
 
 function SortableRow<T>({
@@ -1378,6 +1380,7 @@ function SortableRow<T>({
     setEditingCell,
     getRowId,
     viewId,
+    onAutoSave,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1747,12 +1750,16 @@ function SortableRow<T>({
                                                 />
                                                 {/* Rich Text Editor popup */}
                                                 <div
-                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg"
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col resize overflow-hidden"
                                                     style={{
                                                         top: dropdownPosition.top,
                                                         left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
                                                         width: Math.max(400, dropdownPosition.width),
-                                                        maxHeight: window.innerHeight - dropdownPosition.top - 50,
+                                                        height: Math.min(400, window.innerHeight - dropdownPosition.top - 50),
+                                                        minWidth: '400px',
+                                                        minHeight: '200px',
+                                                        maxWidth: '90vw',
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 20,
                                                     }}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Escape') {
@@ -1760,31 +1767,18 @@ function SortableRow<T>({
                                                         }
                                                     }}
                                                 >
-                                                    {/* Header with expand button */}
-                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200">
-                                                        <button
-                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-                                                            onClick={() => {
-                                                                setFullscreenEdit({
-                                                                    id: editingCell.id,
-                                                                    field: editingCell.field,
-                                                                    value: editingValue,
-                                                                    type: 'richtext'
-                                                                });
-                                                                setEditingCell(null);
-                                                            }}
-                                                            title="Open fullscreen editor"
-                                                        >
-                                                            <Maximize2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                    <div className="overflow-auto" style={{ maxHeight: 'calc(100% - 36px)' }}>
+                                                    <div className="flex-1 overflow-auto">
                                                         <NotionEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
                                                             initialContent={editingValue}
-                                                            onSave={(html) => onCellCommit(html)}
+                                                            onSave={(html) => {
+                                                                // Auto-save without closing popup
+                                                                if (onAutoSave && editingCell) {
+                                                                    onAutoSave(editingCell.id, editingCell.field, html);
+                                                                }
+                                                            }}
                                                         />
                                                     </div>
                                                 </div>
@@ -1868,31 +1862,18 @@ function SortableRow<T>({
                                                         }
                                                     }}
                                                 >
-                                                    {/* Header with expand button */}
-                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200 flex-shrink-0">
-                                                        <button
-                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-                                                            onClick={() => {
-                                                                setFullscreenEdit({
-                                                                    id: editingCell.id,
-                                                                    field: editingCell.field,
-                                                                    value: editingValue,
-                                                                    type: 'notioneditor'
-                                                                });
-                                                                setEditingCell(null);
-                                                            }}
-                                                            title="Open fullscreen editor"
-                                                        >
-                                                            <Maximize2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
                                                     <div className="flex-1 overflow-auto">
                                                         <NotionEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
                                                             initialContent={editingValue}
-                                                            onSave={(html) => onCellCommit(html)}
+                                                            onSave={(html) => {
+                                                                // Auto-save without closing popup
+                                                                if (onAutoSave && editingCell) {
+                                                                    onAutoSave(editingCell.id, editingCell.field, html);
+                                                                }
+                                                            }}
                                                         />
                                                     </div>
                                                 </div>
@@ -3970,11 +3951,11 @@ export function DataTable<T>({
             return;
         }
 
-        // For notioneditor/blockeditor, if no explicit value provided, just close without saving
-        // These editors handle their own saves via onSave callback (auto-save on blur/debounce)
-        // This fixes the bug where clicking backdrop would save the ORIGINAL value, not current
+        // For notioneditor, if no explicit value provided, just close without saving
+        // NotionEditor handles its own saves via onSave callback (auto-save on blur/debounce)
+        // BlockEditor does NOT auto-save, so it uses editingValue when closing
         const col = columns.find(c => c.key === editingCell.field);
-        if (newValue === undefined && (col?.type === 'notioneditor' || col?.type === 'blockeditor')) {
+        if (newValue === undefined && col?.type === 'notioneditor') {
             setEditingCell(null);
             return;
         }
@@ -4032,6 +4013,17 @@ export function DataTable<T>({
         setEditingCell(null);
         setEditingValue('');
     }, []);
+
+    // Auto-save handler for rich text editors (saves without closing popup)
+    const handleAutoSave = useCallback(async (id: string, field: string, value: string) => {
+        if (!onUpdate) return;
+        try {
+            await onUpdate(id, field, value);
+            setEditingValue(value); // Keep editingValue in sync
+        } catch (error) {
+            console.error('Auto-save failed:', error);
+        }
+    }, [onUpdate]);
 
     // View handlers (for read-only text viewing)
     const handleViewStart = useCallback((row: T, field: string, event: React.MouseEvent) => {
@@ -5746,6 +5738,7 @@ export function DataTable<T>({
                                                                 setEditingCell={setEditingCell}
                                                                 getRowId={getRowId}
                                                                 viewId={viewId}
+                                                                onAutoSave={handleAutoSave}
                                                             />
                                                         ))
                                                 )}
@@ -5827,6 +5820,7 @@ export function DataTable<T>({
                                     setEditingCell={setEditingCell}
                                     getRowId={getRowId}
                                     viewId={viewId}
+                                    onAutoSave={handleAutoSave}
                                 />
                             ))
                         )}
@@ -6713,7 +6707,6 @@ export function DataTable<T>({
                                 placeholder="Type '/' for commands..."
                                 className="h-full"
                                 initialContent={fullscreenEdit.value}
-                                hideHeader={true}
                                 onSave={async (html) => {
                                     if (onUpdate && fullscreenEdit) {
                                         try {
