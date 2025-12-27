@@ -3,16 +3,16 @@ import { CellSelection } from "@tiptap/pm/tables"
 import type { JSONContent, Editor } from "@tiptap/react"
 import { isTextSelection, isNodeSelection, posToDOMRect } from "@tiptap/react"
 
-// TipTap Collaboration
+// TipTap Collaboration - Hardcoded defaults match our Tiptap Cloud apps
 export const TIPTAP_COLLAB_DOC_PREFIX =
-  import.meta.env.VITE_TIPTAP_COLLAB_DOC_PREFIX || ""
+  import.meta.env.VITE_TIPTAP_COLLAB_DOC_PREFIX || "admachin-"
 export const TIPTAP_COLLAB_APP_ID =
-  import.meta.env.VITE_TIPTAP_COLLAB_APP_ID || ""
+  import.meta.env.VITE_TIPTAP_COLLAB_APP_ID || "0k3drwem"
 export const TIPTAP_COLLAB_TOKEN =
   import.meta.env.VITE_TIPTAP_COLLAB_TOKEN || ""
 
-// TipTap AI
-export const TIPTAP_AI_APP_ID = import.meta.env.VITE_TIPTAP_AI_APP_ID || ""
+// TipTap AI - Hardcoded defaults match our Tiptap Cloud apps
+export const TIPTAP_AI_APP_ID = import.meta.env.VITE_TIPTAP_AI_APP_ID || "j9yj3v69"
 export const TIPTAP_AI_TOKEN = import.meta.env.VITE_TIPTAP_AI_TOKEN || ""
 
 // Always use our JWT token API endpoints in production

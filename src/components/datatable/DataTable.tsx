@@ -6654,29 +6654,40 @@ export function DataTable<T>({
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                             <h2 className="text-lg font-semibold text-gray-900">Edit Content</h2>
-                            <div className="flex items-center gap-2">
+                            {fullscreenEdit.type === 'blockeditor' ? (
+                                // BlockEditor needs Save/Cancel since it's not collaborative
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                        onClick={() => setFullscreenEdit(null)}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        onClick={async () => {
+                                            if (onUpdate && fullscreenEdit) {
+                                                try {
+                                                    await onUpdate(fullscreenEdit.id, fullscreenEdit.field, fullscreenEdit.value);
+                                                } catch (error) {
+                                                    console.error('Failed to save:', error);
+                                                }
+                                            }
+                                            setFullscreenEdit(null);
+                                        }}
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            ) : (
+                                // NotionEditor auto-saves via Tiptap Cloud collaboration
                                 <button
                                     className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                                     onClick={() => setFullscreenEdit(null)}
                                 >
-                                    Cancel
+                                    Done
                                 </button>
-                                <button
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                    onClick={async () => {
-                                        if (onUpdate && fullscreenEdit) {
-                                            try {
-                                                await onUpdate(fullscreenEdit.id, fullscreenEdit.field, fullscreenEdit.value);
-                                            } catch (error) {
-                                                console.error('Failed to save:', error);
-                                            }
-                                        }
-                                        setFullscreenEdit(null);
-                                    }}
-                                >
-                                    Save
-                                </button>
-                            </div>
+                            )}
                         </div>
                         {/* Editor */}
                         <div className="flex-1 overflow-auto p-6">
