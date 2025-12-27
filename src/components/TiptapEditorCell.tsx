@@ -1,13 +1,13 @@
 /**
- * NotionEditorCell - Full Tiptap editor for DataTable cells
+ * TiptapEditorCell - Full Tiptap editor for DataTable cells
  *
  * Uses Tiptap Cloud for collaboration and AI, but ALSO syncs
  * content back to our database on blur/change.
  */
 
-import { NotionEditor } from './NotionEditor';
+import { TiptapEditor } from './TiptapEditor';
 
-export interface NotionEditorCellProps {
+export interface TiptapEditorCellProps {
     /** Unique ID for collaboration room (e.g., row.id) */
     roomId: string;
     /** Prefix for the room (e.g., 'adcopy') */
@@ -28,7 +28,7 @@ export interface NotionEditorCellProps {
  * Full collaborative editor for DataTable cells
  * Content syncs to Tiptap Cloud AND saves to our database
  */
-export function NotionEditorCell({
+export function TiptapEditorCell({
     roomId,
     roomPrefix = 'admachin',
     placeholder = "Type '/' for commands...",
@@ -36,13 +36,13 @@ export function NotionEditorCell({
     initialContent,
     onSave,
     hideHeader = false,
-}: NotionEditorCellProps) {
+}: TiptapEditorCellProps) {
     // Create unique room for this cell
     const room = `${roomPrefix}-${roomId}`;
 
     return (
         <div className={className}>
-            <NotionEditor
+            <TiptapEditor
                 room={room}
                 placeholder={placeholder}
                 initialContent={initialContent}
@@ -57,7 +57,7 @@ export function NotionEditorCell({
  * Display-only version for showing content in table cells
  * Shows the content from our database
  */
-export function NotionEditorCellDisplay({
+export function TiptapEditorCellDisplay({
     content,
     onClick,
 }: {

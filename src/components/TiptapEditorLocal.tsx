@@ -1,11 +1,11 @@
 /**
- * NotionEditorLocal - Tiptap editor that saves to database
+ * TiptapEditorLocal - Tiptap editor that saves to database
  *
  * Uses Tiptap with all features but stores content in our database,
  * not Tiptap Cloud. Content is saved on blur or after typing stops.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extension-placeholder';
@@ -20,7 +20,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 // Styles
 import '../../@/components/tiptap-templates/notion-like/notion-like-editor.scss';
 
-export interface NotionEditorLocalProps {
+export interface TiptapEditorLocalProps {
     /** Initial HTML content */
     content?: string;
     /** Called when content changes (debounced) */
@@ -41,7 +41,7 @@ export interface NotionEditorLocalProps {
  * Local Tiptap editor that saves to database
  * Content is persisted via onChange/onBlur callbacks
  */
-export function NotionEditorLocal({
+export function TiptapEditorLocal({
     content = '',
     onChange,
     onBlur,
@@ -49,7 +49,7 @@ export function NotionEditorLocal({
     className,
     autoFocus = false,
     debounceMs = 1000,
-}: NotionEditorLocalProps) {
+}: TiptapEditorLocalProps) {
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
     const lastSavedContent = useRef<string>(content);
 
@@ -135,7 +135,7 @@ export function NotionEditorLocal({
     }
 
     return (
-        <div className={`notion-editor-local ${className || ''}`}>
+        <div className={`tiptap-editor-local ${className || ''}`}>
             <EditorContent editor={editor} />
         </div>
     );
@@ -144,7 +144,7 @@ export function NotionEditorLocal({
 /**
  * Display version - renders HTML content read-only
  */
-export function NotionEditorLocalDisplay({
+export function TiptapEditorLocalDisplay({
     content,
     className,
     onClick,

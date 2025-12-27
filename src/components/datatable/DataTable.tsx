@@ -2,9 +2,9 @@ import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMe
 import { createPortal } from 'react-dom';
 import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, Settings, Columns, LayoutList } from 'lucide-react';
 import { SingleSelect, SearchInput } from '../fields';
-import { BlockEditor, BlockEditorDisplay } from '../BlockEditor';
-import { NotionEditor } from '../NotionEditor';
-import { NotionEditorCell, NotionEditorCellDisplay } from '../NotionEditorCell';
+import { EditorjsEditor, EditorjsEditorDisplay } from '../EditorjsEditor';
+import { TiptapEditor } from '../TiptapEditor';
+import { TiptapEditorCell, TiptapEditorCellDisplay } from '../TiptapEditorCell';
 import {
     DndContext,
     closestCenter,
@@ -61,7 +61,7 @@ interface LocalColumnDef<T> {
     width?: number;
     minWidth?: number;
     editable?: boolean;
-    type?: 'text' | 'longtext' | 'richtext' | 'blockeditor' | 'notioneditor' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
+    type?: 'text' | 'longtext' | 'tiptapeditor' | 'editorjseditor' | 'select' | 'date' | 'url' | 'priority' | 'id' | 'people' | 'thumbnail' | 'filesize' | 'adcopy' | 'media' | 'custom';
     options?: { label: string; value: string | number }[] | ((row: T) => { label: string; value: string | number }[]);
     filterOptions?: { label: string; value: string | number }[]; // Static options for filter dropdown (use when options is a function)
     optionsEditable?: boolean; // For select type - whether options can be added/removed in field editor (default: true)
@@ -1735,7 +1735,7 @@ function SortableRow<T>({
                                             document.body
                                         )}
                                     </>
-                                ) : col.type === 'richtext' ? (
+                                ) : col.type === 'tiptapeditor' ? (
                                     <>
                                         {/* Rich text editor via portal */}
                                         {createPortal(
@@ -1768,7 +1768,7 @@ function SortableRow<T>({
                                                     }}
                                                 >
                                                     <div className="flex-1 overflow-auto">
-                                                        <NotionEditorCell
+                                                        <TiptapEditorCell
                                                             roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
                                                             roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
@@ -1786,7 +1786,7 @@ function SortableRow<T>({
                                             document.body
                                         )}
                                     </>
-                                ) : col.type === 'blockeditor' ? (
+                                ) : col.type === 'editorjseditor' ? (
                                     <>
                                         {/* Block editor (Editor.js) via portal */}
                                         {createPortal(
@@ -1815,7 +1815,7 @@ function SortableRow<T>({
                                                     }}
                                                 >
                                                     <div className="flex-1 overflow-y-auto overflow-x-auto">
-                                                        <BlockEditor
+                                                        <EditorjsEditor
                                                             content={editingValue || ''}
                                                             onChange={(html) => onEditChange(html)}
                                                             onBlur={() => {}}
@@ -1823,57 +1823,6 @@ function SortableRow<T>({
                                                             minHeight="150px"
                                                             autoFocus
                                                             className="px-2 py-2"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </>,
-                                            document.body
-                                        )}
-                                    </>
-                                ) : col.type === 'notioneditor' ? (
-                                    <>
-                                        {/* Notion editor (Tiptap) via portal */}
-                                        {createPortal(
-                                            <>
-                                                {/* Backdrop */}
-                                                <div
-                                                    className="fixed inset-0 z-[9998]"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onCellCommit();
-                                                    }}
-                                                />
-                                                {/* Notion Editor popup - resizable */}
-                                                <div
-                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col resize overflow-hidden"
-                                                    style={{
-                                                        top: dropdownPosition.top,
-                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(500, dropdownPosition.width) - 8)),
-                                                        width: Math.max(500, dropdownPosition.width),
-                                                        height: Math.min(400, window.innerHeight - dropdownPosition.top - 50),
-                                                        minWidth: '400px',
-                                                        minHeight: '200px',
-                                                        maxWidth: '90vw',
-                                                        maxHeight: window.innerHeight - dropdownPosition.top - 20,
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Escape') {
-                                                            onEditCancel();
-                                                        }
-                                                    }}
-                                                >
-                                                    <div className="flex-1 overflow-auto">
-                                                        <NotionEditorCell
-                                                            roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
-                                                            roomPrefix="admachin"
-                                                            placeholder="Type '/' for commands..."
-                                                            initialContent={editingValue}
-                                                            onSave={(html) => {
-                                                                // Auto-save without closing popup
-                                                                if (onAutoSave && editingCell) {
-                                                                    onAutoSave(editingCell.id, editingCell.field, html);
-                                                                }
-                                                            }}
                                                         />
                                                     </div>
                                                 </div>
@@ -2174,132 +2123,7 @@ function SortableRow<T>({
                                             </div>
                                         );
                                     })()
-                                ) : col.type === 'richtext' ? (
-                                    <div
-                                        className={cn(
-                                            "relative group w-full flex items-start overflow-hidden",
-                                            // Constrain height based on wrap setting
-                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                            wrapLines === '2' && "max-h-[44px]",
-                                            wrapLines === '3' && "max-h-[64px]"
-                                        )}
-                                        // Stop drag events from bubbling up to the row's drag handlers
-                                        // This prevents the DataTable row drag indicator from appearing
-                                        // when interacting with RichText content
-                                        draggable={false}
-                                        onDragStart={(e) => e.stopPropagation()}
-                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                        onDragEnter={(e) => e.stopPropagation()}
-                                        onDrop={(e) => e.stopPropagation()}
-                                    >
-                                        <div
-                                            className={cn(
-                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
-                                                // Clickable if editable OR viewable
-                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
-                                                // For richtext, use max-height instead of line-clamp for proper truncation of HTML content
-                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                                wrapLines === '2' && "max-h-[48px]",
-                                                wrapLines === '3' && "max-h-[72px]"
-                                            )}
-                                            onClick={(e) => {
-                                                if (col.editable) {
-                                                    onEditStart(row, col.key, e);
-                                                } else if (col.viewable !== false) {
-                                                    onViewStart(row, col.key, e);
-                                                }
-                                            }}
-                                        >
-                                            {value && String(value).trim() ? (
-                                                <div
-                                                    className="prose prose-sm max-w-none [&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
-                                                    dangerouslySetInnerHTML={{ __html: String(value) }}
-                                                />
-                                            ) : <span className="text-gray-400">-</span>}
-                                        </div>
-                                        {/* Expand button */}
-                                        {col.editable && (
-                                            <button
-                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
-                                                    setFullscreenEdit({
-                                                        id: getRowId(row),
-                                                        field: col.key,
-                                                        value: String(currentValue || ''),
-                                                        type: 'richtext'
-                                                    });
-                                                }}
-                                                title="Open fullscreen editor"
-                                            >
-                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : col.type === 'blockeditor' ? (
-                                    <div
-                                        className={cn(
-                                            "relative group w-full flex items-start overflow-hidden",
-                                            // Constrain height based on wrap setting
-                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                            wrapLines === '2' && "max-h-[44px]",
-                                            wrapLines === '3' && "max-h-[64px]"
-                                        )}
-                                        // Stop drag events from bubbling up to the row's drag handlers
-                                        // This prevents the DataTable row drag indicator from appearing
-                                        // when interacting with BlockEditor content
-                                        draggable={false}
-                                        onDragStart={(e) => e.stopPropagation()}
-                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                        onDragEnter={(e) => e.stopPropagation()}
-                                        onDrop={(e) => e.stopPropagation()}
-                                    >
-                                        <div
-                                            className={cn(
-                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
-                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
-                                                // For richtext/blockeditor, use max-height instead of line-clamp for proper truncation
-                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
-                                                wrapLines === '2' && "max-h-[48px]",
-                                                wrapLines === '3' && "max-h-[72px]"
-                                            )}
-                                            onClick={(e) => {
-                                                if (col.editable) {
-                                                    onEditStart(row, col.key, e);
-                                                } else if (col.viewable !== false) {
-                                                    onViewStart(row, col.key, e);
-                                                }
-                                            }}
-                                        >
-                                            {value && String(value).trim() ? (
-                                                <BlockEditorDisplay
-                                                    content={String(value)}
-                                                    className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
-                                                />
-                                            ) : <span className="text-gray-400">-</span>}
-                                        </div>
-                                        {/* Expand button */}
-                                        {col.editable && (
-                                            <button
-                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
-                                                    setFullscreenEdit({
-                                                        id: getRowId(row),
-                                                        field: col.key,
-                                                        value: String(currentValue || ''),
-                                                        type: 'blockeditor'
-                                                    });
-                                                }}
-                                                title="Open fullscreen editor"
-                                            >
-                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : col.type === 'notioneditor' ? (
+                                ) : col.type === 'tiptapeditor' ? (
                                     <div
                                         className="relative group w-full flex items-start"
                                         // Stop drag events from bubbling up to the row's drag handlers
@@ -2326,7 +2150,7 @@ function SortableRow<T>({
                                                 }
                                             }}
                                         >
-                                            <NotionEditorCellDisplay
+                                            <TiptapEditorCellDisplay
                                                 content={String(col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? ''))}
                                             />
                                         </div>
@@ -2341,7 +2165,69 @@ function SortableRow<T>({
                                                         id: getRowId(row),
                                                         field: col.key,
                                                         value: String(currentValue || ''),
-                                                        type: 'notioneditor'
+                                                        type: 'tiptapeditor'
+                                                    });
+                                                }}
+                                                title="Open fullscreen editor"
+                                            >
+                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : col.type === 'editorjseditor' ? (
+                                    <div
+                                        className={cn(
+                                            "relative group w-full flex items-start overflow-hidden",
+                                            // Constrain height based on wrap setting
+                                            (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                            wrapLines === '2' && "max-h-[44px]",
+                                            wrapLines === '3' && "max-h-[64px]"
+                                        )}
+                                        // Stop drag events from bubbling up to the row's drag handlers
+                                        // This prevents the DataTable row drag indicator from appearing
+                                        // when interacting with EditorjsEditor content
+                                        draggable={false}
+                                        onDragStart={(e) => e.stopPropagation()}
+                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        onDragEnter={(e) => e.stopPropagation()}
+                                        onDrop={(e) => e.stopPropagation()}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1 overflow-hidden",
+                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
+                                                // For richtext/blockeditor, use max-height instead of line-clamp for proper truncation
+                                                (!wrapLines || wrapLines === '1') && "max-h-[24px]",
+                                                wrapLines === '2' && "max-h-[48px]",
+                                                wrapLines === '3' && "max-h-[72px]"
+                                            )}
+                                            onClick={(e) => {
+                                                if (col.editable) {
+                                                    onEditStart(row, col.key, e);
+                                                } else if (col.viewable !== false) {
+                                                    onViewStart(row, col.key, e);
+                                                }
+                                            }}
+                                        >
+                                            {value && String(value).trim() ? (
+                                                <EditorjsEditorDisplay
+                                                    content={String(value)}
+                                                    className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
+                                                />
+                                            ) : <span className="text-gray-400">-</span>}
+                                        </div>
+                                        {/* Expand button */}
+                                        {col.editable && (
+                                            <button
+                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
+                                                    setFullscreenEdit({
+                                                        id: getRowId(row),
+                                                        field: col.key,
+                                                        value: String(currentValue || ''),
+                                                        type: 'editorjseditor'
                                                     });
                                                 }}
                                                 title="Open fullscreen editor"
@@ -3953,9 +3839,9 @@ export function DataTable<T>({
 
         // For notioneditor, if no explicit value provided, just close without saving
         // NotionEditor handles its own saves via onSave callback (auto-save on blur/debounce)
-        // BlockEditor does NOT auto-save, so it uses editingValue when closing
+        // EditorjsEditor does NOT auto-save, so it uses editingValue when closing
         const col = columns.find(c => c.key === editingCell.field);
-        if (newValue === undefined && col?.type === 'notioneditor') {
+        if (newValue === undefined && col?.type === 'tiptapeditor') {
             setEditingCell(null);
             return;
         }
@@ -4030,8 +3916,8 @@ export function DataTable<T>({
         const col = columns.find(c => c.key === field);
         if (!col) return;
 
-        // Check if viewable (default true for text/longtext/richtext/blockeditor/url when not editable)
-        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'richtext' || col.type === 'blockeditor' || col.type === 'notioneditor' || col.type === 'url');
+        // Check if viewable (default true for text/longtext/tiptapeditor/editorjseditor/url when not editable)
+        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'tiptapeditor' || col.type === 'editorjseditor' || col.type === 'url');
         if (!isViewable) return;
 
         // Calculate position from the clicked element (cell)
@@ -6621,18 +6507,18 @@ export function DataTable<T>({
                                     >
                                         {viewingCell.value || '-'}
                                     </a>
-                                ) : viewingCell.type === 'richtext' ? (
+                                ) : viewingCell.type === 'tiptapeditor' ? (
                                     <div
                                         className="prose prose-sm max-w-none"
                                         dangerouslySetInnerHTML={{ __html: viewingCell.value || '-' }}
                                     />
-                                ) : viewingCell.type === 'blockeditor' ? (
-                                    <BlockEditorDisplay
+                                ) : viewingCell.type === 'editorjseditor' ? (
+                                    <EditorjsEditorDisplay
                                         content={viewingCell.value || '-'}
                                         className="prose prose-sm max-w-none"
                                     />
-                                ) : viewingCell.type === 'notioneditor' ? (
-                                    <NotionEditorCellDisplay
+                                ) : viewingCell.type === 'tiptapeditor' ? (
+                                    <TiptapEditorCellDisplay
                                         content={viewingCell.value}
                                     />
                                 ) : (
@@ -6651,8 +6537,8 @@ export function DataTable<T>({
                     className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
                     onClick={() => setFullscreenEdit(null)}
                 >
-                    {fullscreenEdit.type === 'blockeditor' ? (
-                        // BlockEditor with custom header (needs Save/Cancel)
+                    {fullscreenEdit.type === 'editorjseditor' ? (
+                        // EditorjsEditor with custom header (needs Save/Cancel)
                         <div
                             className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col"
                             onClick={(e) => e.stopPropagation()}
@@ -6684,7 +6570,7 @@ export function DataTable<T>({
                                 </div>
                             </div>
                             <div className="flex-1 overflow-auto p-6">
-                                <BlockEditor
+                                <EditorjsEditor
                                     content={fullscreenEdit.value}
                                     onChange={(html) => setFullscreenEdit(prev => prev ? { ...prev, value: html } : null)}
                                     placeholder="Start typing..."
@@ -6701,7 +6587,7 @@ export function DataTable<T>({
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* NotionEditor with toolbar - click outside to close, pl-8 for block controls */}
-                            <NotionEditorCell
+                            <TiptapEditorCell
                                 roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
                                 roomPrefix="admachin"
                                 placeholder="Type '/' for commands..."

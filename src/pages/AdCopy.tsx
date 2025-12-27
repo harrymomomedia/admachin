@@ -273,15 +273,15 @@ export function AdCopy() {
             width: 300,
             minWidth: 150,
             editable: true,
-            type: 'blockeditor',
+            type: 'editorjseditor',
         },
         {
             key: 'notion',
-            header: 'notion',
+            header: 'tiptap',
             width: 350,
             minWidth: 200,
             editable: true,
-            type: 'notioneditor',
+            type: 'tiptapeditor',
         },
         {
             key: 'type',

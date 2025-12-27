@@ -20,7 +20,7 @@ import Marker from '@editorjs/marker';
 import Underline from '@editorjs/underline';
 import { cn } from '../utils/cn';
 
-interface BlockEditorProps {
+interface EditorjsEditorProps {
     content: string; // JSON string (Editor.js format) or legacy HTML
     onChange?: (json: string) => void; // Returns JSON string
     onBlur?: () => void;
@@ -306,7 +306,7 @@ function blocksToHtml(data: OutputData): string {
     }).join('\n');
 }
 
-export const BlockEditor = memo(function BlockEditor({
+export const EditorjsEditor = memo(function EditorjsEditor({
     content,
     onChange,
     onBlur,
@@ -315,7 +315,7 @@ export const BlockEditor = memo(function BlockEditor({
     minHeight = '150px',
     className,
     autoFocus = false,
-}: BlockEditorProps) {
+}: EditorjsEditorProps) {
     const editorRef = useRef<EditorJS | null>(null);
     const holderRef = useRef<HTMLDivElement>(null);
     const isReady = useRef(false);
@@ -483,7 +483,7 @@ export const BlockEditor = memo(function BlockEditor({
     return (
         <div
             className={cn(
-                "block-editor",
+                "editorjs-editor",
                 !editable && "pointer-events-none opacity-75",
                 className
             )}
@@ -498,23 +498,60 @@ export const BlockEditor = memo(function BlockEditor({
     );
 });
 
-// Read-only display for Editor.js content
-export function BlockEditorDisplay({ content, className }: { content: string; className?: string }) {
-    // Convert to HTML if it's JSON
-    let html = content;
+// Extract plain text from Editor.js blocks (for preview display)
+function blocksToPlainText(data: OutputData): string {
+    if (!data.blocks || data.blocks.length === 0) {
+        return '';
+    }
+
+    return data.blocks.map(block => {
+        switch (block.type) {
+            case 'header':
+            case 'paragraph':
+                // Strip HTML tags from text
+                return block.data.text?.replace(/<[^>]*>/g, '') || '';
+            case 'list':
+            case 'nestedList':
+                return (block.data.items || []).map((item: string | { content: string }) =>
+                    typeof item === 'string' ? item.replace(/<[^>]*>/g, '') : item.content?.replace(/<[^>]*>/g, '') || ''
+                ).join(' ');
+            case 'checklist':
+                return (block.data.items || []).map((item: { text: string }) =>
+                    item.text?.replace(/<[^>]*>/g, '') || ''
+                ).join(' ');
+            case 'quote':
+                return block.data.text?.replace(/<[^>]*>/g, '') || '';
+            case 'code':
+                return block.data.code || '';
+            case 'table':
+                return (block.data.content || []).flat().map((cell: string) =>
+                    cell?.replace(/<[^>]*>/g, '') || ''
+                ).join(' ');
+            case 'warning':
+                return `${block.data.title || ''} ${block.data.message || ''}`.replace(/<[^>]*>/g, '');
+            default:
+                return block.data.text?.replace(/<[^>]*>/g, '') || '';
+        }
+    }).filter(Boolean).join(' ');
+}
+
+// Read-only display for Editor.js content (plain text for table cell preview)
+export function EditorjsEditorDisplay({ content, className }: { content: string; className?: string }) {
+    // Convert to plain text for preview
+    let text = content;
     try {
         const parsed = JSON.parse(content);
         if (parsed.blocks) {
-            html = blocksToHtml(parsed);
+            text = blocksToPlainText(parsed);
         }
     } catch {
-        // Already HTML
+        // Already HTML - strip tags
+        text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
     return (
-        <div
-            className={cn("prose prose-sm max-w-none", className)}
-            dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <span className={className}>
+            {text || '-'}
+        </span>
     );
 }
