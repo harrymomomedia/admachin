@@ -1474,8 +1474,8 @@ function SortableRow<T>({
                         ? "bg-blue-50 border-l-4 border-l-blue-500 hover:bg-blue-100"
                         : "hover:bg-gray-50"
                 )}
-                draggable={sortable}
-                onDragStart={onRowDragStart}
+                // Row is NOT draggable by default - only drag handle column triggers drag
+                draggable={false}
                 onDragEnd={onRowDragEnd}
                 onDragEnter={onRowDragEnter}
                 onDragOver={(e) => {
@@ -2018,6 +2018,18 @@ function SortableRow<T>({
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <PeopleColumn value={value} users={col.users || []} />
+                                    </div>
+                                ) : col.type === 'draghandle' ? (
+                                    // Drag Handle Column - only this cell triggers row drag
+                                    <div
+                                        className="px-1 h-[34px] flex items-center justify-center cursor-grab active:cursor-grabbing"
+                                        draggable={sortable}
+                                        onDragStart={(e) => {
+                                            // Trigger row drag from this cell
+                                            onRowDragStart(e as unknown as React.DragEvent<HTMLTableRowElement>);
+                                        }}
+                                    >
+                                        <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
                                     </div>
                                 ) : col.type === 'id' ? (
                                     <span className="text-[11px] text-gray-700 font-medium px-2 h-[34px] flex items-center">{String(value || '-')}</span>

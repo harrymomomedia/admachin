@@ -18,6 +18,7 @@ import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
 import {
     generateColorMap,
+    createDragHandleColumn,
     createProjectColumn,
     createSubprojectColumn,
     createReorderHandler,
@@ -251,6 +252,8 @@ export function AdCopy() {
 
     // Column Definitions - memoized to prevent re-renders on every state change
     const columns: ColumnDef<AdCopy>[] = useMemo(() => [
+        // Drag handle column - first column for row reordering
+        createDragHandleColumn<AdCopy>(),
         {
             key: 'row_number',
             header: 'ID',

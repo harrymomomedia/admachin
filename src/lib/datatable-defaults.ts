@@ -71,6 +71,7 @@ export const STATUS_COLORS: Record<string, string> = {
 
 /** Default column widths by type */
 export const COLUMN_WIDTH_DEFAULTS = {
+    draghandle: { width: 32, minWidth: 32 },
     id: { width: 50, minWidth: 40 },
     select: { width: 100, minWidth: 60 },
     project: { width: 100, minWidth: 70 },
@@ -217,6 +218,28 @@ export function createIdColumn<T>(
         type: 'id',
         editable: false,
         ...COLUMN_WIDTH_DEFAULTS.id,
+    };
+}
+
+/**
+ * Create drag handle column for row reordering
+ * This column provides a dedicated drag handle instead of making the entire row draggable.
+ * Should be placed as the first column in the columns array.
+ *
+ * @example
+ * const columns = [
+ *   createDragHandleColumn(),
+ *   createIdColumn(),
+ *   // ... other columns
+ * ];
+ */
+export function createDragHandleColumn<T>(): ColumnDef<T> {
+    return {
+        key: '_draghandle',
+        header: '',
+        type: 'draghandle',
+        editable: false,
+        ...COLUMN_WIDTH_DEFAULTS.draghandle,
     };
 }
 
