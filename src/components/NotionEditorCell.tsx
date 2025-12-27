@@ -71,11 +71,12 @@ export function NotionEditorCellDisplay({
         );
     }
 
+    // Strip HTML tags for clean display in table cells
+    const textContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
     return (
-        <div
-            className="prose prose-sm max-w-none [&_p]:my-0 [&_p]:leading-normal"
-            onClick={onClick}
-            dangerouslySetInnerHTML={{ __html: content }}
-        />
+        <span onClick={onClick}>
+            {textContent || '-'}
+        </span>
     );
 }

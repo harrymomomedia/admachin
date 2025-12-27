@@ -3143,6 +3143,18 @@ export function DataTable<T>({
     // Fullscreen richtext editing state
     const [fullscreenEdit, setFullscreenEdit] = useState<{ id: string; field: string; value: string; type?: string } | null>(null);
 
+    // Close fullscreen edit on Escape key
+    useEffect(() => {
+        if (!fullscreenEdit) return;
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setFullscreenEdit(null);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [fullscreenEdit]);
+
     // Copy state
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -3968,6 +3980,15 @@ export function DataTable<T>({
 
     const handleCellCommit = useCallback(async (newValue?: string | null) => {
         if (!editingCell || !onUpdate) {
+            setEditingCell(null);
+            return;
+        }
+
+        // For notioneditor/blockeditor, if no explicit value provided, just close without saving
+        // These editors handle their own saves via onSave callback (auto-save on blur/debounce)
+        // This fixes the bug where clicking backdrop would save the ORIGINAL value, not current
+        const col = columns.find(c => c.key === editingCell.field);
+        if (newValue === undefined && (col?.type === 'notioneditor' || col?.type === 'blockeditor')) {
             setEditingCell(null);
             return;
         }
@@ -6647,12 +6668,11 @@ export function DataTable<T>({
             {/* Fullscreen Rich Text Editor Modal */}
             {fullscreenEdit && createPortal(
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Content</h2>
-                            {fullscreenEdit.type === 'blockeditor' ? (
-                                // BlockEditor needs Save/Cancel since it's not collaborative
+                    {fullscreenEdit.type === 'blockeditor' ? (
+                        // BlockEditor with custom header (needs Save/Cancel)
+                        <div className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Content</h2>
                                 <div className="flex items-center gap-2">
                                     <button
                                         className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
@@ -6676,19 +6696,8 @@ export function DataTable<T>({
                                         Save
                                     </button>
                                 </div>
-                            ) : (
-                                // NotionEditor auto-saves via Tiptap Cloud collaboration
-                                <button
-                                    className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                                    onClick={() => setFullscreenEdit(null)}
-                                >
-                                    Done
-                                </button>
-                            )}
-                        </div>
-                        {/* Editor */}
-                        <div className="flex-1 overflow-auto p-6 pl-16">
-                            {fullscreenEdit.type === 'blockeditor' ? (
+                            </div>
+                            <div className="flex-1 overflow-auto p-6">
                                 <BlockEditor
                                     content={fullscreenEdit.value}
                                     onChange={(html) => setFullscreenEdit(prev => prev ? { ...prev, value: html } : null)}
@@ -6697,26 +6706,38 @@ export function DataTable<T>({
                                     className="h-full"
                                     autoFocus
                                 />
-                            ) : (
-                                <NotionEditorCell
-                                    roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
-                                    roomPrefix="admachin"
-                                    placeholder="Type '/' for commands..."
-                                    className="h-full"
-                                    initialContent={fullscreenEdit.value}
-                                    onSave={async (html) => {
-                                        if (onUpdate && fullscreenEdit) {
-                                            try {
-                                                await onUpdate(fullscreenEdit.id, fullscreenEdit.field, html);
-                                            } catch (error) {
-                                                console.error('Failed to save notion content:', error);
-                                            }
-                                        }
-                                    }}
-                                />
-                            )}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        // NotionEditor - clean layout matching Tiptap template (editor has its own header)
+                        <div className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl overflow-hidden">
+                            {/* Close button - positioned to not interfere with editor header */}
+                            <button
+                                className="absolute top-3 left-4 z-10 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                                onClick={() => setFullscreenEdit(null)}
+                                title="Close (Esc)"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                            {/* NotionEditor fills the entire modal - it has its own header with undo/redo, theme, avatar */}
+                            <NotionEditorCell
+                                roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
+                                roomPrefix="admachin"
+                                placeholder="Type '/' for commands..."
+                                className="h-full"
+                                initialContent={fullscreenEdit.value}
+                                onSave={async (html) => {
+                                    if (onUpdate && fullscreenEdit) {
+                                        try {
+                                            await onUpdate(fullscreenEdit.id, fullscreenEdit.field, html);
+                                        } catch (error) {
+                                            console.error('Failed to save notion content:', error);
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                    )}
                 </div>,
                 document.body
             )}

@@ -68,23 +68,20 @@
     @apply border-b border-r border-gray-100 px-0 py-0 bg-white relative hover:bg-blue-50/30 transition-colors;
     display: table-cell;
     vertical-align: top;
-    /* Default single-line height - can be overridden by wrapLines inline styles */
-    height: 24px;
-    max-height: 24px;
+    /* Height to fit padding (16px) + text line-height (~20px for 13px font with descenders) */
+    height: 36px;
+    max-height: 36px;
     overflow: hidden;
   }
 
-  /* Force richtext column content to clip to single line */
-  .data-grid-td > div {
-    max-height: 24px;
-    overflow: hidden;
-  }
+  /* Truncation is handled by wrapLines settings on individual columns (truncate, line-clamp-2, etc.) */
+  /* No longer forcing max-height on inner divs to avoid double-clipping */
 
   /* Optimized row rendering - browser can skip off-screen rows */
   /* Default single-line row height - wrapLines setting will override via inline style */
   .data-grid-row {
     content-visibility: auto;
-    contain-intrinsic-size: auto 24px;
+    contain-intrinsic-size: auto 36px;
   }
 
   /* Skeleton shimmer animation */
