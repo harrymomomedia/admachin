@@ -2361,8 +2361,7 @@ function SortableRow<T>({
                                             }}
                                         >
                                             <NotionEditorCellDisplay
-                                                roomId={`${viewId || 'default'}-${getRowId(row)}-${col.key}`}
-                                                roomPrefix="admachin"
+                                                content={String(col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? ''))}
                                             />
                                         </div>
                                         {/* Expand button */}
@@ -6634,8 +6633,7 @@ export function DataTable<T>({
                                     />
                                 ) : viewingCell.type === 'notioneditor' ? (
                                     <NotionEditorCellDisplay
-                                        roomId={`${viewId || 'default'}-${viewingCell.id}-${viewingCell.field}`}
-                                        roomPrefix="admachin"
+                                        content={viewingCell.value}
                                     />
                                 ) : (
                                     viewingCell.value || '-'
@@ -6650,15 +6648,15 @@ export function DataTable<T>({
             {/* Fullscreen Rich Text Editor Modal */}
             {fullscreenEdit && createPortal(
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
+                    <div className="bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl w-[90vw] h-[90vh] max-w-4xl flex flex-col">
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-                            <h2 className="text-lg font-semibold text-gray-900">Edit Content</h2>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Content</h2>
                             {fullscreenEdit.type === 'blockeditor' ? (
                                 // BlockEditor needs Save/Cancel since it's not collaborative
                                 <div className="flex items-center gap-2">
                                     <button
-                                        className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                                         onClick={() => setFullscreenEdit(null)}
                                     >
                                         Cancel
@@ -6682,7 +6680,7 @@ export function DataTable<T>({
                             ) : (
                                 // NotionEditor auto-saves via Tiptap Cloud collaboration
                                 <button
-                                    className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                                     onClick={() => setFullscreenEdit(null)}
                                 >
                                     Done
@@ -6706,6 +6704,16 @@ export function DataTable<T>({
                                     roomPrefix="admachin"
                                     placeholder="Type '/' for commands..."
                                     className="h-full"
+                                    initialContent={fullscreenEdit.value}
+                                    onSave={async (html) => {
+                                        if (onUpdate && fullscreenEdit) {
+                                            try {
+                                                await onUpdate(fullscreenEdit.id, fullscreenEdit.field, html);
+                                            } catch (error) {
+                                                console.error('Failed to save notion content:', error);
+                                            }
+                                        }
+                                    }}
                                 />
                             )}
                         </div>

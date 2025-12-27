@@ -1,6 +1,6 @@
 "use client"
 
-import { useContext, useEffect } from "react"
+import { useContext, useEffect, useRef } from "react"
 import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
 import type { Doc as YDoc } from "yjs"
 import type { TiptapCollabProvider } from "@tiptap-pro/provider"
@@ -85,6 +85,10 @@ import { ListNormalizationExtension } from "@/components/tiptap-extension/list-n
 export interface NotionEditorProps {
   room: string
   placeholder?: string
+  /** Initial HTML content from database */
+  initialContent?: string
+  /** Called when content should be saved to database (on blur/change) */
+  onSave?: (html: string) => void
 }
 
 export interface EditorProviderProps {
@@ -92,6 +96,10 @@ export interface EditorProviderProps {
   ydoc: YDoc
   placeholder?: string
   aiToken: string | null
+  /** Initial HTML content from database */
+  initialContent?: string
+  /** Called when content should be saved to database */
+  onSave?: (html: string) => void
 }
 
 /**
@@ -173,9 +181,12 @@ export function EditorContentArea() {
  * Component that creates and provides the editor instance
  */
 export function EditorProvider(props: EditorProviderProps) {
-  const { provider, ydoc, placeholder = "Start writing...", aiToken } = props
+  const { provider, ydoc, placeholder = "Start writing...", aiToken, initialContent, onSave } = props
 
   const { user } = useUser()
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastSavedContent = useRef<string>(initialContent || '')
+  const hasInitialized = useRef(false)
 
   // Build collaboration extensions only when provider is available
   const collabExtensions = provider ? [
@@ -188,10 +199,37 @@ export function EditorProvider(props: EditorProviderProps) {
 
   const editor = useEditor({
     immediatelyRender: false,
+    // Set initial content when NOT using collaboration
+    content: !provider ? initialContent : undefined,
     editorProps: {
       attributes: {
         class: "notion-like-editor",
       },
+    },
+    onBlur: ({ editor }) => {
+      // Save to database on blur
+      if (onSave) {
+        const html = editor.getHTML()
+        if (html !== lastSavedContent.current) {
+          lastSavedContent.current = html
+          onSave(html)
+        }
+      }
+    },
+    onUpdate: ({ editor }) => {
+      // Debounced save on update
+      if (onSave && saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      if (onSave) {
+        saveTimeoutRef.current = setTimeout(() => {
+          const html = editor.getHTML()
+          if (html !== lastSavedContent.current) {
+            lastSavedContent.current = html
+            onSave(html)
+          }
+        }, 2000) // Save 2 seconds after last change
+      }
     },
     extensions: [
       StarterKit.configure({
@@ -281,6 +319,33 @@ export function EditorProvider(props: EditorProviderProps) {
     ],
   })
 
+  // Seed collaboration room with initial content from database
+  useEffect(() => {
+    if (editor && provider && initialContent && !hasInitialized.current) {
+      // Wait for provider to sync, then check if room is empty
+      const checkAndSeed = () => {
+        const content = editor.getHTML()
+        // If room is empty (just a paragraph), seed with database content
+        if (content === '<p></p>' || content === '') {
+          editor.commands.setContent(initialContent)
+          hasInitialized.current = true
+        }
+      }
+      // Small delay to let collaboration sync first
+      const timeout = setTimeout(checkAndSeed, 500)
+      return () => clearTimeout(timeout)
+    }
+  }, [editor, provider, initialContent])
+
+  // Cleanup save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
+
   if (!editor) {
     return <LoadingSpinner />
   }
@@ -315,13 +380,19 @@ export function EditorProvider(props: EditorProviderProps) {
 export function NotionEditor({
   room,
   placeholder = "Start writing...",
+  initialContent,
+  onSave,
 }: NotionEditorProps) {
   return (
     <UserProvider>
       <AppProvider>
         <CollabProvider room={room}>
           <AiProvider>
-            <NotionEditorContent placeholder={placeholder} />
+            <NotionEditorContent
+              placeholder={placeholder}
+              initialContent={initialContent}
+              onSave={onSave}
+            />
           </AiProvider>
         </CollabProvider>
       </AppProvider>
@@ -332,7 +403,15 @@ export function NotionEditor({
 /**
  * Internal component that handles the editor loading state
  */
-export function NotionEditorContent({ placeholder }: { placeholder?: string }) {
+export function NotionEditorContent({
+  placeholder,
+  initialContent,
+  onSave,
+}: {
+  placeholder?: string
+  initialContent?: string
+  onSave?: (html: string) => void
+}) {
   const { provider, ydoc, hasCollab } = useCollab()
   const { aiToken } = useAi()
 
@@ -349,6 +428,8 @@ export function NotionEditorContent({ placeholder }: { placeholder?: string }) {
       ydoc={ydoc}
       placeholder={placeholder}
       aiToken={aiToken}
+      initialContent={initialContent}
+      onSave={onSave}
     />
   )
 }

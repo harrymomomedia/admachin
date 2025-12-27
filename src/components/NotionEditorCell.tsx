@@ -1,8 +1,8 @@
 /**
  * NotionEditorCell - Full Tiptap editor for DataTable cells
  *
- * This wraps the full NotionEditor with collaboration for inline editing.
- * Each cell gets a unique room based on row ID for real-time collaboration.
+ * Uses Tiptap Cloud for collaboration and AI, but ALSO syncs
+ * content back to our database on blur/change.
  */
 
 import { NotionEditor } from './NotionEditor';
@@ -16,17 +16,23 @@ export interface NotionEditorCellProps {
     placeholder?: string;
     /** Additional className */
     className?: string;
+    /** Initial content from database */
+    initialContent?: string;
+    /** Called when content should be saved to database */
+    onSave?: (html: string) => void;
 }
 
 /**
  * Full collaborative editor for DataTable cells
- * Content is stored in Tiptap Cloud and synced in real-time
+ * Content syncs to Tiptap Cloud AND saves to our database
  */
 export function NotionEditorCell({
     roomId,
     roomPrefix = 'admachin',
     placeholder = "Type '/' for commands...",
     className,
+    initialContent,
+    onSave,
 }: NotionEditorCellProps) {
     // Create unique room for this cell
     const room = `${roomPrefix}-${roomId}`;
@@ -36,6 +42,8 @@ export function NotionEditorCell({
             <NotionEditor
                 room={room}
                 placeholder={placeholder}
+                initialContent={initialContent}
+                onSave={onSave}
             />
         </div>
     );
@@ -43,22 +51,31 @@ export function NotionEditorCell({
 
 /**
  * Display-only version for showing content in table cells
- * Shows a preview of the collaborative document
+ * Shows the content from our database
  */
 export function NotionEditorCellDisplay({
-    roomId,
-    roomPrefix = 'admachin',
+    content,
+    onClick,
 }: {
-    roomId: string;
-    roomPrefix?: string;
+    content?: string;
+    onClick?: () => void;
 }) {
-    // For display, we could either:
-    // 1. Connect read-only to the collab room
-    // 2. Show a cached/static version from our database
-    // For now, show a placeholder that links to the full editor
+    if (!content || content === '<p></p>' || content.trim() === '') {
+        return (
+            <div
+                className="text-gray-400 text-sm italic cursor-pointer hover:bg-gray-50 p-2 rounded"
+                onClick={onClick}
+            >
+                Click to edit...
+            </div>
+        );
+    }
+
     return (
-        <div className="text-gray-400 text-sm italic">
-            Click to edit (Collaborative)
-        </div>
+        <div
+            className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 p-2 rounded line-clamp-3"
+            onClick={onClick}
+            dangerouslySetInnerHTML={{ __html: content }}
+        />
     );
 }

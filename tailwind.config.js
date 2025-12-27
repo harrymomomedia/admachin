@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'selector', // Uses .dark class on html element (from Tiptap theme toggle)
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

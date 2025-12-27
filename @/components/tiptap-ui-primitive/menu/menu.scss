@@ -1,5 +1,5 @@
 .tiptap-menu-content {
-  z-index: 50;
+  z-index: 10001; // Must be higher than modal z-index (10000)
   display: flex;
   flex-direction: column;
   height: 100%;
