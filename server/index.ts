@@ -30,6 +30,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+console.log('[Server] All routes registered, including tiptap');
 
 // Middleware
 app.use(cors({
