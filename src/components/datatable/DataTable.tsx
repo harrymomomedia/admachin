@@ -6699,10 +6699,10 @@ export function DataTable<T>({
                     ) : (
                         // NotionEditor - letter-format layout with Tiptap toolbar
                         <div
-                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl h-[90vh] max-w-3xl w-full overflow-hidden pl-12"
+                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl h-[90vh] max-w-3xl w-full overflow-hidden pl-8"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* NotionEditor with toolbar - click outside to close, pl-12 for block controls */}
+                            {/* NotionEditor with toolbar - click outside to close, pl-8 for block controls */}
                             <NotionEditorCell
                                 roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
                                 roomPrefix="admachin"
