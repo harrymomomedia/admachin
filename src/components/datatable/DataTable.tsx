@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { GripVertical, Trash2, Copy, Check, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, LayoutGrid, List, FileText, ArrowUp, ArrowDown, X, ArrowUpDown, Search, Filter, Maximize2, Pencil, Settings, Columns, LayoutList } from 'lucide-react';
 import { SingleSelect, SearchInput } from '../fields';
 import { BlockEditor, BlockEditorDisplay } from '../BlockEditor';
-import { NotionLikeEditorStandalone as NotionEditor, NotionEditorDisplay } from '../NotionEditor';
+import { NotionEditor } from '../NotionEditor';
+import { NotionEditorCell, NotionEditorCellDisplay } from '../NotionEditorCell';
 import {
     DndContext,
     closestCenter,
@@ -1331,6 +1332,8 @@ interface SortableRowProps<T> {
     setFullscreenEdit: React.Dispatch<React.SetStateAction<{ id: string; field: string; value: string; type?: string } | null>>;
     setEditingCell: React.Dispatch<React.SetStateAction<{ id: string; field: string } | null>>;
     getRowId: (row: T) => string;
+    // View ID for collaborative editor rooms
+    viewId?: string;
 }
 
 function SortableRow<T>({
@@ -1374,6 +1377,7 @@ function SortableRow<T>({
     setFullscreenEdit,
     setEditingCell,
     getRowId,
+    viewId,
 }: SortableRowProps<T>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
     const [indicatorRect, setIndicatorRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1774,13 +1778,10 @@ function SortableRow<T>({
                                                             <Maximize2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <NotionEditor
-                                                        content={editingValue || ''}
-                                                        onChange={(json) => onEditChange(json)}
-                                                        onBlur={() => {}}
+                                                    <NotionEditorCell
+                                                        roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
+                                                        roomPrefix="admachin"
                                                         placeholder="Type '/' for commands..."
-                                                        minHeight="150px"
-                                                        autoFocus
                                                     />
                                                 </div>
                                             </>,
@@ -1896,13 +1897,10 @@ function SortableRow<T>({
                                                         </button>
                                                     </div>
                                                     <div className="flex-1 overflow-y-auto overflow-x-auto">
-                                                        <NotionEditor
-                                                            content={editingValue || ''}
-                                                            onChange={(json) => onEditChange(json)}
-                                                            onBlur={() => {}}
+                                                        <NotionEditorCell
+                                                            roomId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
+                                                            roomPrefix="admachin"
                                                             placeholder="Type '/' for commands..."
-                                                            minHeight="150px"
-                                                            autoFocus
                                                             className="px-2 py-2"
                                                         />
                                                     </div>
@@ -2362,12 +2360,10 @@ function SortableRow<T>({
                                                 }
                                             }}
                                         >
-                                            {value && String(value).trim() ? (
-                                                <NotionEditorDisplay
-                                                    content={String(value)}
-                                                    className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_table]:m-0 [&_*]:leading-[1.4]"
-                                                />
-                                            ) : <span className="text-gray-400">-</span>}
+                                            <NotionEditorCellDisplay
+                                                roomId={`${viewId || 'default'}-${getRowId(row)}-${col.key}`}
+                                                roomPrefix="admachin"
+                                            />
                                         </div>
                                         {/* Expand button */}
                                         {col.editable && (
@@ -5744,6 +5740,7 @@ export function DataTable<T>({
                                                                 setFullscreenEdit={setFullscreenEdit}
                                                                 setEditingCell={setEditingCell}
                                                                 getRowId={getRowId}
+                                                                viewId={viewId}
                                                             />
                                                         ))
                                                 )}
@@ -5824,6 +5821,7 @@ export function DataTable<T>({
                                     setFullscreenEdit={setFullscreenEdit}
                                     setEditingCell={setEditingCell}
                                     getRowId={getRowId}
+                                    viewId={viewId}
                                 />
                             ))
                         )}
@@ -6635,9 +6633,9 @@ export function DataTable<T>({
                                         className="prose prose-sm max-w-none"
                                     />
                                 ) : viewingCell.type === 'notioneditor' ? (
-                                    <NotionEditorDisplay
-                                        content={viewingCell.value || '-'}
-                                        className="prose prose-sm max-w-none"
+                                    <NotionEditorCellDisplay
+                                        roomId={`${viewId || 'default'}-${viewingCell.id}-${viewingCell.field}`}
+                                        roomPrefix="admachin"
                                     />
                                 ) : (
                                     viewingCell.value || '-'
@@ -6691,23 +6689,12 @@ export function DataTable<T>({
                                     className="h-full"
                                     autoFocus
                                 />
-                            ) : fullscreenEdit.type === 'notioneditor' ? (
-                                <NotionEditor
-                                    content={fullscreenEdit.value}
-                                    onChange={(json) => setFullscreenEdit(prev => prev ? { ...prev, value: json } : null)}
-                                    placeholder="Type '/' for commands..."
-                                    minHeight="100%"
-                                    className="h-full"
-                                    autoFocus
-                                />
                             ) : (
-                                <NotionEditor
-                                    content={fullscreenEdit.value}
-                                    onChange={(json) => setFullscreenEdit(prev => prev ? { ...prev, value: json } : null)}
+                                <NotionEditorCell
+                                    roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
+                                    roomPrefix="admachin"
                                     placeholder="Type '/' for commands..."
-                                    minHeight="100%"
                                     className="h-full"
-                                    autoFocus
                                 />
                             )}
                         </div>

@@ -3,19 +3,19 @@ import { CellSelection } from "@tiptap/pm/tables"
 import type { JSONContent, Editor } from "@tiptap/react"
 import { isTextSelection, isNodeSelection, posToDOMRect } from "@tiptap/react"
 
-// TipTap Collaboration - Use server API endpoints for JWT generation
+// TipTap Collaboration
 export const TIPTAP_COLLAB_DOC_PREFIX =
-  import.meta.env.VITE_TIPTAP_COLLAB_DOC_PREFIX || "admachin-"
+  import.meta.env.VITE_TIPTAP_COLLAB_DOC_PREFIX || ""
 export const TIPTAP_COLLAB_APP_ID =
-  import.meta.env.VITE_TIPTAP_COLLAB_APP_ID || "0k3drwem"
+  import.meta.env.VITE_TIPTAP_COLLAB_APP_ID || ""
 export const TIPTAP_COLLAB_TOKEN =
   import.meta.env.VITE_TIPTAP_COLLAB_TOKEN || ""
 
 // TipTap AI
-export const TIPTAP_AI_APP_ID = import.meta.env.VITE_TIPTAP_AI_APP_ID || "j9yj3v69"
+export const TIPTAP_AI_APP_ID = import.meta.env.VITE_TIPTAP_AI_APP_ID || ""
 export const TIPTAP_AI_TOKEN = import.meta.env.VITE_TIPTAP_AI_TOKEN || ""
 
-// Always use API endpoints for JWT generation (more secure than hardcoded tokens)
+// Always use our JWT token API endpoints in production
 export const USE_JWT_TOKEN_API_ENDPOINT = true
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -191,11 +191,13 @@ export const getAvatar = (name: string) => {
  */
 export const fetchCollabToken = async () => {
   try {
+    // Use our server-side JWT generation endpoint
     const response = await fetch(`/api/tiptap/collaboration`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({ userId: "user" }), // TODO: pass actual user ID
     })
 
     if (!response.ok) {
@@ -206,13 +208,6 @@ export const fetchCollabToken = async () => {
     return data.token
   } catch (error) {
     console.error("Failed to fetch collaboration token:", error)
-
-    // Fallback to env token if API fails (for development)
-    if (TIPTAP_COLLAB_TOKEN) {
-      console.warn("Using fallback collaboration token from environment")
-      return TIPTAP_COLLAB_TOKEN
-    }
-
     return null
   }
 }
@@ -222,11 +217,13 @@ export const fetchCollabToken = async () => {
  */
 export const fetchAiToken = async () => {
   try {
+    // Use our server-side JWT generation endpoint
     const response = await fetch(`/api/tiptap/ai`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({ userId: "user" }), // TODO: pass actual user ID
     })
 
     if (!response.ok) {
@@ -237,13 +234,6 @@ export const fetchAiToken = async () => {
     return data.token
   } catch (error) {
     console.error("Failed to fetch AI token:", error)
-
-    // Fallback to env token if API fails (for development)
-    if (TIPTAP_AI_TOKEN) {
-      console.warn("Using fallback AI token from environment")
-      return TIPTAP_AI_TOKEN
-    }
-
     return null
   }
 }

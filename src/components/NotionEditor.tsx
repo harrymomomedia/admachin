@@ -10,24 +10,20 @@
  * - Emoji picker and mentions
  * - Tables with resize handles
  * - Image uploads
- * - Comments and threads
  *
- * Required environment variables (from cloud.tiptap.dev):
- * - VITE_TIPTAP_COLLAB_DOC_PREFIX
- * - VITE_TIPTAP_COLLAB_APP_ID
- * - VITE_TIPTAP_COLLAB_TOKEN
- * - VITE_TIPTAP_AI_APP_ID
- * - VITE_TIPTAP_AI_TOKEN
+ * Usage:
+ *   <NotionEditor room="document-id" placeholder="Start writing..." />
+ *
+ * Each document needs a unique room ID for collaboration.
+ * For DataTable cells, use: room={`adcopy-${row.id}`}
  */
 
-// Re-export the full template editor
+// Re-export the full collaborative template editor with all features
 export { NotionEditor } from '../../@/components/tiptap-templates/notion-like/notion-like-editor';
+export type { NotionEditorProps } from '../../@/components/tiptap-templates/notion-like/notion-like-editor';
 
-// Also export the standalone version for offline/non-collaborative use cases
-export {
-  NotionLikeEditorStandalone,
-  NotionLikeEditorDisplay as NotionEditorDisplay,
-  notionLikeContentToHtml as notionContentToHtml,
-  notionLikeContentToPlainText as notionContentToPlainText,
-  htmlToNotionLikeContent as htmlToNotionContent,
-} from '../../@/components/tiptap-templates/notion-like/notion-like-editor-standalone';
+// Re-export contexts for advanced usage
+export { useCollab, CollabProvider } from '../../@/contexts/collab-context';
+export { useAi, AiProvider } from '../../@/contexts/ai-context';
+export { useUser, UserProvider } from '../../@/contexts/user-context';
+export { AppProvider } from '../../@/contexts/app-context';
