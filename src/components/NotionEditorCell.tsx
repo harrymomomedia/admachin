@@ -20,6 +20,8 @@ export interface NotionEditorCellProps {
     initialContent?: string;
     /** Called when content should be saved to database */
     onSave?: (html: string) => void;
+    /** Hide the header bar with undo/redo and theme toggle */
+    hideHeader?: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export function NotionEditorCell({
     className,
     initialContent,
     onSave,
+    hideHeader = false,
 }: NotionEditorCellProps) {
     // Create unique room for this cell
     const room = `${roomPrefix}-${roomId}`;
@@ -44,6 +47,7 @@ export function NotionEditorCell({
                 placeholder={placeholder}
                 initialContent={initialContent}
                 onSave={onSave}
+                hideHeader={hideHeader}
             />
         </div>
     );

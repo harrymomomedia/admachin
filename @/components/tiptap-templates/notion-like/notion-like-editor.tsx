@@ -89,6 +89,8 @@ export interface NotionEditorProps {
   initialContent?: string
   /** Called when content should be saved to database (on blur/change) */
   onSave?: (html: string) => void
+  /** Hide the header bar with undo/redo and theme toggle */
+  hideHeader?: boolean
 }
 
 export interface EditorProviderProps {
@@ -100,6 +102,8 @@ export interface EditorProviderProps {
   initialContent?: string
   /** Called when content should be saved to database */
   onSave?: (html: string) => void
+  /** Hide the header bar with undo/redo and theme toggle */
+  hideHeader?: boolean
 }
 
 /**
@@ -181,7 +185,7 @@ export function EditorContentArea() {
  * Component that creates and provides the editor instance
  */
 export function EditorProvider(props: EditorProviderProps) {
-  const { provider, ydoc, placeholder = "Start writing...", aiToken, initialContent, onSave } = props
+  const { provider, ydoc, placeholder = "Start writing...", aiToken, initialContent, onSave, hideHeader = false } = props
 
   const { user } = useUser()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -353,7 +357,7 @@ export function EditorProvider(props: EditorProviderProps) {
   return (
     <div className="notion-like-editor-wrapper">
       <EditorContext.Provider value={{ editor }}>
-        <NotionEditorHeader />
+        {!hideHeader && <NotionEditorHeader />}
         <EditorContentArea />
 
         <TableExtendRowColumnButtons />
@@ -382,6 +386,7 @@ export function NotionEditor({
   placeholder = "Start writing...",
   initialContent,
   onSave,
+  hideHeader = false,
 }: NotionEditorProps) {
   return (
     <UserProvider>
@@ -392,6 +397,7 @@ export function NotionEditor({
               placeholder={placeholder}
               initialContent={initialContent}
               onSave={onSave}
+              hideHeader={hideHeader}
             />
           </AiProvider>
         </CollabProvider>
@@ -407,10 +413,12 @@ export function NotionEditorContent({
   placeholder,
   initialContent,
   onSave,
+  hideHeader = false,
 }: {
   placeholder?: string
   initialContent?: string
   onSave?: (html: string) => void
+  hideHeader?: boolean
 }) {
   const { provider, ydoc, hasCollab } = useCollab()
   const { aiToken } = useAi()
@@ -430,6 +438,7 @@ export function NotionEditorContent({
       aiToken={aiToken}
       initialContent={initialContent}
       onSave={onSave}
+      hideHeader={hideHeader}
     />
   )
 }

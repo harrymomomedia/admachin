@@ -1820,24 +1820,6 @@ function SortableRow<T>({
                                                         }
                                                     }}
                                                 >
-                                                    {/* Header with expand button */}
-                                                    <div className="flex items-center justify-end px-2 py-1 border-b border-gray-200 flex-shrink-0">
-                                                        <button
-                                                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-                                                            onClick={() => {
-                                                                setFullscreenEdit({
-                                                                    id: editingCell.id,
-                                                                    field: editingCell.field,
-                                                                    value: editingValue,
-                                                                    type: 'blockeditor'
-                                                                });
-                                                                setEditingCell(null);
-                                                            }}
-                                                            title="Open fullscreen editor"
-                                                        >
-                                                            <Maximize2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
                                                     <div className="flex-1 overflow-y-auto overflow-x-auto">
                                                         <BlockEditor
                                                             content={editingValue || ''}
