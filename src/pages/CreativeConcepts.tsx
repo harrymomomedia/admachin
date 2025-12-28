@@ -71,7 +71,7 @@ export function CreativeConcepts() {
         { key: 'example', header: 'Example', editable: true, type: 'longtext', width: 300 },
         createProjectColumn<CreativeConcept>({ projects, subprojects, projectColorMap }),
         createSubprojectColumn<CreativeConcept>({ projects, subprojects, subprojectColorMap }),
-        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'tiptapeditor', width: 300, minWidth: 200 },
+        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'blocknoteeditor', width: 300, minWidth: 200 },
         createUserColumn<CreativeConcept>(users, { key: 'created_by', editable: false }),
     ];
 

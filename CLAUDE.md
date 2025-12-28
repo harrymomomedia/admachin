@@ -89,17 +89,7 @@ npm run deploy       # Save + deploy to Railway
 
 Tailwind's preflight CSS resets default browser styles, which can break third-party libraries that depend on them.
 
-**Known Issue - BlockNote Editor:**
-
-1. **Margin on `<p>` elements**:
-   - **Problem**: Tailwind adds `margin-top: 1.25rem` to all `<p>` elements
-   - **Impact**: BlockNote uses `<p class="bn-inline-content">` for text. This margin pushes text below icons
-   - **Solution**: `.bn-inline-content { margin: 0 !important; }`
-
-2. **Code block text color**:
-   - **Problem**: BlockNote code blocks have dark background but default text color is dark
-   - **Impact**: Black text on black background = illegible
-   - **Solution**: `[data-content-type="codeBlock"] pre, code { color: #fff !important; }`
+**BlockNote Editor**: See [docs/BLOCKNOTE.md](docs/BLOCKNOTE.md) for all known issues and fixes.
 
 **When integrating new libraries**, check if Tailwind preflight is breaking their styles. Common issues:
 - Margins/padding on semantic elements (`<p>`, `<h1>`, `<ul>`, etc.)

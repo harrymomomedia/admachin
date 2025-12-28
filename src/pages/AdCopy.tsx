@@ -144,10 +144,6 @@ export function AdCopy() {
             updates.platform = value ? String(value) : null;
         } else if (field === 'user_id') {
             updates.user_id = value ? String(value) : null;
-        } else if (field === 'ad_page') {
-            updates.ad_page = value ? String(value) : null;
-        } else if (field === 'notion') {
-            updates.notion = value ? String(value) : null;
         } else if (field === 'blocknote') {
             updates.blocknote = value ? String(value) : null;
         }
@@ -269,22 +265,6 @@ export function AdCopy() {
             minWidth: 150,
             editable: true,
             type: 'longtext',
-        },
-        {
-            key: 'ad_page',
-            header: 'editorjs',
-            width: 300,
-            minWidth: 150,
-            editable: true,
-            type: 'editorjseditor',
-        },
-        {
-            key: 'notion',
-            header: 'tiptap',
-            width: 350,
-            minWidth: 200,
-            editable: true,
-            type: 'tiptapeditor',
         },
         {
             key: 'blocknote',

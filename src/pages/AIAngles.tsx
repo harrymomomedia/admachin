@@ -95,7 +95,7 @@ export function AIAngles() {
         { key: 'content', header: 'Content', editable: true, type: 'longtext', width: 500 },
         createProjectColumn<AIAngle>({ projects, subprojects, projectColorMap }),
         createSubprojectColumn<AIAngle>({ projects, subprojects, subprojectColorMap }),
-        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'tiptapeditor', width: 300, minWidth: 200 },
+        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'blocknoteeditor', width: 300, minWidth: 200 },
         {
             key: 'prompts',
             header: 'Prompts',

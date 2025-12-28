@@ -19,25 +19,23 @@
     margin: 0 !important;
   }
 
+  // === CRITICAL: Side menu alignment fix ===
+  // BlockNote's side menu relies on default layout behavior
+  // Tailwind preflight changes display/alignment defaults
+  // Force flex centering for consistent button alignment
+  // (Same pattern as the .bn-inline-content margin fix above)
+  .bn-side-menu {
+    display: flex !important;
+    align-items: center !important;
+    flex-direction: row !important;
+    gap: 0 !important;
+  }
+
   // Fix image caption spacing - Tailwind adds margin to caption <p> elements
   .bn-file-caption,
   .bn-image-block-content-wrapper p,
   [data-content-type="image"] p {
     margin: 0 !important;
-  }
-
-  // === Heading size fix ===
-  // BlockNote uses CSS custom property --level for heading sizes
-  // Default: H1=3em, H2=2em, H3=1.3em (very large!)
-  // Override to match more reasonable sizes like the BlockNote demo
-  [data-content-type="heading"] {
-    --level: 1.875em !important; // H1: 30px at 16px base (was 3em/48px)
-  }
-  [data-content-type="heading"][data-level="2"] {
-    --level: 1.5em !important; // H2: 24px (was 2em/32px)
-  }
-  [data-content-type="heading"][data-level="3"] {
-    --level: 1.25em !important; // H3: 20px (was 1.3em/21px)
   }
 
   // === Code block text color fix ===
@@ -57,24 +55,12 @@
   }
 }
 
-// Fullscreen editor variant - matches TiptapEditor layout
+// Fullscreen editor variant - modal container constrains height via h-[80vh]
 .blocknote-editor-fullscreen {
-  height: 100%;
   overflow-y: auto;
-
-  // The cell wrapper fills the container
-  > div {
-    height: 100%;
-  }
+  // No height: 100% here - let DataTable's h-[80vh] control the size
 
   .blocknote-editor-wrapper {
-    height: 100%;
-    min-height: 100%;
-    padding: 24px 0;
-  }
-
-  // Editor content fills available space
-  .bn-editor {
-    min-height: calc(100% - 48px); // Account for padding
+    padding: 16px 0; // Small padding, text close to top
   }
 }

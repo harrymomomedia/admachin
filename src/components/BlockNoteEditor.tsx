@@ -71,7 +71,7 @@ export function BlockNoteEditor({
     darkMode = false,
     hideMenu = false,
 }: BlockNoteEditorProps) {
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastSavedContent = useRef<string>(initialContent);
     const isInitialized = useRef(false);
 

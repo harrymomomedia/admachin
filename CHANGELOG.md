@@ -6,6 +6,19 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-28: BlockNote Fullscreen Modal Height Fix
+
+**Fixed:**
+- BlockNote fullscreen modal was filling entire viewport height with no visible backdrop space
+- Modal now properly constrains to 80vh with visible dark backdrop at top/bottom (matches Tiptap fullscreen style)
+
+**Technical:**
+- Removed `height: 100%` from `.blocknote-editor-fullscreen` in blocknote-editor.scss
+- SCSS `height: 100%` was overriding Tailwind's `h-[80vh]` set on the modal container in DataTable.tsx
+- Modal container's `h-[80vh]` now properly controls the height
+
+---
+
 ### 2025-12-28: NotionEditor Content Duplication Fix, BlockNote Save Fix & Native Styles
 
 **Fixed:**

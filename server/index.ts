@@ -20,7 +20,6 @@ import aiRoutes from './routes/ai.js';
 import presetsRoutes from './routes/presets.js';
 import authRoutes from './routes/auth.js';
 import teamRoutes from './routes/team.js';
-import tiptapRoutes from './routes/tiptap.js';
 
 // Import cron job
 import { syncVideoTasks } from './routes/video.js';
@@ -30,7 +29,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-console.log('[Server] All routes registered, including tiptap');
 
 // Middleware
 app.use(cors({
@@ -66,7 +64,6 @@ app.use('/api/ai-generate', aiRoutes); // Legacy endpoint
 app.use('/api/presets', presetsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/team', teamRoutes);
-app.use('/api/tiptap', tiptapRoutes);
 
 // Serve static frontend in production
 if (process.env.NODE_ENV === 'production') {

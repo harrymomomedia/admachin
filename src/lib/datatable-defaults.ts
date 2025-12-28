@@ -392,12 +392,12 @@ export function createCampaignParamColumns(
         { key: 'custom_prompt', header: 'Custom Prompt', editable: true, type: 'longtext', width: 150, minWidth: 100 },
     );
 
-    // Rich Text column (Tiptap NotionEditor)
+    // Rich Text column (BlockNote Editor)
     columns.push({
         key: 'rich_text',
         header: 'Rich Text',
         editable: true,
-        type: 'tiptapeditor',
+        type: 'blocknoteeditor',
         width: 300,
         minWidth: 200,
     });
