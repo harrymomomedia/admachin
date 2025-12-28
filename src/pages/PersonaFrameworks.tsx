@@ -83,6 +83,7 @@ export function PersonaFrameworks() {
         { key: 'content', header: 'Persona Framework', editable: true, type: 'longtext', width: 400 },
         createProjectColumn<PersonaFramework>({ projects, subprojects, projectColorMap }),
         createSubprojectColumn<PersonaFramework>({ projects, subprojects, subprojectColorMap }),
+        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'tiptapeditor', width: 300, minWidth: 200 },
         createUserColumn<PersonaFramework>(users, { key: 'created_by', editable: false }),
         { key: 'created_at', header: 'Created', type: 'date', width: 120 },
     ];

@@ -380,12 +380,13 @@ export const DragContextMenu: React.FC<DragContextMenuProps> = ({
           const nodeHeight = rects.reference.height
           const dragHandleHeight = rects.floating.height
 
+          // Always center the drag handle vertically with the node
+          // This ensures proper alignment even for elements with large margins
           const crossAxis = nodeHeight / 2 - dragHandleHeight / 2
 
           return {
             mainAxis: mainAxisOffset,
-            // if height is more than 40px, then it's likely a block node
-            crossAxis: nodeHeight > 40 ? 0 : crossAxis,
+            crossAxis: crossAxis,
           }
         }),
       ],

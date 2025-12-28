@@ -18,7 +18,6 @@ import { getCurrentUser } from '../lib/supabase';
 import { DataTable, type ColumnDef } from '../components/datatable';
 import {
     generateColorMap,
-    createDragHandleColumn,
     createProjectColumn,
     createSubprojectColumn,
     createReorderHandler,
@@ -149,6 +148,8 @@ export function AdCopy() {
             updates.ad_page = value ? String(value) : null;
         } else if (field === 'notion') {
             updates.notion = value ? String(value) : null;
+        } else if (field === 'blocknote') {
+            updates.blocknote = value ? String(value) : null;
         }
 
         // Check if we have any updates
@@ -251,9 +252,8 @@ export function AdCopy() {
     const subprojectColorMap = useMemo(() => generateColorMap(subprojects), [subprojects]);
 
     // Column Definitions - memoized to prevent re-renders on every state change
+    // Note: Drag handle column is now built-in when sortable=true
     const columns: ColumnDef<AdCopy>[] = useMemo(() => [
-        // Drag handle column - first column for row reordering
-        createDragHandleColumn<AdCopy>(),
         {
             key: 'row_number',
             header: 'ID',
@@ -285,6 +285,14 @@ export function AdCopy() {
             minWidth: 200,
             editable: true,
             type: 'tiptapeditor',
+        },
+        {
+            key: 'blocknote',
+            header: 'BlockNote',
+            width: 350,
+            minWidth: 200,
+            editable: true,
+            type: 'blocknoteeditor',
         },
         {
             key: 'type',

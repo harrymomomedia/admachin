@@ -12,6 +12,7 @@ import {
   type Editor,
   type NodeWithPos,
 } from "@tiptap/react"
+import { supabase } from "../../src/lib/supabase"
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -353,6 +354,7 @@ export function selectionWithinConvertibleTypes(
 
 /**
  * Handles image upload with progress tracking and abort capability
+ * Uploads to Supabase Storage and returns the public URL
  * @param file The file to upload
  * @param onProgress Optional callback for tracking upload progress
  * @param abortSignal Optional AbortSignal for cancelling the upload
@@ -374,17 +376,56 @@ export const handleImageUpload = async (
     )
   }
 
-  // For demo/testing: Simulate upload progress. In production, replace the following code
-  // with your own upload implementation.
-  for (let progress = 0; progress <= 100; progress += 10) {
+  // Check abort signal
+  if (abortSignal?.aborted) {
+    throw new Error("Upload cancelled")
+  }
+
+  // Generate unique filename
+  const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+  const filePath = `tiptap-images/${fileName}`
+
+  // Report initial progress
+  onProgress?.({ progress: 10 })
+
+  try {
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('creatives')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+      })
+
+    if (abortSignal?.aborted) {
+      // Clean up uploaded file if cancelled
+      await supabase.storage.from('creatives').remove([filePath])
+      throw new Error("Upload cancelled")
+    }
+
+    if (error) {
+      console.error('[Tiptap] Image upload error:', error)
+      throw new Error(`Upload failed: ${error.message}`)
+    }
+
+    onProgress?.({ progress: 80 })
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('creatives')
+      .getPublicUrl(data.path)
+
+    onProgress?.({ progress: 100 })
+
+    return urlData.publicUrl
+  } catch (error) {
     if (abortSignal?.aborted) {
       throw new Error("Upload cancelled")
     }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    onProgress?.({ progress })
+    console.error('[Tiptap] Image upload failed:', error)
+    throw error
   }
-
-  return "/images/tiptap-ui-placeholder-image.jpg"
 }
 
 type ProtocolOptions = {

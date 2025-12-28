@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { Sidebar } from "../components/Sidebar";
 import { Breadcrumb } from "../components/Breadcrumb";
@@ -7,6 +7,7 @@ import { Breadcrumb } from "../components/Breadcrumb";
 const SIDEBAR_COLLAPSED_KEY = 'admachin_sidebar_collapsed';
 
 export function DashboardLayout() {
+    const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -53,10 +54,12 @@ export function DashboardLayout() {
                     <span className="text-sm font-semibold text-foreground">AdMachin</span>
                 </div>
 
-                {/* Breadcrumb */}
-                <div className="px-3 sm:px-6 py-2 border-b border-border bg-card flex-shrink-0">
-                    <Breadcrumb />
-                </div>
+                {/* Breadcrumb - only show if not on home page */}
+                {location.pathname !== '/' && (
+                    <div className="px-3 sm:px-6 py-2 border-b border-border bg-card flex-shrink-0">
+                        <Breadcrumb />
+                    </div>
+                )}
 
                 <div className="flex-1 flex flex-col overflow-y-auto">
                     <Outlet />

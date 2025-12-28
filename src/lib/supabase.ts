@@ -54,5 +54,40 @@ export async function isAuthenticated(): Promise<boolean> {
     return user !== null;
 }
 
+// Upload file to Supabase storage
+// Returns the public URL of the uploaded file
+export async function uploadFileToStorage(
+    file: File,
+    bucket: string = 'editor-uploads',
+    folder?: string
+): Promise<string> {
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const ext = file.name.split('.').pop() || 'png';
+    const fileName = `${timestamp}-${randomId}.${ext}`;
+    const filePath = folder ? `${folder}/${fileName}` : fileName;
+
+    // Upload to storage
+    const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+        });
+
+    if (error) {
+        console.error('[Supabase Storage] Upload error:', error);
+        throw new Error(`Failed to upload file: ${error.message}`);
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(data.path);
+
+    return publicUrl;
+}
+
 // Export types
 export type { Database };

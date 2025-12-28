@@ -6,6 +6,36 @@ All notable changes to AdMachin are documented here.
 
 ## [Unreleased]
 
+### 2025-12-28: NotionEditor Content Duplication Fix, BlockNote Save Fix & Native Styles
+
+**Fixed:**
+- NotionEditor inline popup content duplication bug - content was multiplying each time editor opened
+- Editor now loads instantly from database instead of waiting for Tiptap Cloud collaboration
+- Removed collaboration-related delays that slowed editor loading
+- **BlockNote editor losing content on quick close** - changes made just before closing popup now save reliably
+- **BlockNote now uses native styles** - global `.ProseMirror` CSS was overriding BlockNote's native styling
+
+**Changed:**
+- Disabled Tiptap Cloud collaboration for inline DataTable editors (each cell has unique room, collaboration not useful)
+- Database is now sole source of truth for editor content (collaboration was syncing cached cloud content causing duplication)
+- Editor now uses `useCollaboration = false` to prevent conflict between cloud sync and database content
+- BlockNoteEditor onChange now fires immediately (no debounce) to keep editingValue always current
+- handleCellCommit now saves blocknoteeditor content on close (previously skipped assuming auto-save would handle it)
+- Scoped all `.ProseMirror` styles in index.css to `.notion-like-editor.ProseMirror` to avoid affecting BlockNote
+- BlockNote inline popup now has reduced padding (24px vs 54px native) for better popup usability
+
+**Technical:**
+- EditorProvider in notion-like-editor.tsx now sets content directly in useEditor() instead of delayed useEffect
+- Removed hasInitialized.current ref and the 100ms setTimeout that was causing race conditions
+- NotionEditorContent no longer waits for `hasCollab && !provider` check
+- Undo/redo now properly enabled since collaboration is disabled
+- BlockNoteEditor.tsx: onChange fires immediately, onSave is debounced separately
+- DataTable.tsx handleCellCommit: removed early return for blocknoteeditor type
+- index.css: All `.ProseMirror` selectors now scoped to `.notion-like-editor.ProseMirror`
+- blocknote-editor.scss: Added `.bn-editor { padding-inline: 24px }` for inline mode
+
+---
+
 ### 2025-12-27: Table Support, Richtext Truncation & Editor.js Typography
 
 **Added:**

@@ -96,6 +96,7 @@ export function AIAds() {
         { key: 'ad_type', header: 'Type', editable: true, width: 150 },
         createProjectColumn<AIGeneratedAd>({ projects, subprojects, projectColorMap }),
         createSubprojectColumn<AIGeneratedAd>({ projects, subprojects, subprojectColorMap }),
+        { key: 'rich_text', header: 'Rich Text', editable: true, type: 'tiptapeditor', width: 300, minWidth: 200 },
         {
             key: 'prompts',
             header: 'Prompts',

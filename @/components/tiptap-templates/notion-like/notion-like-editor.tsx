@@ -190,10 +190,14 @@ export function EditorProvider(props: EditorProviderProps) {
   const { user } = useUser()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContent = useRef<string>(initialContent || '')
-  const hasInitialized = useRef(false)
 
-  // Build collaboration extensions only when provider is available
-  const collabExtensions = provider ? [
+  // For inline editors (DataTable cells), we don't use collaboration
+  // Database is always source of truth - collaboration was causing content duplication
+  // by syncing cached cloud content THEN adding database content on top
+  const useCollaboration = false // Disabled - each cell has unique room, no real-time collab needed
+
+  // Build collaboration extensions only when provider is available AND collaboration is enabled
+  const collabExtensions = (provider && useCollaboration) ? [
     Collaboration.configure({ document: ydoc }),
     CollaborationCaret.configure({
       provider,
@@ -203,8 +207,8 @@ export function EditorProvider(props: EditorProviderProps) {
 
   const editor = useEditor({
     immediatelyRender: false,
-    // Set initial content when NOT using collaboration
-    content: !provider ? initialContent : undefined,
+    // Always set initial content from database (source of truth)
+    content: initialContent || '',
     editorProps: {
       attributes: {
         class: "notion-like-editor",
@@ -237,7 +241,7 @@ export function EditorProvider(props: EditorProviderProps) {
     },
     extensions: [
       StarterKit.configure({
-        undoRedo: provider ? false : {}, // Enable undo/redo when not using collaboration
+        undoRedo: useCollaboration ? false : {}, // Enable undo/redo when not using collaboration
         horizontalRule: false,
         dropcursor: {
           width: 2,
@@ -323,23 +327,8 @@ export function EditorProvider(props: EditorProviderProps) {
     ],
   })
 
-  // Seed collaboration room with initial content from database
-  useEffect(() => {
-    if (editor && provider && initialContent && !hasInitialized.current) {
-      // Wait for provider to sync, then check if room is empty
-      const checkAndSeed = () => {
-        const content = editor.getHTML()
-        // If room is empty (just a paragraph), seed with database content
-        if (content === '<p></p>' || content === '') {
-          editor.commands.setContent(initialContent)
-          hasInitialized.current = true
-        }
-      }
-      // Small delay to let collaboration sync first
-      const timeout = setTimeout(checkAndSeed, 500)
-      return () => clearTimeout(timeout)
-    }
-  }, [editor, provider, initialContent])
+  // Content is now set directly in useEditor above
+  // No need for delayed initialization - database content is source of truth
 
   // Cleanup save timeout on unmount
   useEffect(() => {
@@ -420,16 +409,12 @@ export function NotionEditorContent({
   onSave?: (html: string) => void
   hideHeader?: boolean
 }) {
-  const { provider, ydoc, hasCollab } = useCollab()
+  const { provider, ydoc } = useCollab()
   const { aiToken } = useAi()
 
-  // Only wait for provider if collaboration is enabled and we're still trying
-  if (hasCollab && !provider) {
-    return <LoadingSpinner />
-  }
-
+  // Don't wait for collaboration - load immediately with database content
+  // Collaboration is disabled for inline editors to prevent content duplication
   // AI token is optional - editor works without it
-  // Collaboration is optional - if provider is null, editor works locally
   return (
     <EditorProvider
       provider={provider}

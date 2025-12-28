@@ -222,18 +222,14 @@ export function createIdColumn<T>(
 }
 
 /**
- * Create drag handle column for row reordering
- * This column provides a dedicated drag handle instead of making the entire row draggable.
- * Should be placed as the first column in the columns array.
+ * @deprecated The drag handle column is now built-in to DataTable when sortable=true.
+ * This function is no longer needed - the drag handle column is automatically added
+ * as the first column and cannot be reordered.
  *
- * @example
- * const columns = [
- *   createDragHandleColumn(),
- *   createIdColumn(),
- *   // ... other columns
- * ];
+ * Simply set sortable={true} on DataTable and the drag handle will appear automatically.
  */
 export function createDragHandleColumn<T>(): ColumnDef<T> {
+    console.warn('createDragHandleColumn() is deprecated. Drag handle is now built-in when sortable=true.');
     return {
         key: '_draghandle',
         header: '',
@@ -395,6 +391,16 @@ export function createCampaignParamColumns(
         { key: 'swipe_files', header: 'Swipe File/Winner Ad', editable: true, type: 'longtext', width: 150, minWidth: 100 },
         { key: 'custom_prompt', header: 'Custom Prompt', editable: true, type: 'longtext', width: 150, minWidth: 100 },
     );
+
+    // Rich Text column (Tiptap NotionEditor)
+    columns.push({
+        key: 'rich_text',
+        header: 'Rich Text',
+        editable: true,
+        type: 'tiptapeditor',
+        width: 300,
+        minWidth: 200,
+    });
 
     // Meta columns
     columns.push(

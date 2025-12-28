@@ -5,6 +5,8 @@ import { SingleSelect, SearchInput } from '../fields';
 import { EditorjsEditor, EditorjsEditorDisplay } from '../EditorjsEditor';
 import { TiptapEditor } from '../TiptapEditor';
 import { TiptapEditorCell, TiptapEditorCellDisplay } from '../TiptapEditorCell';
+import { BlockNoteEditor, BlockNoteEditorDisplay } from '../BlockNoteEditor';
+import { BlockNoteEditorCell, BlockNoteEditorCellDisplay } from '../BlockNoteEditorCell';
 import {
     DndContext,
     closestCenter,
@@ -1308,6 +1310,7 @@ interface SortableRowProps<T> {
     onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => void;
     isDragging: boolean;
     isDragOver: boolean;
+    hasActiveRowDrag: boolean; // True if any row in the table is being dragged
     // Multi-select
     selectable?: boolean;
     isSelected?: boolean;
@@ -1366,6 +1369,8 @@ function SortableRow<T>({
     onRowDragLeave,
     onRowDrop,
     isDragging,
+    isDragOver,
+    hasActiveRowDrag,
     selectable,
     isSelected,
     onToggleSelect,
@@ -1479,6 +1484,11 @@ function SortableRow<T>({
                 onDragEnd={onRowDragEnd}
                 onDragEnter={onRowDragEnter}
                 onDragOver={(e) => {
+                    // Only respond if there's an active row drag from this table
+                    // This prevents interference from other drag sources (like BlockNote editor)
+                    if (!hasActiveRowDrag) {
+                        return;
+                    }
                     onRowDragOver(e);
                     // Update indicator position based on cursor position within row
                     if (rowRef.current) {
@@ -1502,6 +1512,21 @@ function SortableRow<T>({
                     setDropPosition('after');
                 }}
             >
+                {/* Built-in Drag Handle column - fixed position, triggers row drag */}
+                {sortable && (
+                    <td className="data-grid-td w-8 px-1" style={{ minWidth: 32, maxWidth: 32 }}>
+                        <div
+                            className="h-[34px] flex items-center justify-center cursor-grab active:cursor-grabbing"
+                            draggable={true}
+                            onDragStart={(e) => {
+                                // Trigger row drag from this cell
+                                onRowDragStart(e as unknown as React.DragEvent<HTMLTableRowElement>);
+                            }}
+                        >
+                            <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
+                        </div>
+                    </td>
+                )}
                 {/* Selection Checkbox (multi-select) */}
                 {selectable && (
                     <td className="data-grid-td w-10 px-2">
@@ -1883,6 +1908,62 @@ function SortableRow<T>({
                                             document.body
                                         )}
                                     </>
+                                ) : col.type === 'blocknoteeditor' ? (
+                                    <>
+                                        {/* BlockNote editor via portal */}
+                                        {createPortal(
+                                            <>
+                                                {/* Backdrop - blocks all interactions including drag events */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onCellCommit();
+                                                    }}
+                                                    // Block drag events from reaching table rows behind
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDragEnter={(e) => e.preventDefault()}
+                                                    onDrop={(e) => e.preventDefault()}
+                                                />
+                                                {/* BlockNote Editor popup - resizable */}
+                                                <div
+                                                    className="fixed z-[9999] bg-white shadow-xl border border-gray-300 rounded-lg flex flex-col resize"
+                                                    style={{
+                                                        top: dropdownPosition.top,
+                                                        left: Math.max(8, Math.min(dropdownPosition.left, window.innerWidth - Math.max(400, dropdownPosition.width) - 8)),
+                                                        width: Math.max(400, dropdownPosition.width),
+                                                        height: Math.min(400, window.innerHeight - dropdownPosition.top - 50),
+                                                        minWidth: '400px',
+                                                        minHeight: '200px',
+                                                        maxWidth: '90vw',
+                                                        maxHeight: window.innerHeight - dropdownPosition.top - 20,
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            onEditCancel();
+                                                        }
+                                                    }}
+                                                >
+                                                    <div className="flex-1 overflow-y-auto overflow-x-visible blocknote-editor-inline">
+                                                        <BlockNoteEditorCell
+                                                            cellId={`${viewId || 'default'}-${editingCell.id}-${editingCell.field}`}
+                                                            cellPrefix="blocknote"
+                                                            placeholder="Type '/' for commands..."
+                                                            initialContent={editingValue}
+                                                            onChange={(html) => onEditChange(html)}
+                                                            onSave={(html) => {
+                                                                if (onAutoSave && editingCell) {
+                                                                    onAutoSave(editingCell.id, editingCell.field, html);
+                                                                }
+                                                            }}
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </>
                                 ) : (
                                     <>
                                         {/* Popup editor via portal - overlays the cell */}
@@ -2018,18 +2099,6 @@ function SortableRow<T>({
                                         onClick={(e) => col.editable && onEditStart(row, col.key, e)}
                                     >
                                         <PeopleColumn value={value} users={col.users || []} />
-                                    </div>
-                                ) : col.type === 'draghandle' ? (
-                                    // Drag Handle Column - only this cell triggers row drag
-                                    <div
-                                        className="px-1 h-[34px] flex items-center justify-center cursor-grab active:cursor-grabbing"
-                                        draggable={sortable}
-                                        onDragStart={(e) => {
-                                            // Trigger row drag from this cell
-                                            onRowDragStart(e as unknown as React.DragEvent<HTMLTableRowElement>);
-                                        }}
-                                    >
-                                        <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
                                     </div>
                                 ) : col.type === 'id' ? (
                                     <span className="text-[11px] text-gray-700 font-medium px-2 h-[34px] flex items-center">{String(value || '-')}</span>
@@ -2293,6 +2362,57 @@ function SortableRow<T>({
                                                         field: col.key,
                                                         value: String(currentValue || ''),
                                                         type: 'editorjseditor'
+                                                    });
+                                                }}
+                                                title="Open fullscreen editor"
+                                            >
+                                                <Maximize2 className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : col.type === 'blocknoteeditor' ? (
+                                    <div
+                                        className="relative group w-full flex items-start"
+                                        // Stop drag events from bubbling up to the row's drag handlers
+                                        draggable={false}
+                                        onDragStart={(e) => e.stopPropagation()}
+                                        onDragOver={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        onDragEnter={(e) => e.stopPropagation()}
+                                        onDrop={(e) => e.stopPropagation()}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "text-[13px] text-gray-900 transition-colors px-2 py-2 flex-1",
+                                                (col.editable || col.viewable !== false) && "cursor-pointer hover:text-blue-600",
+                                                // Use truncate for single line
+                                                (!wrapLines || wrapLines === '1') && "truncate",
+                                                wrapLines === '2' && "line-clamp-2",
+                                                wrapLines === '3' && "line-clamp-3"
+                                            )}
+                                            onClick={(e) => {
+                                                if (col.editable) {
+                                                    onEditStart(row, col.key, e);
+                                                } else if (col.viewable !== false) {
+                                                    onViewStart(row, col.key, e);
+                                                }
+                                            }}
+                                        >
+                                            <BlockNoteEditorCellDisplay
+                                                content={String(col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? ''))}
+                                            />
+                                        </div>
+                                        {/* Expand button */}
+                                        {col.editable && (
+                                            <button
+                                                className="absolute top-1 right-1 p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const currentValue = col.getValue ? col.getValue(row) : ((row as Record<string, unknown>)[col.key] ?? '');
+                                                    setFullscreenEdit({
+                                                        id: getRowId(row),
+                                                        field: col.key,
+                                                        value: String(currentValue || ''),
+                                                        type: 'blocknoteeditor'
                                                     });
                                                 }}
                                                 title="Open fullscreen editor"
@@ -2926,12 +3046,16 @@ export function DataTable<T>({
     }, [externalColumnOrder]);
 
     // Ordered columns based on columnOrder
+    // Filter out 'draghandle' type columns - drag handle is now built-in when sortable=true
     const orderedColumns = useMemo(() => {
-        const colMap = new Map(columns.map(c => [c.key, c]));
-        const ordered: typeof columns = [];
+        // Filter out draghandle columns - they are now built-in
+        const filteredColumns = columns.filter(c => c.type !== 'draghandle');
+        const colMap = new Map(filteredColumns.map(c => [c.key, c]));
+        const ordered: typeof filteredColumns = [];
 
-        // Add columns in order
+        // Add columns in order (filter out _draghandle from persisted order)
         for (const key of columnOrder) {
+            if (key === '_draghandle') continue; // Skip built-in drag handle
             const col = colMap.get(key);
             if (col) {
                 ordered.push(col);
@@ -2957,6 +3081,11 @@ export function DataTable<T>({
     // Also handles special '_actions' key for the Actions column
     // dropPosition: 'before' = insert before target, 'after' = insert after target
     const handleColumnReorder = useCallback((draggedKey: string, targetKey: string, dropPosition: 'before' | 'after') => {
+        // Ignore attempts to move the built-in drag handle column - it's fixed in position
+        if (draggedKey === '_draghandle' || targetKey === '_draghandle') {
+            return;
+        }
+
         // Build new order from orderedColumns (which includes all columns, even new ones)
         const currentOrderedKeys = orderedColumns.map(c => c.key);
 
@@ -3609,7 +3738,8 @@ export function DataTable<T>({
         wrap_config: wrapRules as Array<{ columnKey: string; lines: '1' | '3' | 'full' }>,
         thumbnail_size_config: thumbnailSizeRules as Array<{ columnKey: string; size: 'small' | 'medium' | 'large' | 'xl' }>,
         column_widths: columnWidths,
-        column_order: columnOrder,
+        // Filter out _draghandle from saved column order - it's a built-in column
+        column_order: columnOrder.filter(key => key !== '_draghandle'),
         row_order: internalRowOrder.length > 0 ? internalRowOrder : undefined
     }), [sortRules, filterRules, groupRules, wrapRules, thumbnailSizeRules, columnWidths, columnOrder, internalRowOrder]);
 
@@ -3902,14 +4032,16 @@ export function DataTable<T>({
             return;
         }
 
-        // For notioneditor, if no explicit value provided, just close without saving
-        // NotionEditor handles its own saves via onSave callback (auto-save on blur/debounce)
+        // For tiptapeditor (NotionEditor), if no explicit value provided, just close without saving
+        // TiptapEditor handles its own saves via onSave callback (auto-save on blur)
+        // BlockNoteEditor now fires onChange immediately, so editingValue is always current - save it on close
         // EditorjsEditor does NOT auto-save, so it uses editingValue when closing
         const col = columns.find(c => c.key === editingCell.field);
         if (newValue === undefined && col?.type === 'tiptapeditor') {
             setEditingCell(null);
             return;
         }
+        // For blocknoteeditor, proceed to save editingValue (which is kept current via immediate onChange)
 
         // Convert empty strings to null for UUID fields (project_id, subproject_id, user_id, etc.)
         let valueToSave: string | null = newValue !== undefined ? newValue : editingValue;
@@ -3981,8 +4113,8 @@ export function DataTable<T>({
         const col = columns.find(c => c.key === field);
         if (!col) return;
 
-        // Check if viewable (default true for text/longtext/tiptapeditor/editorjseditor/url when not editable)
-        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'tiptapeditor' || col.type === 'editorjseditor' || col.type === 'url');
+        // Check if viewable (default true for text/longtext/tiptapeditor/editorjseditor/blocknoteeditor/url when not editable)
+        const isViewable = col.viewable !== false && (col.type === 'text' || col.type === 'longtext' || col.type === 'tiptapeditor' || col.type === 'editorjseditor' || col.type === 'blocknoteeditor' || col.type === 'url');
         if (!isViewable) return;
 
         // Calculate position from the clicked element (cell)
@@ -4046,20 +4178,27 @@ export function DataTable<T>({
             setDragOverRowId(null);
         },
         onRowDragEnter: (e: React.DragEvent<HTMLTableRowElement>) => {
+            // Only respond to row drags that started from this table
+            if (!draggingRowId) return;
             e.preventDefault();
-            if (draggingRowId && draggingRowId !== rowId) {
+            if (draggingRowId !== rowId) {
                 setDragOverRowId(rowId);
             }
         },
         onRowDragOver: (e: React.DragEvent<HTMLTableRowElement>) => {
+            // Only respond to row drags that started from this table
+            // This prevents interference with other drag sources (like BlockNote editor)
+            if (!draggingRowId) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             // Update dragOverRowId on every dragOver event for immediate visual feedback
-            if (draggingRowId && draggingRowId !== rowId && dragOverRowId !== rowId) {
+            if (draggingRowId !== rowId && dragOverRowId !== rowId) {
                 setDragOverRowId(rowId);
             }
         },
         onRowDragLeave: (e: React.DragEvent<HTMLTableRowElement>) => {
+            // Only respond to row drags that started from this table
+            if (!draggingRowId) return;
             // Only clear if we're leaving to a non-child element
             const relatedTarget = e.relatedTarget as HTMLElement;
             if (!e.currentTarget.contains(relatedTarget)) {
@@ -4069,6 +4208,8 @@ export function DataTable<T>({
             }
         },
         onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, dropPosition: 'before' | 'after') => {
+            // Only respond to row drags that started from this table
+            if (!draggingRowId) return;
             e.preventDefault();
             const draggedId = e.dataTransfer.getData('text/plain');
             if (draggedId !== rowId) {
@@ -5315,6 +5456,12 @@ export function DataTable<T>({
                     {/* Column Header with native HTML5 drag-and-drop */}
                     <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
                         <tr className="bg-white">
+                            {/* Built-in Drag Handle column header - fixed position, not reorderable */}
+                            {sortable && (
+                                <th className="data-grid-th w-8 px-1 bg-white" style={{ minWidth: 32, maxWidth: 32 }}>
+                                    {/* Empty header for drag handle */}
+                                </th>
+                            )}
                             {selectable && (
                                 <th className="data-grid-th w-10 px-2 bg-white">
                                     <div className="flex items-center justify-center">
@@ -5645,6 +5792,7 @@ export function DataTable<T>({
                                                                 {...createRowDragHandlers(getRowId(row))}
                                                                 isDragging={draggingRowId === getRowId(row)}
                                                                 isDragOver={dragOverRowId === getRowId(row)}
+                                                                hasActiveRowDrag={!!draggingRowId}
                                                                 selectable={selectable}
                                                                 isSelected={selectedIds?.has(getRowId(row))}
                                                                 onToggleSelect={() => {
@@ -5727,6 +5875,7 @@ export function DataTable<T>({
                                     {...createRowDragHandlers(getRowId(row))}
                                     isDragging={draggingRowId === getRowId(row)}
                                     isDragOver={dragOverRowId === getRowId(row)}
+                                    hasActiveRowDrag={!!draggingRowId}
                                     selectable={selectable}
                                     isSelected={selectedIds?.has(getRowId(row))}
                                     onToggleSelect={() => {
@@ -6645,13 +6794,38 @@ export function DataTable<T>({
                                 />
                             </div>
                         </div>
+                    ) : fullscreenEdit.type === 'blocknoteeditor' ? (
+                        // BlockNoteEditor - fullscreen layout matching TiptapEditor exactly
+                        <div
+                            className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl h-[90vh] max-w-3xl w-full overflow-hidden blocknote-editor-fullscreen pt-6"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* BlockNote with click outside to close - same structure as TiptapEditor */}
+                            <BlockNoteEditorCell
+                                cellId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
+                                cellPrefix="blocknote-fullscreen"
+                                placeholder="Type '/' for commands..."
+                                className="h-full"
+                                initialContent={fullscreenEdit.value}
+                                onSave={async (html) => {
+                                    if (onUpdate && fullscreenEdit) {
+                                        try {
+                                            await onUpdate(fullscreenEdit.id, fullscreenEdit.field, html);
+                                        } catch (error) {
+                                            console.error('Failed to save blocknote content:', error);
+                                        }
+                                    }
+                                }}
+                                autoFocus
+                            />
+                        </div>
                     ) : (
-                        // NotionEditor - letter-format layout with Tiptap toolbar
+                        // TiptapEditor - letter-format layout with Tiptap toolbar
                         <div
                             className="relative bg-white dark:bg-[#0e0e11] rounded-xl shadow-2xl h-[90vh] max-w-3xl w-full overflow-hidden pl-8"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* NotionEditor with toolbar - click outside to close, pl-8 for block controls */}
+                            {/* TiptapEditor with toolbar - click outside to close, pl-8 for block controls */}
                             <TiptapEditorCell
                                 roomId={`${viewId || 'default'}-${fullscreenEdit.id}-${fullscreenEdit.field}`}
                                 roomPrefix="admachin"
@@ -6663,7 +6837,7 @@ export function DataTable<T>({
                                         try {
                                             await onUpdate(fullscreenEdit.id, fullscreenEdit.field, html);
                                         } catch (error) {
-                                            console.error('Failed to save notion content:', error);
+                                            console.error('Failed to save tiptap content:', error);
                                         }
                                     }
                                 }}
